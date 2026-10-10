@@ -44,6 +44,11 @@
   .hint { color: var(--subtle); font-size: 12px; margin: 6px 0 0; }
   .error { background: rgba(255, 69, 58, .15); border-radius: 9px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
   input[type=file] { display: none; }
+  .found { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+  .found .hint { flex: 1 1 100%; margin: 0 0 4px; }
+  .thumb { padding: 0; height: 84px; width: 118px; overflow: hidden; border-radius: 8px; background: var(--chip); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 0; display: block; }
+  .thumb:hover { outline: 2px solid var(--brand); }
 </style>
 <header>
   <h1>Reel</h1>
@@ -83,6 +88,7 @@ const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю м�
 const KIND = { title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
 const NOTE = { preparing: "готуюсь", "building the video": "кодую" };
 let name = new URLSearchParams(location.search).get("p"), state = null, mode = "hot", from = null, shown = 0, edited = false;
+const finds = {}; // request id → pictures found on the internet for it
 
 const api = async (path, options) => {
   const response = await fetch(path, options); const data = await response.json().catch(() => ({}));
@@ -114,10 +120,13 @@ function draw() {
     : from === null ? "Торкніться першого слова шматка, який треба вирізати. Закреслене слово повертається одним дотиком." : "Тепер торкніться останнього слова цього шматка.";
   $("needsBox").style.display = state.needs.length ? "" : "none";
   $("needs").innerHTML = state.needs.map((n) => {
-    const file = n.asset && `/asset/${name}/${n.asset}.jpg`;
-    return `<div class="card${n.status === "skipped" ? " off" : ""}">${n.status === "filled" ? `<img src="${file}" alt="">` : ""}<div class="what">${esc(n.what)}<small>${n.status === "filled" ? "додано" : n.status === "skipped" ? "пропущено" : n.optional ? "необов'язково" : "чекає на матеріал"}</small></div>
+    const file = n.file && `/asset/${name}/${n.file}`, found = finds[n.id];
+    return `<div class="card${n.status === "skipped" ? " off" : ""}">${n.status === "filled" ? `<img src="${file}" alt="">` : ""}<div class="what">${esc(n.what)}<small>${n.status === "filled" ? (n.credit ? `фото з інтернету, не ваш об'єкт · ${esc(n.credit.creator)} · ${esc(n.credit.license)}` : "додано") : n.status === "skipped" ? "пропущено" : n.optional ? "необов'язково" : "чекає на матеріал"}</small></div>
       <label class="btn" style="display:inline-flex;align-items:center">${n.status === "filled" ? "Замінити" : "Додати фото"}<input type="file" accept="image/*" data-need="${n.id}"></label>
-      ${n.status === "filled" ? "" : `<button data-skip="${n.id}">${n.status === "skipped" ? "Повернути" : "Пропустити"}</button>`}</div>`; }).join("");
+      <button data-find="${n.id}">${found === "loading" ? "Шукаю…" : "Знайти в інтернеті"}</button>
+      ${n.status === "filled" ? "" : `<button data-skip="${n.id}">${n.status === "skipped" ? "Повернути" : "Пропустити"}</button>`}
+      ${found && found !== "loading" ? `<div class="found"><p class="hint">Схожі фото з відкритими ліцензіями за запитом «${esc(found.query)}». Це ілюстрації, а не ваш об'єкт: подумайте, чи доречно показувати їх покупцям.</p>
+        ${found.results.length ? found.results.map((r) => `<button class="thumb" data-use="${r.id}" data-for="${n.id}" title="${esc(r.title)} · ${esc(r.creator)} · ${esc(r.license)}"><img src="${esc(r.thumb)}" alt="${esc(r.title)}" loading="lazy"></button>`).join("") : `<p class="hint">Нічого не знайдено.</p>`}</div>` : ""}</div>`; }).join("") + (state.credits && state.credits.length ? `<p class="hint">Автори фото з інтернету (вкажіть в описі відео): ${state.credits.map((c) => `${esc(c.title || "фото")}, ${esc(c.creator)}, ${esc(c.license)}`).join("; ")}</p>` : "");
   $("beats").innerHTML = state.beats.map((b) => {
     const need = b.need && state.needs.find((n) => n.id === b.need), waiting = need && need.status !== "filled";
     return `<div class="card${b.accepted ? "" : " off"}"><span class="tag">${KIND[b.kind]}</span><div class="what">${b.text ? `«${esc(b.text)}» · ` : ""}${esc(phrase(b))}<small>${
@@ -139,6 +148,11 @@ document.addEventListener("click", (e) => {
   else if (t.dataset.beat) edit({ beat: t.dataset.beat });
   else if (t.dataset.fix) edit({ correction: +t.dataset.fix });
   else if (t.dataset.skip) edit({ skip: t.dataset.skip });
+  else if (t.dataset.find) {
+    const id = t.dataset.find; finds[id] = "loading"; draw();
+    api(`/api/projects/${name}/needs/${id}/search`).then((found) => { finds[id] = found; draw(); }, (error) => { delete finds[id]; fail(error); draw(); });
+  }
+  else if (t.closest("[data-use]")) { const b = t.closest("[data-use]"); delete finds[b.dataset.for]; act(`/api/projects/${name}/needs/${b.dataset.for}/use/${b.dataset.use}`, { method: "POST" }); }
   else if (t.id === "render") act(`/api/projects/${name}/render`, { method: "POST" });
 });
 document.addEventListener("change", async (e) => {

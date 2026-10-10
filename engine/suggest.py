@@ -11,7 +11,7 @@ PROMPT = """Ти монтажер коротких вертикальних ві
 {"emphasis": [номери слів],
  "corrections": [{"word": номер, "text": "виправлене слово"}],
  "beats": [{"kind": "backdrop" | "cutaway" | "title" | "zoom", "from": номер_слова, "to": номер_слова, "need": "id потреби або null", "text": "текст титру або null", "why": "коротко"}],
- "needs": [{"id": "n1", "what": "що саме потрібно від автора", "kind": "photo" | "video" | "plan" | "logo", "optional": true | false}]}
+ "needs": [{"id": "n1", "what": "що саме потрібно від автора", "search": "3-5 слів англійською для пошуку схожого фото у фотобанку, без назв об'єктів", "kind": "photo" | "video" | "plan" | "logo", "optional": true | false}]}
 
 emphasis: числа з одиницями, назви, ціни, ключові переваги; не більше одного-двох слів на речення.
 corrections: лише очевидні помилки розпізнавання (закінчення, числа). Назви місць і об'єктів не вгадуй.
@@ -43,7 +43,7 @@ def clean(raw, count):
     for n in raw.get("needs", [])[:5] if isinstance(raw.get("needs"), list) else []:
         if not isinstance(n, dict) or not text(n.get("id"), 12) or not text(n.get("what"), 140) or n["id"] in seen: continue
         seen.add(n["id"])
-        needs.append({"id": n["id"], "what": text(n["what"], 140), "kind": n.get("kind") if n.get("kind") in ("photo", "video", "plan", "logo") else "photo",
+        needs.append({"id": n["id"], "what": text(n["what"], 140), "search": text(n.get("search"), 60), "kind": n.get("kind") if n.get("kind") in ("photo", "video", "plan", "logo") else "photo",
                       "optional": bool(n.get("optional")), "status": "open", "asset": None})
     beats = []
     for b in raw.get("beats", [])[:12] if isinstance(raw.get("beats"), list) else []:

@@ -1,5 +1,5 @@
 """The project document: one JSON file that fully describes a video. Rendering is a pure function of it."""
-import json, shutil, time
+import json, os, shutil, tempfile, time
 from pathlib import Path
 
 FORMAT = 1
@@ -25,6 +25,14 @@ def new(source_file, facts, transcript, suggestions):
     }
 
 
+def write_whole(path, text):
+    """Replaces a file in one step, so a reader never sees it half written (the page polls while the engine writes)."""
+    path = Path(path); path.parent.mkdir(parents=True, exist_ok=True)
+    handle, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".")
+    with os.fdopen(handle, "w", encoding="utf-8") as f: f.write(text)
+    os.replace(tmp, path)
+
+
 def load(folder):
     doc = json.loads((Path(folder) / "project.json").read_text(encoding="utf-8"))
     if doc.get("format") != FORMAT: raise ValueError(f"project format {doc.get('format')} is not supported")
@@ -32,8 +40,7 @@ def load(folder):
 
 
 def save(folder, doc):
-    Path(folder).mkdir(parents=True, exist_ok=True)
-    (Path(folder) / "project.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_whole(Path(folder) / "project.json", json.dumps(doc, ensure_ascii=False, indent=1))
 
 
 def resolve(doc):
@@ -87,20 +94,20 @@ def resolve(doc):
 
 
 # ---------- changes to a project ----------
-def keep_asset(folder, doc, file, kind="photo", name=None):
+def keep_asset(folder, doc, file, kind="photo", name=None, credit=None):
     """Copies material into the project and registers it."""
     folder = Path(folder); (folder / "assets").mkdir(exist_ok=True)
     asset_id = f"a{len(doc['assets']) + 1}"
     kept = folder / "assets" / f"{asset_id}{Path(name or file).suffix.lower() or '.jpg'}"
     shutil.copyfile(file, kept)
-    doc["assets"].append({"id": asset_id, "file": str(kept), "kind": kind})
+    doc["assets"].append({"id": asset_id, "file": str(kept), "kind": kind, **({"credit": credit} if credit else {})})
     return asset_id
 
 
-def fill(folder, need_id, file, name=None):
+def fill(folder, need_id, file, name=None, credit=None):
     doc = load(folder); need = next((n for n in doc["needs"] if n["id"] == need_id), None)
     if not need: raise KeyError(f"no request {need_id}")
-    need["asset"] = keep_asset(folder, doc, file, need["kind"], name); need["status"] = "filled"
+    need["asset"] = keep_asset(folder, doc, file, need["kind"], name, credit); need["status"] = "filled"
     save(folder, doc); return need
 
 
@@ -135,4 +142,4 @@ def progress(folder, step, state, **facts):
     path = Path(folder) / "status.json"
     steps = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
     steps = [s for s in steps if s["step"] != step] + [{"step": step, "state": state, "at": round(time.time(), 1), **facts}]
-    Path(folder).mkdir(parents=True, exist_ok=True); path.write_text(json.dumps(steps, ensure_ascii=False), encoding="utf-8")
+    write_whole(path, json.dumps(steps, ensure_ascii=False))

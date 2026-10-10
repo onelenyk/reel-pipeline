@@ -7,11 +7,12 @@ import json, re, tempfile, threading, traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote
-from . import project, render
+from . import find, project, render
 from .__main__ import ROOT, create
 
 PAGE = Path(__file__).resolve().parent / "page.html"
 INBOX = Path("/work/media")
+changing = threading.Lock()  # one change to a project document at a time
 busy = {}  # project name → what is running, so two jobs never write the same project at once
 NAME = re.compile(r"^[\w.-]{1,60}$")
 
@@ -34,9 +35,12 @@ def summary(name):
         doc = project.load(folder); kept = set()
         for s in doc["edit"]["segments"]: kept.update(range(s["from"], s["to"] + 1))
         hot = {e["word"] for e in doc["emphasis"] if e["accepted"]}
+        assets = {a["id"]: a for a in doc["assets"]}; used = {n.get("asset") for n in doc["needs"]} | {b.get("asset") for b in doc["beats"]}
         out.update(source=doc["sources"][0], language=doc["language"],
                    words=[{"id": w["id"], "text": w["text"], "start": w["start"], "kept": w["id"] in kept, "hot": w["id"] in hot, "unsure": w["confidence"] < 0.5} for w in doc["words"]],
-                   corrections=doc["corrections"], beats=doc["beats"], needs=doc["needs"], seconds=project.resolve(doc)["seconds"])
+                   corrections=doc["corrections"], beats=doc["beats"], seconds=project.resolve(doc)["seconds"],
+                   needs=[{**n, "file": Path(assets[n["asset"]]["file"]).name if n.get("asset") in assets else None, "credit": assets.get(n.get("asset"), {}).get("credit")} for n in doc["needs"]],
+                   credits=[a["credit"] for a in doc["assets"] if a.get("credit") and a["id"] in used])
     return out
 
 
@@ -86,6 +90,11 @@ class Handler(BaseHTTPRequestHandler):
         return parts
 
     def do_GET(self):
+        try: self.get()
+        except Exception as error:
+            traceback.print_exc(); self.send({"error": str(error)[-300:]}, 500)
+
+    def get(self):
         parts = self.route()
         if parts is None: return self.send({"error": "bad path"}, 400)
         if not parts: return self.send(PAGE.read_bytes(), kind="text/html; charset=utf-8")
@@ -93,8 +102,18 @@ class Handler(BaseHTTPRequestHandler):
             names = sorted((p.name for p in ROOT.iterdir() if p.is_dir()), key=lambda n: -(ROOT / n).stat().st_mtime) if ROOT.exists() else []
             return self.send([{"name": n, "busy": busy.get(n), "has_render": (ROOT / n / "render.mp4").exists()} for n in names])
         if len(parts) == 3 and parts[:2] == ["api", "projects"]: return self.send(summary(parts[2]))
+        if len(parts) == 6 and parts[:2] == ["api", "projects"] and parts[3] == "needs" and parts[5] == "search":
+            # Pictures from the internet that could answer this request
+            try:
+                folder = ROOT / parts[2]; doc = project.load(folder); need = next(n for n in doc["needs"] if n["id"] == parts[4])
+                if not need.get("search"): need["search"] = find.query_for(need["what"]); project.save(folder, doc)
+                return self.send({"query": need["search"], "results": find.search(need["search"])})
+            except Exception as error:
+                traceback.print_exc(); return self.send({"error": str(error)[-200:]}, 502)
         if len(parts) == 3 and parts[0] == "video": return self.file(ROOT / parts[1] / "render.mp4", "video/mp4")
-        if len(parts) == 3 and parts[0] == "asset": return self.file(ROOT / parts[1] / "assets" / parts[2], "image/jpeg")
+        if len(parts) == 3 and parts[0] == "asset":
+            kind = {".png": "image/png", ".webp": "image/webp"}.get(Path(parts[2]).suffix, "image/jpeg")
+            return self.file(ROOT / parts[1] / "assets" / parts[2], kind)
         self.send({"error": "not found"}, 404)
 
     def do_POST(self):
@@ -111,7 +130,11 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) < 4 or parts[:2] != ["api", "projects"]: return self.send({"error": "not found"}, 404)
             name, action = parts[2], parts[3]; folder = ROOT / name
             if busy.get(name) and action != "state": return self.send({"error": f"{busy[name]} is still running"}, 409)
-            if action == "render": background(name, "render", lambda: render.render(folder))
+            if action == "render": background(name, "render", lambda: render.render(folder)); return self.send(summary(name))
+            changing.acquire(); self.held = True
+            if False: pass
+            elif action == "needs" and len(parts) == 7 and parts[5] == "use":
+                tmp, credit = find.fetch(parts[6]); project.fill(folder, parts[4], tmp, tmp.name, credit); tmp.unlink()
             elif action == "needs" and len(parts) == 6:
                 tmp = self.upload(Path(parts[5]).suffix or ".jpg"); project.fill(folder, parts[4], tmp, parts[5]); tmp.unlink()
             elif action == "edit":
@@ -138,6 +161,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send(summary(name))
         except Exception as error:
             traceback.print_exc(); self.send({"error": str(error)[-300:]}, 500)
+        finally:
+            if getattr(self, "held", False): self.held = False; changing.release()
 
 
 def run(port):
