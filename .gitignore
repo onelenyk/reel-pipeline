@@ -1,0 +1,9 @@
+# Secrets, media and model weights never go into the repository
+.env
+out/
+models/
+*.MOV
+*.mov
+*.mp4
+*.wav
+__pycache__/
