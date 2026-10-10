@@ -12,7 +12,8 @@ const { createCanvas, loadImage } = require("@napi-rs/canvas");
 
 const timeline = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const { width: W, height: H, fps } = timeline;
-const ACCENT = timeline.style?.accent ?? "#ffd60a";
+const STYLE = timeline.style ?? {};
+const ACCENT = STYLE.accent ?? "#ffd60a";
 const FONT = "Inter, 'Noto Sans', sans-serif";
 
 const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
@@ -36,7 +37,9 @@ function drawPicture(beat, t) {
   if (!image) return;
   const a = presence(t, beat.start, beat.end, 0.4, 0.3);
   if (a <= 0) return;
-  const x = W * 0.05, w = W * 0.9, h = H * 0.3, y = H * 0.07 - (1 - a) * 60, r = 36;
+  // "card": a rounded card with air around it; "edge": the picture runs to the top and the sides of the frame
+  const edge = STYLE.picture === "edge";
+  const x = edge ? 0 : W * 0.05, w = edge ? W : W * 0.9, h = H * (edge ? 0.36 : 0.3), y = (edge ? 0 : H * 0.07) - (1 - a) * 60, r = edge ? 0 : 36;
   ctx.save();
   ctx.globalAlpha = a;
   ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = 40; ctx.shadowOffsetY = 14;
@@ -49,6 +52,7 @@ function drawPicture(beat, t) {
   const k = Math.max(w / image.width, h / image.height) * grow;
   ctx.drawImage(image, x + w / 2 - (image.width * k) / 2, y + h / 2 - (image.height * k) / 2, image.width * k, image.height * k);
   ctx.restore();
+  if (edge) return;
   ctx.save();
   ctx.globalAlpha = a;
   ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 2;
@@ -86,13 +90,17 @@ function drawTitle(beat, t) {
   ctx.translate(W / 2, cy); ctx.scale(scale, scale);
   ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 4;
   ctx.drawImage(titleLayer, -tw / 2, -th / 2);
-  ctx.shadowColor = ACCENT; ctx.shadowBlur = 34; ctx.shadowOffsetY = 0; ctx.globalAlpha = a * 0.55;
-  ctx.drawImage(titleLayer, -tw / 2, -th / 2);
+  if (STYLE.title_glow !== false) {
+    ctx.shadowColor = ACCENT; ctx.shadowBlur = 34; ctx.shadowOffsetY = 0; ctx.globalAlpha = a * 0.55;
+    ctx.drawImage(titleLayer, -tw / 2, -th / 2);
+  }
   ctx.restore();
 }
 
 // ---------- subtitles: a short phrase at a time; each word turns solid as it is spoken, key words in the accent colour ----------
-const SUB_SIZE = Math.round(W * 0.088), SUB_GAP = SUB_SIZE * 0.26, SUB_MAX = W * 0.86;
+const SUB_SIZE = Math.round(W * ({ s: 0.072, m: 0.088, l: 0.104 }[STYLE.subtitle_size] ?? 0.088)), SUB_GAP = SUB_SIZE * 0.26, SUB_MAX = W * 0.86;
+const SUB_Y = STYLE.subtitle_place === "middle" ? 0.56 : 0.715;
+const KARAOKE = STYLE.karaoke !== false;
 function layout(words) {
   font(SUB_SIZE);
   const rows = [[]]; let used = 0;
@@ -111,15 +119,15 @@ function drawSubtitle(line, t) {
   const a = Math.min(ease((t - line.start + 0.06) / 0.14), ease((line.end - t) / 0.12));
   if (a <= 0) return;
   const rows = laidOut.get(line), rowHeight = SUB_SIZE * 1.16;
-  const top = H * 0.715 - (rows.length * rowHeight) / 2 + (1 - a) * 14;
+  const top = H * SUB_Y - (rows.length * rowHeight) / 2 + (1 - a) * 14;
   font(SUB_SIZE);
   ctx.textAlign = "left"; ctx.textBaseline = "middle";
   rows.forEach((row, index) => {
     const left = W / 2 - row.width / 2, y = top + rowHeight * (index + 0.5);
     for (const { word, w, x } of row) {
-      const said = t >= word.start - 0.04;
+      const said = !KARAOKE || t >= word.start - 0.04;
       // A small pop as the word is spoken
-      const pop = said ? 1 + 0.07 * (1 - ease((t - word.start) / 0.22)) : 1;
+      const pop = KARAOKE && said ? 1 + 0.07 * (1 - ease((t - word.start) / 0.22)) : 1;
       ctx.save();
       ctx.translate(left + x + w / 2, y); ctx.scale(pop, pop);
       ctx.globalAlpha = a * (said ? 1 : 0.5);

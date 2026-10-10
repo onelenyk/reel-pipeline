@@ -12,13 +12,18 @@
   h2 { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--subtle); margin: 0 0 8px; font-weight: 600; }
   main { display: grid; gap: 20px; padding: 16px; max-width: 1200px; margin: 0 auto; }
   @media (min-width: 900px) { main { grid-template-columns: 330px minmax(0, 1fr); align-items: start; } .left { position: sticky; top: 16px; } }
-  section { margin-bottom: 22px; }
-  button, .btn, select { font: inherit; font-weight: 600; font-size: 13px; color: var(--fg); background: var(--chip); border: 0; border-radius: 9px; height: 38px; padding: 0 14px; cursor: pointer; }
+  section { margin-bottom: 24px; }
+  button, .btn, select, input[type=text] { font: inherit; font-size: 13px; color: var(--fg); background: var(--chip); border: 0; border-radius: 9px; height: 38px; padding: 0 14px; }
+  button, .btn, select { font-weight: 600; cursor: pointer; }
   button:hover, .btn:hover { background: var(--chip2); }
   button.primary { background: var(--brand); color: #000; }
+  button.quiet { background: none; color: var(--muted); padding: 0 8px; }
+  button.quiet:hover { color: var(--bad); background: none; }
   button:disabled { opacity: .4; cursor: default; }
-  .seg { display: inline-flex; background: var(--chip); border-radius: 9px; padding: 3px; }
-  .seg button { height: 32px; background: none; color: var(--muted); }
+  input[type=text] { min-width: 0; outline: none; } input[type=text]:focus { box-shadow: 0 0 0 2px var(--brand); }
+  .btn { display: inline-flex; align-items: center; }
+  .seg { display: inline-flex; flex-wrap: wrap; background: var(--chip); border-radius: 9px; padding: 3px; }
+  .seg button { height: 32px; background: none; color: var(--muted); padding: 0 12px; }
   .seg button.on { background: var(--chip2); color: var(--fg); }
   video { width: 100%; aspect-ratio: 9 / 16; background: #111; border-radius: 12px; display: block; }
   .empty { aspect-ratio: 9 / 16; display: grid; place-items: center; background: var(--panel); border-radius: 12px; color: var(--subtle); text-align: center; padding: 20px; }
@@ -34,35 +39,46 @@
   .w.hot { color: var(--brand); font-weight: 700; }
   .w.cut { color: var(--subtle); text-decoration: line-through; opacity: .55; }
   .w.unsure { border-bottom: 2px dotted var(--bad); }
+  .w.fixed { border-bottom: 2px solid var(--ok); }
   .w.picked { background: var(--bad); color: #fff; }
-  .card { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .words input { height: 32px; font-size: 16px; width: 11em; }
+  .card { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .card .what { flex: 1 1 220px; min-width: 0; }
   .card small { display: block; color: var(--subtle); font-size: 12px; }
-  .card img { width: 64px; height: 44px; object-fit: cover; border-radius: 6px; }
+  .card img.pic { width: 64px; height: 44px; object-fit: cover; border-radius: 6px; }
   .off { opacity: .45; }
   .tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle); min-width: 78px; }
   .hint { color: var(--subtle); font-size: 12px; margin: 6px 0 0; }
   .error { background: rgba(255, 69, 58, .15); border-radius: 9px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
   input[type=file] { display: none; }
-  .found { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
-  .found .hint { flex: 1 1 100%; margin: 0 0 4px; }
-  .thumb { padding: 0; height: 84px; width: 118px; overflow: hidden; border-radius: 8px; background: var(--chip); }
-  .thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 0; display: block; }
-  .thumb:hover { outline: 2px solid var(--brand); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .row > span:first-child { width: 110px; color: var(--muted); font-size: 13px; }
+  .sw { width: 34px; height: 34px; border-radius: 50%; padding: 0; } .sw.on { box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--fg); }
+  input[type=color] { width: 34px; height: 34px; padding: 0; border: 0; background: none; cursor: pointer; }
+  input[type=range] { accent-color: var(--brand); flex: 1 1 120px; }
+  .veil { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: grid; place-items: end center; z-index: 10; }
+  @media (min-width: 700px) { .veil { place-items: center; } }
+  .sheet { background: #1c1c1e; width: min(100%, 720px); max-height: 88dvh; overflow: auto; border-radius: 18px 18px 0 0; padding: 16px; }
+  @media (min-width: 700px) { .sheet { border-radius: 18px; } }
+  .sheet h3 { margin: 0; font-size: 17px; }
+  .sheet button, .sheet .btn, .sheet input[type=text] { background: var(--chip2); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin-top: 12px; }
+  .tile { padding: 0; height: 92px; overflow: hidden; border-radius: 10px; position: relative; }
+  .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile:hover { outline: 2px solid var(--brand); }
+  .tile.add { display: grid; place-items: center; color: var(--muted); font-size: 12px; text-align: center; padding: 6px; }
 </style>
 <header>
   <h1>Reel</h1>
   <select id="pick" aria-label="Відео"></select>
-  <label class="btn" style="display:inline-flex;align-items:center">Нове відео<input type="file" id="take" accept="video/*"></label>
+  <label class="btn">Нове відео<input type="file" id="take" accept="video/*"></label>
   <span id="top" class="hint" style="margin:0"></span>
 </header>
 <main>
   <div class="left">
     <section>
       <div id="player"></div>
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <button class="primary" id="render" style="flex:1">Зібрати відео</button>
-      </div>
+      <div style="display:flex;gap:8px;margin-top:10px"><button class="primary" id="render" style="flex:1">Зібрати відео</button></div>
       <p class="hint" id="stale"></p>
     </section>
     <section><h2>Що відбувається</h2><ul class="steps" id="steps"></ul></section>
@@ -73,22 +89,32 @@
     <section>
       <h2>Текст</h2>
       <div class="seg" role="group" aria-label="Що робить дотик до слова">
-        <button data-mode="hot" class="on">Виділяти</button><button data-mode="cut">Вирізати</button>
+        <button data-mode="hot" class="on">Виділяти</button><button data-mode="fix">Виправляти</button><button data-mode="cut">Вирізати</button><button data-mode="beat">Вставка</button>
       </div>
       <p class="hint" id="modeHint"></p>
       <div class="words" id="words"></div>
+      <div id="beatMenu"></div>
     </section>
     <section><h2>Монтаж</h2><div id="beats"></div></section>
-    <section id="fixBox"><h2>Можливі помилки розпізнавання</h2><div id="fixes"></div></section>
+    <section id="fixBox"><h2>Пропозиції AI щодо слів</h2><div id="fixes"></div></section>
+    <section><h2>Стиль</h2><div id="style"></div></section>
   </div>
 </main>
+<div id="picker"></div>
 <script>
 const $ = (id) => document.getElementById(id);
 const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", suggest: "AI планує монтаж", render: "Збираю відео" };
 const KIND = { title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
 const NOTE = { preparing: "готуюсь", "building the video": "кодую" };
-let name = new URLSearchParams(location.search).get("p"), state = null, mode = "hot", from = null, shown = 0, edited = false;
-const finds = {}; // request id → pictures found on the internet for it
+const HINT = {
+  hot: "Торкніться слова, щоб виділити його жовтим або зняти виділення.",
+  fix: "Торкніться слова, щоб виправити його. Enter зберігає, Esc скасовує. Порожнє поле повертає те, що почув розпізнавач.",
+  cut: ["Торкніться першого слова шматка, який треба вирізати. Закреслене слово повертається одним дотиком.", "Тепер торкніться останнього слова цього шматка."],
+  beat: ["Торкніться першого слова, на якому має з'явитись вставка.", "Тепер торкніться останнього слова."],
+};
+const ACCENTS = ["#ffd60a", "#ffffff", "#30d158", "#0a84ff", "#ff453a", "#ff9f0a", "#bf5af2"];
+let name = new URLSearchParams(location.search).get("p"), state = null, styles = [], mode = "hot", from = null, shown = 0, edited = false;
+let drawn = "", editing = null, range = null, picker = null;
 
 const api = async (path, options) => {
   const response = await fetch(path, options); const data = await response.json().catch(() => ({}));
@@ -96,72 +122,174 @@ const api = async (path, options) => {
   return data;
 };
 const fail = (error) => { $("error").innerHTML = `<div class="error"></div>`; $("error").firstChild.textContent = String(error.message || error); };
-const act = async (path, options) => { try { $("error").innerHTML = ""; state = await api(path, options); edited = true; draw(); } catch (error) { fail(error); } };
+const act = async (path, options) => {
+  try { $("error").innerHTML = ""; const fresh = await api(path, options); state = fresh; edited = true; draw(true); return fresh; } catch (error) { fail(error); return null; }
+};
 const edit = (change) => act(`/api/projects/${name}/edit`, { method: "POST", body: JSON.stringify(change) });
 const esc = (text) => String(text ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const safeName = (file) => file.name.replace(/[^\w.-]/g, "_").slice(-50) || "file";
+const pic = (file) => `/asset/${name}/${file}`;
 
-function draw() {
-  if (!state) return;
+function drawSteps() {
   const busy = !!state.busy;
   $("render").disabled = busy || !state.words;
   $("render").textContent = busy ? "Працюю…" : "Зібрати відео";
-  $("top").textContent = state.source ? `${state.source.width}×${state.source.height}, ${state.source.seconds.toFixed(1)} с сирого → ${state.seconds.toFixed(1)} с у ролику` : "";
+  $("steps").innerHTML = state.steps.map((s) => `<li class="${s.state}"><span class="dot"></span>${STEP[s.step] || s.step}<span class="note">${
+    s.state === "done" ? s.seconds + " с" : s.state === "failed" ? esc(s.error) : s.state === "running" ? esc(NOTE[s.note] || (s.note ? "вирізаю мовця з фону" : "триває")) + ` · ${Math.max(0, Math.round(Date.now() / 1000 - s.at))} с` : ""}</span></li>`).join("");
   $("stale").textContent = edited && state.has_render && !busy ? "Є зміни, яких ще немає у відео. Натисніть «Зібрати відео»." : "";
   if (state.has_render && shown !== state.render_version) {
     shown = state.render_version; edited = false;
     $("player").innerHTML = `<video controls playsinline src="/video/${name}/render.mp4?v=${shown}"></video>`;
-  } else if (!state.has_render) $("player").innerHTML = `<div class="empty">Відео ще не зібране</div>`;
-  $("steps").innerHTML = state.steps.map((s) => `<li class="${s.state}"><span class="dot"></span>${STEP[s.step] || s.step}<span class="note">${
-    s.state === "done" ? s.seconds + " с" : s.state === "failed" ? esc(s.error) : s.state === "running" ? esc(NOTE[s.note] || (s.note ? "вирізаю мовця з фону" : "триває")) + ` · ${Math.max(0, Math.round(Date.now() / 1000 - s.at))} с` : ""}</span></li>`).join("");
-  if (!state.words) { for (const id of ["needs", "words", "beats", "fixes"]) $(id).innerHTML = ""; return; }
-  const words = state.words, phrase = (b) => words.slice(b.from, b.to + 1).map((w) => w.text).join(" ");
-  $("words").innerHTML = words.map((w) => `<span class="w${w.hot ? " hot" : ""}${w.kept ? "" : " cut"}${w.unsure ? " unsure" : ""}${from === w.id ? " picked" : ""}" data-w="${w.id}">${esc(w.text)}</span>`).join(" ");
-  $("modeHint").textContent = mode === "hot" ? "Торкніться слова, щоб виділити його жовтим або зняти виділення."
-    : from === null ? "Торкніться першого слова шматка, який треба вирізати. Закреслене слово повертається одним дотиком." : "Тепер торкніться останнього слова цього шматка.";
-  $("needsBox").style.display = state.needs.length ? "" : "none";
-  $("needs").innerHTML = state.needs.map((n) => {
-    const file = n.file && `/asset/${name}/${n.file}`, found = finds[n.id];
-    return `<div class="card${n.status === "skipped" ? " off" : ""}">${n.status === "filled" ? `<img src="${file}" alt="">` : ""}<div class="what">${esc(n.what)}<small>${n.status === "filled" ? (n.credit ? `фото з інтернету, не ваш об'єкт · ${esc(n.credit.creator)} · ${esc(n.credit.license)}` : "додано") : n.status === "skipped" ? "пропущено" : n.optional ? "необов'язково" : "чекає на матеріал"}</small></div>
-      <label class="btn" style="display:inline-flex;align-items:center">${n.status === "filled" ? "Замінити" : "Додати фото"}<input type="file" accept="image/*" data-need="${n.id}"></label>
-      <button data-find="${n.id}">${found === "loading" ? "Шукаю…" : "Знайти в інтернеті"}</button>
-      ${n.status === "filled" ? "" : `<button data-skip="${n.id}">${n.status === "skipped" ? "Повернути" : "Пропустити"}</button>`}
-      ${found && found !== "loading" ? `<div class="found"><p class="hint">Схожі фото з відкритими ліцензіями за запитом «${esc(found.query)}». Це ілюстрації, а не ваш об'єкт: подумайте, чи доречно показувати їх покупцям.</p>
-        ${found.results.length ? found.results.map((r) => `<button class="thumb" data-use="${r.id}" data-for="${n.id}" title="${esc(r.title)} · ${esc(r.creator)} · ${esc(r.license)}"><img src="${esc(r.thumb)}" alt="${esc(r.title)}" loading="lazy"></button>`).join("") : `<p class="hint">Нічого не знайдено.</p>`}</div>` : ""}</div>`; }).join("") + (state.credits && state.credits.length ? `<p class="hint">Автори фото з інтернету (вкажіть в описі відео): ${state.credits.map((c) => `${esc(c.title || "фото")}, ${esc(c.creator)}, ${esc(c.license)}`).join("; ")}</p>` : "");
-  $("beats").innerHTML = state.beats.map((b) => {
-    const need = b.need && state.needs.find((n) => n.id === b.need), waiting = need && need.status !== "filled";
-    return `<div class="card${b.accepted ? "" : " off"}"><span class="tag">${KIND[b.kind]}</span><div class="what">${b.text ? `«${esc(b.text)}» · ` : ""}${esc(phrase(b))}<small>${
-      waiting ? "чекає: " + esc(need.what) : esc(b.why || "")}${b.by === "user" ? " · додано вручну" : ""}</small></div><button data-beat="${b.id}">${b.accepted ? "Вимкнути" : "Увімкнути"}</button></div>`; }).join("") || `<p class="hint">Вставок немає.</p>`;
-  $("fixBox").style.display = state.corrections.length ? "" : "none";
-  $("fixes").innerHTML = state.corrections.map((c) => `<div class="card"><div class="what">${esc(words[c.word].text)} → <b>${esc(c.text)}</b><small>${c.accepted ? "прийнято" : "пропозиція AI, не застосована"}</small></div><button data-fix="${c.word}">${c.accepted ? "Скасувати" : "Прийняти"}</button></div>`).join("");
+  } else if (!state.has_render && !$("player").firstChild) $("player").innerHTML = `<div class="empty">Відео ще не зібране</div>`;
 }
 
-document.addEventListener("click", (e) => {
-  const t = e.target;
-  if (t.dataset.mode) { mode = t.dataset.mode; from = null; document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b === t)); draw(); }
-  else if (t.dataset.w !== undefined) {
-    const id = +t.dataset.w, word = state.words[id];
+function draw(force) {
+  if (!state) return;
+  drawSteps();
+  // Everything below is rebuilt only when the project itself changed, so typing in a field is never interrupted
+  const signature = JSON.stringify([state.words, state.needs, state.beats, state.corrections, state.style, state.assets, styles, state.seconds]);
+  if (!force && signature === drawn) return;
+  if (editing !== null && !force) return;
+  drawn = signature;
+  $("top").textContent = state.source ? `${state.source.width}×${state.source.height}, ${state.source.seconds.toFixed(1)} с сирого → ${state.seconds.toFixed(1)} с у ролику` : "";
+  if (!state.words) { for (const id of ["needs", "words", "beats", "fixes", "style", "beatMenu"]) $(id).innerHTML = ""; return; }
+  const words = state.words, phrase = (b) => words.slice(b.from, b.to + 1).map((w) => w.text).join(" ");
+  $("words").innerHTML = words.map((w) => editing === w.id
+    ? `<input type="text" id="fixInput" value="${esc(w.text)}" maxlength="40" aria-label="Виправлення слова">`
+    : `<span class="w${w.hot ? " hot" : ""}${w.kept ? "" : " cut"}${w.unsure && !w.fixed ? " unsure" : ""}${w.fixed ? " fixed" : ""}${from === w.id || (range && w.id >= range[0] && w.id <= range[1]) ? " picked" : ""}" data-w="${w.id}"${w.fixed ? ` title="почуто: ${esc(w.heard)}"` : ""}>${esc(w.text)}</span>`).join(" ");
+  if (editing !== null) { const input = $("fixInput"); input.focus(); input.select(); }
+  $("modeHint").textContent = Array.isArray(HINT[mode]) ? HINT[mode][from === null ? 0 : 1] : HINT[mode];
+  $("beatMenu").innerHTML = range ? `<div class="card" style="margin-top:10px"><div class="what">Що показати на словах «${esc(phrase({ from: range[0], to: range[1] }))}»?</div>
+    <button data-new="cutaway">Картинка зверху</button><button data-new="backdrop">Картинка за мовцем</button><button data-new="zoom">Наближення</button>
+    <input type="text" id="titleText" placeholder="Текст титру" maxlength="40" style="flex:1 1 140px"><button data-new="title">Титр</button><button class="quiet" data-new="cancel">Скасувати</button></div>` : "";
+
+  $("needsBox").style.display = state.needs.length ? "" : "none";
+  $("needs").innerHTML = state.needs.map((n) => `<div class="card${n.status === "skipped" ? " off" : ""}">${n.file ? `<img class="pic" src="${pic(n.file)}" alt="">` : ""}
+    <div class="what">${esc(n.what)}<small>${n.status === "filled" ? (n.credit ? `фото з інтернету, не ваш об'єкт · ${esc(n.credit.creator)} · ${esc(n.credit.license)}` : "додано") : n.status === "skipped" ? "пропущено" : n.optional ? "необов'язково" : "чекає на матеріал"}</small></div>
+    <button data-pick-need="${n.id}">${n.status === "filled" ? "Змінити фото" : "Обрати фото"}</button>
+    ${n.status === "filled" ? `<button class="quiet" data-clear="${n.id}">Прибрати</button>` : `<button data-skip="${n.id}">${n.status === "skipped" ? "Повернути" : "Пропустити"}</button>`}</div>`).join("")
+    + (state.credits && state.credits.length ? `<p class="hint">Автори фото з інтернету (вкажіть в описі відео): ${state.credits.map((c) => `${esc(c.title || "фото")}, ${esc(c.creator)}, ${esc(c.license)}`).join("; ")}</p>` : "");
+
+  $("beats").innerHTML = state.beats.map((b) => {
+    const need = b.need && state.needs.find((n) => n.id === b.need), file = b.file || (need && need.file), pictured = b.kind === "cutaway" || b.kind === "backdrop";
+    return `<div class="card${b.accepted ? "" : " off"}">${file ? `<img class="pic" src="${pic(file)}" alt="">` : ""}<span class="tag">${KIND[b.kind]}</span>
+      <div class="what">${b.text ? `«${esc(b.text)}» · ` : ""}${esc(phrase(b))}<small>${pictured && !file ? "чекає на фото" + (need ? ": " + esc(need.what) : "") : esc(b.why || "")}${b.by === "user" ? " додано вручну" : ""}</small></div>
+      ${pictured && !need ? `<button data-pick-beat="${b.id}">${file ? "Змінити фото" : "Обрати фото"}</button>` : ""}
+      <button data-beat="${b.id}">${b.accepted ? "Вимкнути" : "Увімкнути"}</button><button class="quiet" data-remove="${b.id}" aria-label="Видалити вставку">Видалити</button></div>`; }).join("") || `<p class="hint">Вставок немає. У розділі «Текст» оберіть «Вставка» і позначте слова.</p>`;
+
+  const offers = state.corrections.filter((c) => c.by === "ai");
+  $("fixBox").style.display = offers.length ? "" : "none";
+  $("fixes").innerHTML = offers.map((c) => `<div class="card"><div class="what">${esc(words[c.word].heard)} → <b>${esc(c.text)}</b><small>${c.accepted ? "прийнято" : "не застосовано"}</small></div><button data-fix="${c.word}">${c.accepted ? "Скасувати" : "Прийняти"}</button></div>`).join("");
+
+  const st = state.style, seg = (key, options) => `<div class="seg">${options.map(([value, label]) => `<button data-style='${JSON.stringify({ [key]: value })}' class="${st[key] === value ? "on" : ""}">${label}</button>`).join("")}</div>`;
+  $("style").innerHTML = `
+    <div class="row"><span>Акцент</span>${ACCENTS.map((c) => `<button class="sw${st.accent === c ? " on" : ""}" style="background:${c}" data-style='${JSON.stringify({ accent: c })}' aria-label="Колір ${c}"></button>`).join("")}<input type="color" id="accent" value="${st.accent}" aria-label="Власний колір"></div>
+    <div class="row"><span>Субтитри</span>${seg("subtitle_size", [["s", "Малі"], ["m", "Середні"], ["l", "Великі"]])}${seg("subtitle_place", [["low", "Внизу"], ["middle", "Посередині"]])}</div>
+    <div class="row"><span>Слова</span>${seg("karaoke", [[true, "Загоряються по черзі"], [false, "Усі одразу"]])}</div>
+    <div class="row"><span>Титр</span>${seg("title_glow", [[true, "Зі світінням"], [false, "Без світіння"]])}</div>
+    <div class="row"><span>Картинка зверху</span>${seg("picture", [["card", "Картка"], ["edge", "На всю ширину"]])}</div>
+    <div class="row"><span>Гучність</span><input type="range" id="level" min="-24" max="-10" step="1" value="${st.level}"><span id="levelText" style="width:auto">${st.level} LUFS</span></div>
+    <div class="row"><span>Зберегти</span><input type="text" id="styleName" placeholder="Назва стилю" maxlength="40" value="${esc(st.name)}" style="flex:1 1 160px"><button id="styleSave">Зберегти стиль</button></div>
+    ${styles.length ? styles.map((s) => `<div class="card"><span class="sw" style="background:${s.accent};flex:none"></span><div class="what">${esc(s.name)}<small>${s.default ? "типовий для нових відео" : ""}</small></div>
+      <button data-apply="${esc(s.id)}">Застосувати</button><button data-default="${s.default ? "built-in" : esc(s.id)}">${s.default ? "Не типовий" : "Зробити типовим"}</button><button class="quiet" data-style-delete="${esc(s.id)}">Видалити</button></div>`).join("") : `<p class="hint">Збережених стилів ще немає. Збережений стиль можна застосувати до іншого відео або зробити типовим для нових.</p>`}`;
+}
+
+// ---------- choosing a picture: from the project's own, from the device, or from the internet ----------
+function drawPicker() {
+  if (!picker) { $("picker").innerHTML = ""; return; }
+  const found = picker.found;
+  $("picker").innerHTML = `<div class="veil" data-close="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Обрати фото">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>Обрати фото</h3><button data-close="1">Закрити</button></div>
+    <p class="hint">${esc(picker.title)}</p>
+    <h2 style="margin-top:14px">Фото цього відео</h2>
+    <div class="grid">${state.assets.map((a) => `<button class="tile" data-choose="${a.id}" title="${a.credit ? esc(a.credit.creator + " · " + a.credit.license) : "ваше фото"}"><img src="${pic(a.file)}" alt="" loading="lazy"></button>`).join("")}
+      <label class="tile btn add">Додати з пристрою<input type="file" id="ownPhoto" accept="image/jpeg,image/png,image/webp"></label></div>
+    <h2 style="margin-top:18px">З інтернету</h2>
+    <div style="display:flex;gap:8px"><input type="text" id="query" placeholder="Що шукати, наприклад: котеджне містечко згори" value="${esc(picker.query || "")}" style="flex:1"><button id="search">${picker.loading ? "Шукаю…" : "Знайти"}</button></div>
+    ${found ? `<p class="hint">Фото з відкритими ліцензіями${found.query ? ` за запитом «${esc(found.query)}»` : ""}. Це ілюстрації, а не ваш об'єкт: подумайте, чи доречно показувати їх покупцям.</p>
+      <div class="grid">${found.results.map((r) => `<button class="tile" data-use="${r.id}" title="${esc(r.title)} · ${esc(r.creator)} · ${esc(r.license)}"><img src="${esc(r.thumb)}" alt="${esc(r.title)}" loading="lazy"></button>`).join("") || `<p class="hint">Нічого не знайдено. Спробуйте інші слова.</p>`}</div>` : ""}
+  </div></div>`;
+}
+async function searchPictures(text, need) {
+  picker.loading = true; picker.query = text; drawPicker();
+  try { picker.found = await api(`/api/projects/${name}/search?` + (text ? "q=" + encodeURIComponent(text) : "need=" + need)); if (!text) picker.query = picker.found.query; } catch (error) { fail(error); }
+  if (picker) { picker.loading = false; drawPicker(); }
+}
+async function choose(asset) {
+  const target = picker.target; picker = null; drawPicker();
+  if (target.need) await edit({ assign: { need: target.need, asset } });
+  else if (target.beat) await edit({ beat_picture: { beat: target.beat, asset } });
+  else if (target.add) { await edit({ add_beat: { ...target.add, asset } }); }
+}
+
+async function saveWord(input) {
+  if (editing === null) return;
+  const id = editing, to = input.value; editing = null;
+  await edit({ text: { word: id, to } });
+}
+
+document.addEventListener("click", async (e) => {
+  const t = e.target, d = t.dataset || {};
+  if (d.mode) { mode = d.mode; from = null; range = null; editing = null; document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b === t)); draw(true); }
+  else if (d.w !== undefined) {
+    const id = +d.w, word = state.words[id];
     if (mode === "hot") edit({ emphasis: id });
-    else if (!word.kept) edit({ drop: [id, id], restore: true });
-    else if (from === null) { from = id; draw(); }
-    else { const range = [Math.min(from, id), Math.max(from, id)]; from = null; edit({ drop: range }); }
+    else if (mode === "fix") { editing = id; draw(true); }
+    else if (mode === "cut" && !word.kept) edit({ drop: [id, id], restore: true });
+    else if (from === null) { from = id; range = null; draw(true); }
+    else { const picked = [Math.min(from, id), Math.max(from, id)]; from = null; if (mode === "cut") edit({ drop: picked }); else { range = picked; draw(true); } }
   }
-  else if (t.dataset.beat) edit({ beat: t.dataset.beat });
-  else if (t.dataset.fix) edit({ correction: +t.dataset.fix });
-  else if (t.dataset.skip) edit({ skip: t.dataset.skip });
-  else if (t.dataset.find) {
-    const id = t.dataset.find; finds[id] = "loading"; draw();
-    api(`/api/projects/${name}/needs/${id}/search`).then((found) => { finds[id] = found; draw(); }, (error) => { delete finds[id]; fail(error); draw(); });
+  else if (d.new) {
+    const where = { from: range[0], to: range[1] }, kind = d.new, text = ($("titleText") || {}).value;
+    if (kind === "cancel") { range = null; draw(true); }
+    else if (kind === "zoom") { range = null; edit({ add_beat: { kind, ...where } }); }
+    else if (kind === "title") { if (!text || !text.trim()) { $("titleText").focus(); return; } range = null; edit({ add_beat: { kind, ...where, text } }); }
+    else { range = null; picker = { target: { add: { kind, ...where } }, title: KIND[kind] + ": оберіть фото для цієї вставки." }; draw(true); drawPicker(); }
   }
-  else if (t.closest("[data-use]")) { const b = t.closest("[data-use]"); delete finds[b.dataset.for]; act(`/api/projects/${name}/needs/${b.dataset.for}/use/${b.dataset.use}`, { method: "POST" }); }
+  else if (d.beat) edit({ beat: d.beat });
+  else if (d.remove) edit({ remove_beat: d.remove });
+  else if (d.fix) edit({ correction: +d.fix });
+  else if (d.skip) edit({ skip: d.skip });
+  else if (d.clear) edit({ assign: { need: d.clear, asset: null } });
+  else if (d.pickNeed) { const need = state.needs.find((n) => n.id === d.pickNeed); picker = { target: { need: need.id }, title: need.what }; drawPicker(); }
+  else if (d.pickBeat) { picker = { target: { beat: d.pickBeat }, title: "Фото для вставки." }; drawPicker(); }
+  else if (d.close && (t === e.target)) { if (t.classList.contains("veil") && e.target !== t) return; picker = null; drawPicker(); }
+  else if (t.id === "search") searchPictures($("query").value.trim(), picker.target.need);
+  else if (t.closest("[data-choose]")) choose(t.closest("[data-choose]").dataset.choose);
+  else if (t.closest("[data-use]")) {
+    // A picture from the internet is first copied into the project, then used like any other
+    const id = t.closest("[data-use]").dataset.use; picker.loading = true; drawPicker();
+    const fresh = await act(`/api/projects/${name}/find/${id}`, { method: "POST" });
+    if (fresh && picker) choose(fresh.added); else if (picker) { picker.loading = false; drawPicker(); }
+  }
+  else if (d.style) edit({ style: JSON.parse(d.style) });
+  else if (d.apply) edit({ apply_style: d.apply });
+  else if (d.default) { try { styles = await api(`/api/styles/${encodeURIComponent(d.default)}/default`, { method: "POST" }); draw(true); } catch (error) { fail(error); } }
+  else if (d.styleDelete) { try { styles = await api(`/api/styles/${encodeURIComponent(d.styleDelete)}/delete`, { method: "POST" }); draw(true); } catch (error) { fail(error); } }
+  else if (t.id === "styleSave") {
+    const wanted = $("styleName").value.trim(); if (!wanted) { $("styleName").focus(); return; }
+    if (await act(`/api/projects/${name}/style-save`, { method: "POST", body: JSON.stringify({ name: wanted }) })) { styles = await api("/api/styles"); draw(true); }
+  }
   else if (t.id === "render") act(`/api/projects/${name}/render`, { method: "POST" });
 });
+document.addEventListener("keydown", (e) => {
+  if (e.target.id === "fixInput") { if (e.key === "Enter") saveWord(e.target); else if (e.key === "Escape") { editing = null; draw(true); } }
+  else if (e.target.id === "query" && e.key === "Enter") searchPictures(e.target.value.trim(), picker.target.need);
+  else if (e.target.id === "titleText" && e.key === "Enter") document.querySelector('[data-new="title"]').click();
+  else if (e.key === "Escape" && picker) { picker = null; drawPicker(); }
+});
+document.addEventListener("focusout", (e) => { if (e.target.id === "fixInput") saveWord(e.target); });
+// A tap anywhere else also finishes the correction (some browsers do not move focus on a tap)
+document.addEventListener("pointerdown", (e) => { const input = $("fixInput"); if (input && e.target !== input) saveWord(input); }, true);
+document.addEventListener("input", (e) => { if (e.target.id === "level") $("levelText").textContent = e.target.value + " LUFS"; });
 document.addEventListener("change", async (e) => {
   const input = e.target, file = input.files && input.files[0];
+  if (input.id === "level") return edit({ style: { level: +input.value } });
+  if (input.id === "accent") return edit({ style: { accent: input.value } });
   if (!file) return;
-  const safe = file.name.replace(/[^\w.-]/g, "_").slice(-50) || "file";
-  if (input.dataset.need) await act(`/api/projects/${name}/needs/${input.dataset.need}/${safe}`, { method: "POST", body: file });
+  if (input.id === "ownPhoto") { const fresh = await act(`/api/projects/${name}/assets/${safeName(file)}`, { method: "POST", body: file }); if (fresh && picker) choose(fresh.added); }
   else if (input.id === "take") {
-    try { $("top").textContent = "Вивантажую…"; const made = await api(`/api/new/${safe}`, { method: "POST", body: file }); location.search = "?p=" + made.project; } catch (error) { fail(error); }
+    try { $("top").textContent = "Вивантажую…"; const made = await api(`/api/new/${safeName(file)}`, { method: "POST", body: file }); location.search = "?p=" + made.project; } catch (error) { fail(error); }
   }
   input.value = "";
 });
@@ -172,7 +300,7 @@ async function tick() {
     const list = await api("/api/projects");
     if (!name && list.length) name = list[0].name;
     $("pick").innerHTML = list.map((p) => `<option value="${esc(p.name)}"${p.name === name ? " selected" : ""}>${esc(p.name)}</option>`).join("") || `<option>немає відео</option>`;
-    if (name) { const fresh = await api(`/api/projects/${name}`); const wasEdited = edited; state = fresh; edited = wasEdited; draw(); }
+    if (name) { const [fresh, saved] = await Promise.all([api(`/api/projects/${name}`), api("/api/styles")]); state = fresh; styles = saved; draw(); }
   } catch (error) { /* the engine is restarting: keep the last picture */ }
   setTimeout(tick, state && state.busy ? 1000 : 2500);
 }

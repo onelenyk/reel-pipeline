@@ -11,7 +11,7 @@
 """
 import json, sys, time
 from pathlib import Path
-from . import media, project, render, speech, suggest
+from . import media, project, render, speech, styles, suggest
 
 ROOT = Path("/work/projects")
 
@@ -31,7 +31,7 @@ def create(video, folder):
     facts = step("probe", lambda: media.probe(video))
     transcript = step("transcribe", lambda: speech.transcribe(video))
     ideas = step("suggest", lambda: suggest.suggest(transcript["words"]))
-    project.save(folder, project.new(video, facts, transcript, ideas))
+    project.save(folder, project.new(video, facts, transcript, ideas, styles.default()))
     return took
 
 

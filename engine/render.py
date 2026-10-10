@@ -49,8 +49,8 @@ def build(folder):
         # One smooth move in and back per beat, centred a little above the middle, where the face is
         z = "1+" + "+".join(f"{ZOOM}*(clip((in_time-{b['start']:.3f})/{RAMP},0,1)-clip((in_time-{b['end']:.3f})/{RAMP},0,1))" for b in zooms)
         graph.append(f"[{last}]zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih*0.42-(ih/zoom*0.42)':d=1:s={width}x{height}:fps={fps}[zoomed]"); last = "zoomed"
-    level = doc["audio"]["level"]
-    audio = f"aselect='{keep}',asetpts=N/SR/TB,highpass=f=80," + ("arnndn=m=/opt/rnnoise/std.rnnn," if doc["audio"].get("denoise") == "light" else "") + f"loudnorm=I={level + 1.5}:TP=-1.5:LRA=7,aresample=48000"
+    level = doc["style"]["level"]
+    audio = f"aselect='{keep}',asetpts=N/SR/TB,highpass=f=80," + ("arnndn=m=/opt/rnnoise/std.rnnn," if doc.get("audio", {}).get("denoise") == "light" else "") + f"loudnorm=I={level + 1.5}:TP=-1.5:LRA=7,aresample=48000"
     out = folder / "render.mp4"; draft = folder / "render.part.mp4"
     started = time.time()
     project.progress(folder, "render", "running", note="building the video")

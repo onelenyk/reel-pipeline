@@ -1,5 +1,5 @@
 """The project document: one JSON file that fully describes a video. Rendering is a pure function of it."""
-import json, os, shutil, tempfile, time
+import json, os, re, shutil, tempfile, time
 from pathlib import Path
 
 FORMAT = 1
@@ -8,7 +8,25 @@ JOIN = 0.45    # pauses shorter than this stay in
 MIN_BEAT = {"title": 2.6, "cutaway": 2.5, "backdrop": 2.5, "zoom": 1.6}  # seconds: shorter than this reads as a glitch
 
 
-def new(source_file, facts, transcript, suggestions):
+# ---------- style: how the graphics and the sound of a video are finished; saved styles are reused across videos ----------
+STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "level": -15}
+CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge")}
+
+
+def clean_style(raw):
+    """A style rebuilt from untrusted data: unknown fields are dropped, bad values fall back to the defaults."""
+    raw = raw if isinstance(raw, dict) else {}; out = dict(STYLE)
+    if isinstance(raw.get("name"), str) and raw["name"].strip(): out["name"] = raw["name"].strip()[:40]
+    if isinstance(raw.get("accent"), str) and re.fullmatch(r"#[0-9a-fA-F]{6}", raw["accent"]): out["accent"] = raw["accent"].lower()
+    for key, allowed in CHOICES.items():
+        if raw.get(key) in allowed: out[key] = raw[key]
+    for key in ("karaoke", "title_glow"):
+        if isinstance(raw.get(key), bool): out[key] = raw[key]
+    if isinstance(raw.get("level"), (int, float)) and not isinstance(raw.get("level"), bool): out["level"] = max(-24, min(-10, round(raw["level"])))
+    return out
+
+
+def new(source_file, facts, transcript, suggestions, style=None):
     words = transcript["words"]
     return {
         "format": FORMAT,
@@ -19,8 +37,8 @@ def new(source_file, facts, transcript, suggestions):
         "edit": {"segments": [{"source": "s1", "from": 0, "to": len(words) - 1}] if words else []},
         **suggestions,
         "assets": [],
-        "style": {"preset": "bold-yellow", "accent": "#ffd60a"},
-        "audio": {"level": -15, "denoise": "off"},
+        "style": clean_style(style),
+        "audio": {"denoise": "off"},
         "output": {"width": 1080, "height": 1920, "fps": 30},
     }
 
@@ -36,6 +54,8 @@ def write_whole(path, text):
 def load(folder):
     doc = json.loads((Path(folder) / "project.json").read_text(encoding="utf-8"))
     if doc.get("format") != FORMAT: raise ValueError(f"project format {doc.get('format')} is not supported")
+    doc["style"] = clean_style(doc.get("style"))  # also upgrades projects made before styles existed
+    for key in ("emphasis", "corrections", "beats", "needs", "assets"): doc.setdefault(key, [])
     return doc
 
 
@@ -104,11 +124,51 @@ def keep_asset(folder, doc, file, kind="photo", name=None, credit=None):
     return asset_id
 
 
-def fill(folder, need_id, file, name=None, credit=None):
+def add_asset(folder, file, name=None, credit=None):
+    """Puts a picture into the project's library and returns its id."""
+    doc = load(folder); asset_id = keep_asset(folder, doc, file, "photo", name, credit); save(folder, doc); return asset_id
+
+
+def assign(folder, need_id, asset_id):
+    """Answers a request with a picture from the library, or (with None) takes the picture away again."""
     doc = load(folder); need = next((n for n in doc["needs"] if n["id"] == need_id), None)
     if not need: raise KeyError(f"no request {need_id}")
-    need["asset"] = keep_asset(folder, doc, file, need["kind"], name, credit); need["status"] = "filled"
+    if asset_id is not None and not any(a["id"] == asset_id for a in doc["assets"]): raise KeyError(f"no picture {asset_id}")
+    need["asset"] = asset_id; need["status"] = "filled" if asset_id else "open"
     save(folder, doc); return need
+
+
+def fill(folder, need_id, file, name=None, credit=None):
+    asset_id = add_asset(folder, file, name, credit); return assign(folder, need_id, asset_id)
+
+
+def set_text(folder, word, text):
+    """The author's own correction of a recognised word. An empty text, or the original one, removes the correction."""
+    doc = load(folder)
+    if not 0 <= word < len(doc["words"]): raise KeyError(f"no word {word}")
+    text = re.sub(r"\s+", " ", text or "").strip()[:40]
+    # The AI's offer for this word is kept (switched off), so it is still there if the author changes their mind
+    doc["corrections"] = [c for c in doc["corrections"] if not (c["word"] == word and c["by"] == "user")]
+    if text and text != doc["words"][word]["text"]:
+        for c in doc["corrections"]:
+            if c["word"] == word: c["accepted"] = False
+        doc["corrections"].append({"word": word, "text": text, "by": "user", "accepted": True})
+    save(folder, doc); return text
+
+
+def set_style(folder, patch):
+    doc = load(folder); doc["style"] = clean_style({**doc["style"], **(patch if isinstance(patch, dict) else {})}); save(folder, doc); return doc["style"]
+
+
+def change_beat(folder, beat_id, asset=..., text=..., remove=False):
+    doc = load(folder); beat = next((b for b in doc["beats"] if b["id"] == beat_id), None)
+    if not beat: raise KeyError(f"no beat {beat_id}")
+    if remove: doc["beats"] = [b for b in doc["beats"] if b["id"] != beat_id]
+    if asset is not ...:
+        if asset is not None and not any(a["id"] == asset for a in doc["assets"]): raise KeyError(f"no picture {asset}")
+        beat["asset"] = asset
+    if text is not ...: beat["text"] = re.sub(r"\s+", " ", text or "").strip()[:40] or None
+    save(folder, doc); return beat
 
 
 def drop(folder, first, last, restore=False):
@@ -125,14 +185,18 @@ def drop(folder, first, last, restore=False):
     doc["edit"]["segments"] = segments; save(folder, doc); return segments
 
 
-def add_beat(folder, kind, first, last, file=None, text=None, name=None):
-    doc = load(folder)
+def add_beat(folder, kind, first, last, file=None, text=None, name=None, asset=None):
+    """The author's own beat over the words first..last, with a picture (a file, or one already in the library) or a text."""
+    doc = load(folder); first, last = sorted((int(first), int(last)))
     if kind not in ("backdrop", "cutaway", "title", "zoom"): raise ValueError("kind must be backdrop, cutaway, title or zoom")
-    item = {"id": f"b{max([int(b['id'][1:]) for b in doc['beats']] + [0]) + 1}", "kind": kind, "from": int(first), "to": int(last), "need": None,
-            "text": (text or "")[:40] or None, "why": None, "by": "user", "accepted": True}
+    if not 0 <= first <= last < len(doc["words"]): raise ValueError("no such words")
+    text = re.sub(r"\s+", " ", text or "").strip()[:40] or None
+    if kind == "title" and not text: raise ValueError("a title needs a text")
+    item = {"id": f"b{max([int(b['id'][1:]) for b in doc['beats']] + [0]) + 1}", "kind": kind, "from": first, "to": last, "need": None, "text": text, "why": None, "by": "user", "accepted": True}
     if kind in ("backdrop", "cutaway"):
-        if not file: raise ValueError("a picture is needed")
-        item["asset"] = keep_asset(folder, doc, file, "photo", name)
+        if file: item["asset"] = keep_asset(folder, doc, file, "photo", name)
+        elif asset and any(a["id"] == asset for a in doc["assets"]): item["asset"] = asset
+        else: raise ValueError("a picture is needed")
     doc["beats"].append(item); save(folder, doc); return item
 
 

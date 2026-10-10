@@ -3,9 +3,11 @@
 #   ./reel new media/IMG_7821.MOV          make a project from a raw take (transcribe, suggest)
 #   ./reel render projects/IMG_7821        build the video from the project document
 #   ./reel serve                           the web page at http://127.0.0.1:8787
+#   ./reel test                            the engine's tests
 #   ./reel lab probe /in/IMG_7821.MOV      the experiments from lab/lab.py
 cd "$(dirname "$0")" || exit 1
 if [ "$1" = "lab" ]; then shift; exec docker run --rm --env-file .env -v "$PWD/media":/in:ro -v "$PWD":/work --entrypoint python reel /work/lab/lab.py "$@"; fi
+if [ "$1" = "test" ]; then exec docker run --rm -v "$PWD":/work --entrypoint python reel -m unittest discover -s tests -v; fi
 # The page is published on this machine only
 if [ "$1" = "serve" ]; then exec docker run --rm --name reel-serve --env-file .env -p 127.0.0.1:${2:-8787}:${2:-8787} -v "$PWD":/work reel "$@"; fi
 exec docker run --rm --env-file .env -v "$PWD":/work reel "$@"
