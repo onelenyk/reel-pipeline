@@ -1,0 +1,8 @@
+#!/bin/sh
+# Runs the engine in its container.
+#   ./reel new media/IMG_7821.MOV          make a project from a raw take (transcribe, suggest)
+#   ./reel render projects/IMG_7821        build the video from the project document
+#   ./reel lab probe /in/IMG_7821.MOV      the experiments from lab/lab.py
+cd "$(dirname "$0")" || exit 1
+if [ "$1" = "lab" ]; then shift; exec docker run --rm --env-file .env -v "$PWD/media":/in:ro -v "$PWD":/work --entrypoint python reel /work/lab/lab.py "$@"; fi
+exec docker run --rm --env-file .env -v "$PWD":/work reel "$@"

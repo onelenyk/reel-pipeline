@@ -8,12 +8,18 @@ Status: **experiments**. `lab/` holds draft commands that test one hypothesis ea
 real footage; `docs/findings.md` records what they showed and `docs/plan.md` the
 implementation plan that follows from it.
 
-## Running the lab
+## Using the engine
 
-Everything heavy runs in a container; nothing is installed on the host.
+Everything runs in a container; nothing is installed on the host. Raw takes go in `media/`, projects in `projects/` (neither is committed).
 
-    docker build -t reel-lab lab
-    ./lab/run.sh probe /in/IMG_7821.MOV      # source videos are read from media/, read-only
-    ./lab/run.sh all /in/IMG_7821.MOV        # the whole chain; the result lands in out/
+    docker build -t reel .
+    ./reel new media/IMG_7821.MOV g-village      # probe, transcribe, ask the AI: writes projects/g-village/project.json
+    ./reel show projects/g-village               # the text, the planned beats, the requests for material
+    ./reel fill projects/g-village n1 photo.jpg  # answer a request; the beats waiting for it switch on
+    ./reel drop projects/g-village 40 52         # cut words 40..52 out of the video
+    ./reel render projects/g-village             # build projects/g-village/render.mp4
+    ./reel lab probe /in/IMG_7821.MOV            # the experiments in lab/lab.py
 
-The AI key goes in `.env` (see `.env.example`); `.env`, media and model weights are never committed.
+Layout: `engine/` (Python: media, speech, suggestions, the project document, the render graph), `renderer/` (Node: draws subtitles, titles and pictures as transparent frames for ffmpeg), `lab/` (experiments), `docs/`.
+
+The AI key goes in `.env` (see `.env.example`); `.env`, media, projects and model weights are never committed.

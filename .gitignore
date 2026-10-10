@@ -2,6 +2,7 @@
 .env
 out/
 media/
+projects/
 models/
 *.MOV
 *.mov
