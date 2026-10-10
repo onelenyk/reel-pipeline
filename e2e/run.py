@@ -180,8 +180,15 @@ def good(take):
     check("subtitles are on screen", white(image, SUB_LOW) > 3000, f"{white(image, SUB_LOW)} white pixels at {t:.2f} s")
     check("nothing is drawn where nothing was asked for", white(image, (0.02, 0.30)) < 50, f"{white(image, (0.02, 0.30))} white pixels at the top")
     area, x, y = marker(image)
-    check("the picture is the right way up, the right size and centred", abs(area / materials.MARK ** 2 - 1) < 0.15 and abs(x - 0.5) < 0.01 and abs(y - materials.MARK_AT) < 0.01,
-          f"marker {area} px (expected {materials.MARK ** 2}) at {x:.3f}, {y:.3f}")
+    # In the closer framing everything is 10% larger and moves away from the point the zoom is centred on
+    scale = 1.10 if any(a <= t < b for a, b in line_up["punches"]) else 1.0; size = materials.MARK ** 2 * scale ** 2; at = 0.42 + (materials.MARK_AT - 0.42) * scale
+    check("the picture is the right way up, the right size and centred", abs(area / size - 1) < 0.15 and abs(x - 0.5) < 0.01 and abs(y - at) < 0.01,
+          f"marker {area} px (expected {size:.0f}) at {x:.3f}, {y:.3f}")
+    if spec["name"] == "pauses":
+        check("the framing changes at each cut", len(line_up["punches"]) == 1, line_up["punches"])
+        a, b = line_up["punches"][0] if line_up["punches"] else (0, 0)
+        wide, close = marker(frame(video, a - 0.4))[0], marker(frame(video, (a + b) / 2))[0]
+        check("the closer framing is really closer", 1.15 < close / max(wide, 1) < 1.28, f"{close / max(wide, 1):.2f}")
     voice = source_seconds - spec["lead"] - spec["tail"]
     if spec["lead"] or spec["tail"]: check("the silence before and after the speech is cut", line_up["seconds"] <= voice + 0.6, f"{line_up['seconds']:.2f} s from {voice:.2f} s of speech")
     if spec["name"] == "pauses": check("both long pauses are cut", len(line_up["spans"]) == 3 and line_up["seconds"] < source_seconds - 4, f"{len(line_up['spans'])} stretches, {line_up['seconds']:.2f} of {source_seconds:.2f} s")
@@ -244,6 +251,7 @@ def editing():
     source = materials.build(materials.TAKES_GOOD[0]); name = upload(source, "edit.mp4"); state = wait(name)
     video, before = finished(name, state, materials.seconds(source))
     if not video: return
+    edit(name, {"style": {"rhythm": False}})  # one framing, so that the zoom below is measured on its own
     count = len(state["words"]); base_area = marker(frame(video, 1.0))[0]; base_level = loudness(video)
     if not check("enough words to edit", count >= 15, count): return
 

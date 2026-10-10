@@ -10,18 +10,19 @@ PROMPT = """Ти монтажер коротких вертикальних ві
 Поверни один JSON:
 {"emphasis": [номери слів],
  "corrections": [{"word": номер, "text": "виправлене слово"}],
- "beats": [{"kind": "backdrop" | "cutaway" | "title" | "zoom", "from": номер_слова, "to": номер_слова, "need": "id потреби або null", "text": "текст титру або null", "why": "коротко"}],
+ "beats": [{"kind": "full" | "backdrop" | "cutaway" | "title" | "zoom", "from": номер_слова, "to": номер_слова, "need": "id потреби або null", "text": "текст титру або null", "why": "коротко"}],
  "needs": [{"id": "n1", "what": "що саме потрібно від автора", "search": "3-5 слів англійською для пошуку схожого фото у фотобанку, без назв об'єктів", "kind": "photo" | "video" | "plan" | "logo", "optional": true | false}]}
 
 emphasis: числа з одиницями, назви, ціни, ключові переваги; не більше одного-двох слів на речення.
 corrections: лише очевидні помилки розпізнавання (закінчення, числа). Назви місць і об'єктів не вгадуй.
 beats, щоб відео не було статичним:
+- full: картинка на весь кадр, мовця не видно, голос звучить далі. Це головний прийом, коли мовець веде по плану будинку ("перейдемо до планування", "заходимо в передпокій", "далі кухня"): показуй план на весь кадр на кожну кімнату чи групу кімнат по 4-8 секунд (10-20 слів), повертаючись до мовця між ними на одну-дві фрази. Усі такі beats посилаються на одну потребу kind "plan". Також full годиться для головного рендера чи фото об'єкта.
 - backdrop: мовця вирізано з фону, за ним картинка; cutaway: картинка у верхній частині кадру, мовець лишається видимим; title: напис у кадрі; zoom: крупніший план для наголосу.
-- разом не більше 6 beats; між ними лишай час, де в кадрі просто мовець.
+- разом приблизно {beats} beats (не більше), розподілених по всьому тексту, а не лише на початку; між ними лишай час, де в кадрі просто мовець.
 - вставка починається на слові, де про це заговорили, і охоплює 6-12 слів (2-4 секунди мовлення); не більше однієї вставки одночасно.
 - title: лише один, з назвою об'єкта (до 14 символів), на тих словах, де назву вимовляють, і ще 6-8 слів після. Текст титру бери зі слів дослівно; якщо назва звучить дивно або схожа на недочуту, не вгадуй її і титр не роби.
 - zoom на 1-2 ключових фразах, по 5-8 слів.
-needs: проси лише матеріал, який справді є в автора (фото об'єкта, вид згори, план, логотип), конкретно; не більше 5.
+needs: проси лише матеріал, який справді є в автора (фото об'єкта, вид згори, план, логотип), конкретно; не більше {needs}. Одне фото може служити кільком beats.
 
 """
 
@@ -78,7 +79,8 @@ def suggest(words, skip=()):
     if not enabled() or not words: return clean({}, len(words))  # no key or switched off: the video is made without suggestions
     skip = set(skip)
     numbered = " ".join(f"[{i}]{w['text']}" for i, w in enumerate(words) if i not in skip)
-    ideas = clean(ask(PROMPT + numbered), len(words))
+    kept = len(words) - len(skip); beats = max(5, min(16, round(kept / 25)))  # about one insert for every ten seconds of speech
+    ideas = clean(ask(PROMPT.replace("{beats}", str(beats)).replace("{needs}", str(max(4, min(8, beats // 2)))) + numbered), len(words))
     ideas["beats"] = [b for b in ideas["beats"] if not any(i in skip for i in range(b["from"], b["to"] + 1)) and (b["kind"] != "title" or spoken(b["text"], words[b["from"]:b["to"] + 1]))]
     return ideas
 
@@ -94,14 +96,14 @@ def clean(raw, count):
     ok = lambda i: isinstance(i, int) and not isinstance(i, bool) and 0 <= i < count
     text = lambda v, limit: v.strip()[:limit] if isinstance(v, str) and v.strip() else None
     needs, seen = [], set()
-    for n in raw.get("needs", [])[:5] if isinstance(raw.get("needs"), list) else []:
+    for n in raw.get("needs", [])[:8] if isinstance(raw.get("needs"), list) else []:
         if not isinstance(n, dict) or not text(n.get("id"), 12) or not text(n.get("what"), 140) or n["id"] in seen: continue
         seen.add(n["id"])
         needs.append({"id": n["id"], "what": text(n["what"], 140), "search": text(n.get("search"), 60), "kind": n.get("kind") if n.get("kind") in ("photo", "video", "plan", "logo") else "photo",
                       "optional": bool(n.get("optional")), "status": "open", "asset": None})
     beats = []
-    for b in raw.get("beats", [])[:12] if isinstance(raw.get("beats"), list) else []:
-        if not isinstance(b, dict) or b.get("kind") not in ("backdrop", "cutaway", "title", "zoom") or not ok(b.get("from")) or not ok(b.get("to")) or b["to"] < b["from"]: continue
+    for b in raw.get("beats", [])[:16] if isinstance(raw.get("beats"), list) else []:
+        if not isinstance(b, dict) or b.get("kind") not in ("full", "backdrop", "cutaway", "title", "zoom") or not ok(b.get("from")) or not ok(b.get("to")) or b["to"] < b["from"]: continue
         if b["kind"] == "title" and not text(b.get("text"), 40): continue
         beats.append({"id": f"b{len(beats) + 1}", "kind": b["kind"], "from": b["from"], "to": b["to"], "need": b.get("need") if b.get("need") in seen else None,
                       "text": text(b.get("text"), 40), "why": text(b.get("why"), 120), "by": "ai", "accepted": True})

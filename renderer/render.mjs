@@ -28,7 +28,7 @@ const font = (size, weight = 800) => { ctx.font = `${weight} ${size}px ${FONT}`;
 
 const pictures = new Map();
 for (const beat of timeline.beats) {
-  if (beat.kind === "cutaway" && beat.file && !pictures.has(beat.file)) pictures.set(beat.file, await loadImage(beat.file).catch(() => null));
+  if ((beat.kind === "cutaway" || beat.kind === "full") && beat.file && !pictures.has(beat.file)) pictures.set(beat.file, await loadImage(beat.file).catch(() => null));
 }
 
 // ---------- pictures: a card in the upper part of the frame; the speaker stays visible below ----------
@@ -57,6 +57,37 @@ function drawPicture(beat, t) {
   ctx.globalAlpha = a;
   ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.stroke();
+  ctx.restore();
+}
+
+// ---------- a picture over the whole frame: a floor plan or a render, while the voice goes on ----------
+const edgeColour = new Map(), lightPictures = new Set(); // on a light picture (a plan on white) the subtitles turn dark
+function drawFull(beat, t) {
+  const image = pictures.get(beat.file);
+  if (!image) return;
+  const a = presence(t, beat.start, beat.end, 0.22, 0.22);
+  if (a <= 0) return;
+  if (!edgeColour.has(beat.file)) {
+    // The frame around the picture takes the picture's own edge colour, so a plan on white stays on white
+    const probe = createCanvas(1, 1), p = probe.getContext("2d");
+    p.drawImage(image, 2, 2, 1, 1, 0, 0, 1, 1);
+    const [r, g, b] = p.getImageData(0, 0, 1, 1).data; edgeColour.set(beat.file, `rgb(${r},${g},${b})`);
+    if (0.3 * r + 0.59 * g + 0.11 * b > 170) lightPictures.add(beat.file);
+  }
+  // A picture close to the frame's shape fills it; anything else is shown whole. A slow push-in keeps it alive.
+  const fits = Math.abs(image.width / image.height - W / H) < 0.12;
+  const grow = 1 + 0.04 * clamp((t - beat.start) / Math.max(0.1, beat.end - beat.start));
+  const k = (fits ? Math.max(W / image.width, H / image.height) : Math.min((W * 0.94) / image.width, (H * 0.6) / image.height)) * grow;
+  ctx.save();
+  ctx.globalAlpha = a;
+  if (fits || lightPictures.has(beat.file)) { ctx.fillStyle = edgeColour.get(beat.file); ctx.fillRect(0, 0, W, H); }
+  else {
+    // A wide photo sits on a darkened, enlarged copy of itself instead of a flat colour
+    const cover = Math.max(W / image.width, H / image.height) * 1.08;
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = a * 0.38; ctx.drawImage(image, W / 2 - (image.width * cover) / 2, H / 2 - (image.height * cover) / 2, image.width * cover, image.height * cover); ctx.globalAlpha = a;
+  }
+  ctx.drawImage(image, W / 2 - (image.width * k) / 2, (fits ? H / 2 : H * 0.36) - (image.height * k) / 2, image.width * k, image.height * k);
   ctx.restore();
 }
 
@@ -101,10 +132,11 @@ function drawTitle(beat, t) {
 const SUB_SIZE = Math.round(W * ({ s: 0.072, m: 0.088, l: 0.104 }[STYLE.subtitle_size] ?? 0.088)), SUB_GAP = SUB_SIZE * 0.26, SUB_MAX = W * 0.86;
 const SUB_Y = STYLE.subtitle_place === "middle" ? 0.56 : 0.715;
 const KARAOKE = STYLE.karaoke !== false;
+const HOT = 1.16; // key words are this much larger
 function layout(words) {
-  font(SUB_SIZE);
   const rows = [[]]; let used = 0;
   for (const word of words) {
+    font(SUB_SIZE * (word.hot ? HOT : 1));
     const w = ctx.measureText(word.text).width;
     if (rows.at(-1).length && used + SUB_GAP + w > SUB_MAX) { rows.push([]); used = 0; }
     rows.at(-1).push({ word, w, x: used + (rows.at(-1).length ? SUB_GAP : 0) });
@@ -115,7 +147,7 @@ function layout(words) {
 }
 const laidOut = new Map(timeline.lines.map((line) => [line, layout(line.words)]));
 
-function drawSubtitle(line, t) {
+function drawSubtitle(line, t, onLight = false) {
   const a = Math.min(ease((t - line.start + 0.06) / 0.14), ease((line.end - t) / 0.12));
   if (a <= 0) return;
   const rows = laidOut.get(line), rowHeight = SUB_SIZE * 1.16;
@@ -129,13 +161,15 @@ function drawSubtitle(line, t) {
       // A small pop as the word is spoken
       const pop = KARAOKE && said ? 1 + 0.07 * (1 - ease((t - word.start) / 0.22)) : 1;
       ctx.save();
+      font(SUB_SIZE * (word.hot ? HOT : 1));
       ctx.translate(left + x + w / 2, y); ctx.scale(pop, pop);
       ctx.globalAlpha = a * (said ? 1 : 0.5);
-      ctx.lineJoin = "round"; ctx.lineWidth = SUB_SIZE * 0.14; ctx.strokeStyle = "rgba(0,0,0,0.5)";
-      ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 16; ctx.shadowOffsetY = 5;
+      const hot = word.hot && said, dark = onLight && !hot;
+      ctx.lineJoin = "round"; ctx.lineWidth = SUB_SIZE * 0.14; ctx.strokeStyle = dark ? "rgba(255,255,255,0.85)" : onLight ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.5)";
+      ctx.shadowColor = dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)"; ctx.shadowBlur = 16; ctx.shadowOffsetY = dark ? 0 : 5;
       ctx.strokeText(word.text, -w / 2, 0);
       ctx.shadowColor = "transparent";
-      ctx.fillStyle = word.hot && said ? ACCENT : "#ffffff";
+      ctx.fillStyle = hot ? ACCENT : dark ? "#16181d" : "#ffffff";
       ctx.fillText(word.text, -w / 2, 0);
       ctx.restore();
     }
@@ -152,13 +186,15 @@ for (let frame = 0; frame < frames; frame++) {
   const t = frame / fps;
   // Backdrops are composited by ffmpeg behind the speaker; here only pictures that sit on top are drawn
   const pictureNow = timeline.beats.filter((b) => b.kind === "cutaway" && t >= b.start - 0.05 && t <= b.end + 0.05);
+  const fullNow = timeline.beats.filter((b) => b.kind === "full" && t >= b.start - 0.05 && t <= b.end + 0.05);
   const titles = timeline.beats.filter((b) => b.kind === "title" && t >= b.start && t <= b.end);
   const line = timeline.lines.find((l) => t >= l.start - 0.06 && t < l.end);
-  if (!pictureNow.length && !titles.length && !line) { await write(blank); continue; }
+  if (!pictureNow.length && !fullNow.length && !titles.length && !line) { await write(blank); continue; }
   ctx.clearRect(0, 0, W, H);
+  fullNow.forEach((beat) => drawFull(beat, t));
   pictureNow.forEach((beat) => drawPicture(beat, t));
   titles.forEach((beat) => drawTitle(beat, t));
-  if (line) drawSubtitle(line, t);
+  if (line) drawSubtitle(line, t, fullNow.some((b) => t >= b.start + 0.1 && t <= b.end - 0.1 && lightPictures.has(b.file)));
   const pixels = ctx.getImageData(0, 0, W, H).data;
   await write(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength));
 }

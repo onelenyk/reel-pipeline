@@ -5,6 +5,8 @@ from . import matte, media, project
 
 RENDERER = Path(__file__).resolve().parent.parent / "renderer" / "render.mjs"
 ZOOM = 0.12   # how much closer a zoom beat comes
+PUNCH = 0.10  # how much closer the alternate framing is
+FADE = 0.012  # seconds: the sound dips to nothing at each cut, so the join does not click
 RAMP = 0.35   # seconds to get there and back
 
 
@@ -46,12 +48,16 @@ def build(folder):
         last = f"v{index + 1}"
     chain = []
     zooms = [b for b in timeline["beats"] if b["kind"] == "zoom"]
-    if zooms:
-        # One smooth move in and back per beat, centred a little above the middle, where the face is
-        z = "1+" + "+".join(f"{ZOOM}*(clip((in_time-{b['start']:.3f})/{RAMP},0,1)-clip((in_time-{b['end']:.3f})/{RAMP},0,1))" for b in zooms)
+    punches = timeline.get("punches", [])
+    if zooms or punches:
+        # One smooth move in and back per zoom beat; the alternate framing switches at once, like a change of shot.
+        # Both are centred a little above the middle, where the face is.
+        z = "1+" + "+".join([f"{ZOOM}*(clip((in_time-{b['start']:.3f})/{RAMP},0,1)-clip((in_time-{b['end']:.3f})/{RAMP},0,1))" for b in zooms] +
+                            [f"{PUNCH}*gte(in_time,{a - 0.001:.3f})*lt(in_time,{b - 0.001:.3f})" for a, b in punches])
         graph.append(f"[{last}]zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih*0.42-(ih/zoom*0.42)':d=1:s={width}x{height}:fps={fps}[zoomed]"); last = "zoomed"
     level = doc["style"]["level"]
-    audio = f"aselect='{keep}',asetpts=N/SR/TB,highpass=f=80," + ("arnndn=m=/opt/rnnoise/std.rnnn," if doc.get("audio", {}).get("denoise") == "light" else "") + f"loudnorm=I={level + 1.5}:TP=-1.5:LRA=7,aresample=48000"
+    dip = "*".join(f"clip(abs(t-{edge:.3f})/{FADE},0,1)" for a, b in timeline["spans"][:60] for edge in (a, b))
+    audio = f"volume='{dip}':eval=frame,aselect='{keep}',asetpts=N/SR/TB,highpass=f=80," + ("arnndn=m=/opt/rnnoise/std.rnnn," if doc.get("audio", {}).get("denoise") == "light" else "") + f"loudnorm=I={level + 1.5}:TP=-1.5:LRA=7,aresample=48000"
     out = folder / "render.mp4"; draft = folder / "render.part.mp4"
     started = time.time()
     project.progress(folder, "render", "running", note="building the video")

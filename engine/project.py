@@ -5,11 +5,14 @@ from pathlib import Path
 FORMAT = 1
 PAD = 0.12     # a breath kept on each side of every stretch of speech
 JOIN = 0.45    # pauses shorter than this stay in
-MIN_BEAT = {"title": 2.6, "cutaway": 2.5, "backdrop": 2.5, "zoom": 1.6}  # seconds: shorter than this reads as a glitch
+PUNCH_EVERY = 6.0   # seconds of one framing before the next sentence end may change it
+PUNCH_TAIL = 2.5    # a change of framing this close to the end is not worth it
+PICTURED = ("full", "cutaway", "backdrop")  # the kinds of insert that show a picture
+MIN_BEAT = {"title": 2.6, "cutaway": 2.5, "backdrop": 2.5, "full": 2.5, "zoom": 1.6}  # seconds: shorter than this reads as a glitch
 
 
 # ---------- style: how the graphics and the sound of a video are finished; saved styles are reused across videos ----------
-STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "level": -15}
+STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "level": -15}
 CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge")}
 
 
@@ -20,7 +23,7 @@ def clean_style(raw):
     if isinstance(raw.get("accent"), str) and re.fullmatch(r"#[0-9a-fA-F]{6}", raw["accent"]): out["accent"] = raw["accent"].lower()
     for key, allowed in CHOICES.items():
         if raw.get(key) in allowed: out[key] = raw[key]
-    for key in ("karaoke", "title_glow"):
+    for key in ("karaoke", "title_glow", "rhythm"):
         if isinstance(raw.get(key), bool): out[key] = raw[key]
     if isinstance(raw.get("level"), (int, float)) and not isinstance(raw.get("level"), bool): out["level"] = max(-24, min(-10, round(raw["level"])))
     return out
@@ -111,17 +114,29 @@ def resolve(doc):
         inside = [w for w in words[b["from"]:b["to"] + 1] if w["id"] in kept_ids]
         if not b.get("accepted") or not inside: continue  # the words it belongs to were cut
         asset = assets.get(b.get("asset")) or (assets.get(filled.get(b.get("need"))) if b.get("need") else None)
-        if b["kind"] in ("cutaway", "backdrop") and not asset: continue  # waiting for material: the speaker stays
+        if b["kind"] in PICTURED and not asset: continue  # waiting for material: the speaker stays
         start = at(inside[0]["start"])
         end = min(total, max(at(inside[-1]["end"]), start + MIN_BEAT[b["kind"]]))
         beats.append({"id": b["id"], "kind": b["kind"], "start": start, "end": end, "source_start": inside[0]["start"], "text": b.get("text"), "file": asset["file"] if asset else None})
     # A title and a picture share the top of the frame: the title leaves as the picture arrives
-    pictures = [b for b in beats if b["kind"] in ("cutaway", "backdrop")]
+    pictures = [b for b in beats if b["kind"] in PICTURED]
     for title in (b for b in beats if b["kind"] == "title"):
         for picture in pictures:
             if title["start"] < picture["start"] < title["end"]: title["end"] = round(picture["start"] + 0.15, 3)
     beats = [b for b in beats if b["end"] - b["start"] >= 0.8]
-    return {"spans": spans, "seconds": round(total, 3), "lines": lines, "beats": beats, "style": doc["style"], **doc["output"]}
+    # Rhythm: the framing alternates between wide and closer. It changes at every cut, which turns the jump left by a removed
+    # stretch into a deliberate change of shot, and at a sentence end when one framing has lasted long enough.
+    punches = []
+    if doc["style"].get("rhythm", True) and total > 0:
+        switches = set(round(o, 3) for o in offsets[1:])
+        last = 0.0
+        for moment in sorted(switches | {w["end"] + 0.1 for w in spoken if w["text"][-1:] in ".!?"}):
+            forced = moment in switches
+            if (forced and moment - last >= 0.6) or (not forced and moment - last >= PUNCH_EVERY and not any(0 < s - moment < 2.0 for s in switches)):
+                if total - moment >= (0.6 if forced else PUNCH_TAIL): punches.append(round(moment, 3)); last = moment
+        edges = [0.0] + punches + [round(total, 3)]
+        punches = [[edges[i], edges[i + 1]] for i in range(1, len(edges) - 1, 2)]  # every second stretch is the closer one
+    return {"spans": spans, "seconds": round(total, 3), "lines": lines, "beats": beats, "punches": punches, "style": doc["style"], **doc["output"]}
 
 
 # ---------- changes to a project ----------
@@ -196,12 +211,12 @@ def drop(folder, first, last, restore=False):
 def add_beat(folder, kind, first, last, file=None, text=None, name=None, asset=None):
     """The author's own beat over the words first..last, with a picture (a file, or one already in the library) or a text."""
     doc = load(folder); first, last = sorted((int(first), int(last)))
-    if kind not in ("backdrop", "cutaway", "title", "zoom"): raise ValueError("kind must be backdrop, cutaway, title or zoom")
+    if kind not in MIN_BEAT: raise ValueError("kind must be full, backdrop, cutaway, title or zoom")
     if not 0 <= first <= last < len(doc["words"]): raise ValueError("no such words")
     text = re.sub(r"\s+", " ", text or "").strip()[:40] or None
     if kind == "title" and not text: raise ValueError("a title needs a text")
     item = {"id": f"b{max([int(b['id'][1:]) for b in doc['beats']] + [0]) + 1}", "kind": kind, "from": first, "to": last, "need": None, "text": text, "why": None, "by": "user", "accepted": True}
-    if kind in ("backdrop", "cutaway"):
+    if kind in PICTURED:
         if file: item["asset"] = keep_asset(folder, doc, file, "photo", name)
         elif asset and any(a["id"] == asset for a in doc["assets"]): item["asset"] = asset
         else: raise ValueError("a picture is needed")

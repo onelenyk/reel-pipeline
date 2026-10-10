@@ -37,11 +37,12 @@ def summary(name):
         for s in doc["edit"]["segments"]: kept.update(range(s["from"], s["to"] + 1))
         hot = {e["word"] for e in doc["emphasis"] if e["accepted"]}
         fixed = {c["word"]: c["text"] for c in doc["corrections"] if c["accepted"]}
+        plan = project.resolve(doc); at = {w["id"]: w["start"] for line in plan["lines"] for w in line["words"]}  # where each word is in the finished video
         assets = {a["id"]: a for a in doc["assets"]}; used = {n.get("asset") for n in doc["needs"]} | {b.get("asset") for b in doc["beats"]}
         out.update(source=doc["sources"][0], language=doc["language"],
-                   words=[{"id": w["id"], "text": fixed.get(w["id"], w["text"]), "heard": w["text"], "fixed": w["id"] in fixed, "start": w["start"], "kept": w["id"] in kept,
+                   words=[{"id": w["id"], "text": fixed.get(w["id"], w["text"]), "heard": w["text"], "fixed": w["id"] in fixed, "start": w["start"], "at": at.get(w["id"]), "kept": w["id"] in kept,
                            "hot": w["id"] in hot, "unsure": w["confidence"] < 0.5} for w in doc["words"]],
-                   corrections=doc["corrections"], cuts=doc["cuts"], seconds=project.resolve(doc)["seconds"], style=doc["style"],
+                   corrections=doc["corrections"], cuts=doc["cuts"], seconds=plan["seconds"], style=doc["style"],
                    beats=[{**b, "file": Path(assets[b["asset"]]["file"]).name if b.get("asset") in assets else None} for b in doc["beats"]],
                    assets=[{"id": a["id"], "file": Path(a["file"]).name, "credit": a.get("credit")} for a in doc["assets"]],
                    needs=[{**n, "file": Path(assets[n["asset"]]["file"]).name if n.get("asset") in assets else None, "credit": assets.get(n.get("asset"), {}).get("credit")} for n in doc["needs"]],

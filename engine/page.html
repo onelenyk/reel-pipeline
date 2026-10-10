@@ -27,7 +27,17 @@
   .seg button.on { background: var(--chip2); color: var(--fg); }
   video { width: 100%; aspect-ratio: 9 / 16; background: #111; border-radius: 12px; display: block; }
   .empty { aspect-ratio: 9 / 16; display: grid; place-items: center; background: var(--panel); border-radius: 12px; color: var(--subtle); text-align: center; padding: 20px; }
-  .steps { list-style: none; margin: 0; padding: 0; }
+  .status { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--chip); margin-bottom: 12px; }
+  .status.running { background: color-mix(in srgb, var(--brand) 16%, var(--chip)); } .status.failed { background: color-mix(in srgb, var(--bad) 20%, var(--chip)); }
+  .status .big { font-size: 16px; font-weight: 700; } .status .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .status .clock { margin-left: auto; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--chip2); border-top-color: var(--brand); animation: spin .8s linear infinite; flex: none; }
+  .status.done .spin, .status.failed .spin, .status.idle .spin { animation: none; border-color: var(--ok); } .status.failed .spin { border-color: var(--bad); } .status.idle .spin { border-color: var(--chip2); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .bar { height: 5px; border-radius: 3px; background: var(--chip2); overflow: hidden; margin-top: 8px; } .bar i { display: block; height: 100%; background: var(--brand); transition: width .4s; }
+  .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+  .steps li.running { font-weight: 700; } .steps li.waiting { color: var(--subtle); }
+  .jump { background: none; padding: 2px 8px; font-size: 13px; color: var(--muted); flex: none; }
   .steps li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--chip2); flex: none; }
   .running .dot { background: var(--brand); animation: pulse 1s infinite; } .done .dot { background: var(--ok); } .failed .dot { background: var(--bad); }
@@ -40,6 +50,7 @@
   .w.cut { color: var(--subtle); text-decoration: line-through; opacity: .55; }
   .w.unsure { border-bottom: 2px dotted var(--bad); }
   .w.fixed { border-bottom: 2px solid var(--ok); }
+  .w.now { background: var(--brand); color: #000; }
   .w.picked { background: var(--bad); color: #fff; }
   .words input { height: 32px; font-size: 16px; width: 11em; }
   .card { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -76,12 +87,13 @@
 </header>
 <main>
   <div class="left">
+    <div id="status"></div>
     <section>
       <div id="player"></div>
       <div style="display:flex;gap:8px;margin-top:10px"><button class="primary" id="render" style="flex:1">Зібрати відео</button></div>
       <p class="hint" id="stale"></p>
     </section>
-    <section><h2>Що відбувається</h2><ul class="steps" id="steps"></ul></section>
+    <section><h2>Кроки</h2><ul class="steps" id="steps"></ul></section>
   </div>
   <div>
     <div id="error"></div>
@@ -89,7 +101,7 @@
     <section>
       <h2>Текст</h2>
       <div class="seg" role="group" aria-label="Що робить дотик до слова">
-        <button data-mode="hot" class="on">Виділяти</button><button data-mode="fix">Виправляти</button><button data-mode="cut">Вирізати</button><button data-mode="beat">Вставка</button>
+        <button data-mode="play" class="on">Слухати</button><button data-mode="hot">Виділяти</button><button data-mode="fix">Виправляти</button><button data-mode="cut">Вирізати</button><button data-mode="beat">Вставка</button>
       </div>
       <p class="hint" id="modeHint"></p>
       <div class="words" id="words"></div>
@@ -105,16 +117,17 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", render: "Збираю відео" };
-const KIND = { title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
+const KIND = { full: "Картинка на весь кадр", title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
 const NOTE = { preparing: "готуюсь", "building the video": "кодую" };
 const HINT = {
+  play: "Торкніться слова, і відео перейде в це місце. Під час відтворення слово, яке звучить, підсвічується. Пробіл: пауза.",
   hot: "Торкніться слова, щоб виділити його жовтим або зняти виділення.",
   fix: "Торкніться слова, щоб виправити його. Enter зберігає, Esc скасовує. Порожнє поле повертає те, що почув розпізнавач.",
   cut: ["Торкніться першого слова шматка, який треба вирізати. Закреслене слово повертається одним дотиком.", "Тепер торкніться останнього слова цього шматка."],
   beat: ["Торкніться першого слова, на якому має з'явитись вставка.", "Тепер торкніться останнього слова."],
 };
 const ACCENTS = ["#ffd60a", "#ffffff", "#30d158", "#0a84ff", "#ff453a", "#ff9f0a", "#bf5af2"];
-let name = new URLSearchParams(location.search).get("p"), state = null, styles = [], mode = "hot", from = null, shown = 0, edited = false;
+let name = new URLSearchParams(location.search).get("p"), state = null, styles = [], mode = "play", from = null, shown = 0, edited = false;
 let drawn = "", editing = null, range = null, picker = null;
 
 const api = async (path, options) => {
@@ -131,16 +144,56 @@ const esc = (text) => String(text ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp
 const safeName = (file) => file.name.replace(/[^\w.-]/g, "_").slice(-50) || "file";
 const pic = (file) => `/asset/${name}/${file}`;
 
+const video = () => $("player").querySelector("video");
+function seek(seconds, play = true) {
+  const v = video(); if (!v || seconds == null) return;
+  v.currentTime = Math.max(0, seconds); if (play) v.play().catch(() => {});
+}
+// While the video plays, the word being spoken is lit in the text and kept in view
+let lit = null;
+function follow() {
+  const v = video();
+  if (v && state && state.words && !edited) {
+    const t = v.currentTime + 0.05; let now = null;
+    for (const w of state.words) { if (w.at != null && w.at <= t) now = w.id; else if (w.at != null) break; }
+    if (now !== lit) {
+      document.querySelectorAll(".w.now").forEach((el) => el.classList.remove("now"));
+      const el = now === null ? null : document.querySelector(`.w[data-w="${now}"]`);
+      if (el) { el.classList.add("now"); if (!v.paused) { const box = el.getBoundingClientRect(); if (box.top < 80 || box.bottom > innerHeight - 40) el.scrollIntoView({ block: "center", behavior: "smooth" }); } }
+      lit = now;
+    }
+  }
+  requestAnimationFrame(follow);
+}
+requestAnimationFrame(follow);
+document.addEventListener("keydown", (e) => {
+  if (e.code !== "Space" || /INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)) return;
+  const v = video(); if (!v) return;
+  e.preventDefault(); v.paused ? v.play().catch(() => {}) : v.pause();
+});
+
 function drawSteps() {
   const busy = !!state.busy;
   $("render").disabled = busy || !state.words;
   $("render").textContent = busy ? "Працюю…" : "Зібрати відео";
+  const order = ["probe", "transcribe", "review", "suggest", "render"], running = state.steps.find((s) => s.state === "running"), failed = state.steps.find((s) => s.state === "failed");
+  const done = state.steps.filter((s) => s.state === "done").length, total = Math.max(state.steps.length, 1), clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const kind = failed && !busy ? "failed" : busy ? "running" : state.has_render ? "done" : "idle";
+  const number = running ? state.steps.filter((s) => order.indexOf(s.step) <= order.indexOf(running.step)).length : 0;
+  $("status").innerHTML = `<div class="status ${kind}"><span class="spin"></span><div style="flex:1;min-width:0"><div class="big">${
+    kind === "running" ? (running ? `Крок ${number} з ${total}: ${STEP[running.step] || running.step}` : "Починаю…") : kind === "failed" ? `Зупинилось: ${STEP[failed.step] || failed.step}` : kind === "done" ? "Відео готове" : "Очікую відео"}</div><div class="sub">${
+    kind === "running" ? esc(running && running.note ? NOTE[running.note] || "вирізаю мовця з фону" : state.busy === "render" ? "перезбираю з вашими змінами" : "обробка нового відео") : kind === "failed" ? esc(failed.error) : kind === "done" ? (edited ? "є зміни, яких ще немає у відео" : "усі кроки пройдені") : ""}</div>${
+    kind === "running" && total > 1 ? `<div class="bar"><i style="width:${Math.round(100 * (done + 0.5) / total)}%"></i></div>` : ""}</div>${
+    kind === "running" && running ? `<span class="clock">${clock(Math.max(0, Date.now() / 1000 - running.at))}</span>` : ""}</div>`;
+  document.title = kind === "running" ? `⏳ ${running ? STEP[running.step] : "Працюю"} · Reel` : kind === "failed" ? "⚠ Помилка · Reel" : "Reel";
   $("steps").innerHTML = state.steps.map((s) => `<li class="${s.state}"><span class="dot"></span>${STEP[s.step] || s.step}<span class="note">${
     s.state === "done" ? s.seconds + " с" : s.state === "failed" ? esc(s.error) : s.state === "running" ? esc(NOTE[s.note] || (s.note ? "вирізаю мовця з фону" : "триває")) + ` · ${Math.max(0, Math.round(Date.now() / 1000 - s.at))} с` : ""}</span></li>`).join("");
   $("stale").textContent = edited && state.has_render && !busy ? "Є зміни, яких ще немає у відео. Натисніть «Зібрати відео»." : "";
   if (state.has_render && shown !== state.render_version) {
+    const old = video(), place = old ? old.currentTime : 0;
     shown = state.render_version; edited = false;
     $("player").innerHTML = `<video controls playsinline src="/video/${name}/render.mp4?v=${shown}"></video>`;
+    if (place) video().addEventListener("loadedmetadata", () => { video().currentTime = Math.min(place, video().duration || place); }, { once: true });
   } else if (!state.has_render && !$("player").firstChild) $("player").innerHTML = `<div class="empty">Відео ще не зібране</div>`;
 }
 
@@ -151,7 +204,7 @@ function draw(force) {
   const signature = JSON.stringify([state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds]);
   if (!force && signature === drawn) return;
   if (editing !== null && !force) return;
-  drawn = signature;
+  drawn = signature; lit = null;
   $("top").textContent = state.source ? `${state.source.width}×${state.source.height}, ${state.source.seconds.toFixed(1)} с сирого → ${state.seconds.toFixed(1)} с у ролику` : "";
   if (!state.words) { for (const id of ["needs", "words", "beats", "fixes", "style", "beatMenu"]) $(id).innerHTML = ""; return; }
   const words = state.words, phrase = (b) => words.slice(b.from, b.to + 1).map((w) => w.text).join(" ");
@@ -161,7 +214,7 @@ function draw(force) {
   if (editing !== null) { const input = $("fixInput"); input.focus(); input.select(); }
   $("modeHint").textContent = Array.isArray(HINT[mode]) ? HINT[mode][from === null ? 0 : 1] : HINT[mode];
   $("beatMenu").innerHTML = range ? `<div class="card" style="margin-top:10px"><div class="what">Що показати на словах «${esc(phrase({ from: range[0], to: range[1] }))}»?</div>
-    <button data-new="cutaway">Картинка зверху</button><button data-new="backdrop">Картинка за мовцем</button><button data-new="zoom">Наближення</button>
+    <button data-new="full">На весь кадр</button><button data-new="cutaway">Картинка зверху</button><button data-new="backdrop">Картинка за мовцем</button><button data-new="zoom">Наближення</button>
     <input type="text" id="titleText" placeholder="Текст титру" maxlength="40" style="flex:1 1 140px"><button data-new="title">Титр</button><button class="quiet" data-new="cancel">Скасувати</button></div>` : "";
 
   $("needsBox").style.display = state.needs.length ? "" : "none";
@@ -171,10 +224,13 @@ function draw(force) {
     ${n.status === "filled" ? `<button class="quiet" data-clear="${n.id}">Прибрати</button>` : `<button data-skip="${n.id}">${n.status === "skipped" ? "Повернути" : "Пропустити"}</button>`}</div>`).join("")
     + (state.credits && state.credits.length ? `<p class="hint">Автори фото з інтернету (вкажіть в описі відео): ${state.credits.map((c) => `${esc(c.title || "фото")}, ${esc(c.creator)}, ${esc(c.license)}`).join("; ")}</p>` : "");
 
-  $("beats").innerHTML = state.beats.map((b) => {
-    const need = b.need && state.needs.find((n) => n.id === b.need), file = b.file || (need && need.file), pictured = b.kind === "cutaway" || b.kind === "backdrop";
+  const when = (first, last) => (words.slice(first, last + 1).find((w) => w.at != null) || {}).at;  // where a stretch of words begins in the video
+  $("beats").innerHTML = [...state.beats].sort((a, b) => a.from - b.from).map((b) => {
+    const at = when(b.from, b.to);
+    const need = b.need && state.needs.find((n) => n.id === b.need), file = b.file || (need && need.file), pictured = b.kind === "full" || b.kind === "cutaway" || b.kind === "backdrop";
     return `<div class="card${b.accepted ? "" : " off"}">${file ? `<img class="pic" src="${pic(file)}" alt="">` : ""}<span class="tag">${KIND[b.kind]}</span>
       <div class="what">${b.text ? `«${esc(b.text)}» · ` : ""}${esc(phrase(b))}<small>${pictured && !file ? "чекає на фото" + (need ? ": " + esc(need.what) : "") : esc(b.why || "")}${b.by === "user" ? " додано вручну" : ""}</small></div>
+      ${at != null ? `<button class="jump" data-seek="${at}" aria-label="Показати це місце у відео">▶ ${Math.floor(at / 60)}:${String(Math.floor(at % 60)).padStart(2, "0")}</button>` : ""}
       ${pictured && !need ? `<button data-pick-beat="${b.id}">${file ? "Змінити фото" : "Обрати фото"}</button>` : ""}
       <button data-beat="${b.id}">${b.accepted ? "Вимкнути" : "Увімкнути"}</button><button class="quiet" data-remove="${b.id}" aria-label="Видалити вставку">Видалити</button></div>`; }).join("") || `<p class="hint">Вставок немає. У розділі «Текст» оберіть «Вставка» і позначте слова.</p>`;
 
@@ -183,7 +239,7 @@ function draw(force) {
   $("cutBox").style.display = cuts.length ? "" : "none";
   $("cuts").innerHTML = cuts.map((c) => {
     const piece = words.slice(c.from, c.to + 1), out = piece.every((w) => !w.kept), text = piece.map((w) => w.text).join(" ");
-    return `<div class="card"><div class="what">${esc(text.length > 110 ? text.slice(0, 110) + "…" : text)}<small>${WHY[c.why] || ""}${c.note ? ": " + esc(c.note) : ""} · ${out ? "вирізано" : "повернуто"}</small></div><button data-cut="${c.from}-${c.to}" data-back="${out ? 1 : ""}">${out ? "Повернути" : "Вирізати"}</button></div>`;
+    return `<div class="card"><div class="what">${esc(text.length > 110 ? text.slice(0, 110) + "…" : text)}<small>${WHY[c.why] || ""}${c.note ? ": " + esc(c.note) : ""} · ${out ? "вирізано" : "повернуто"}</small></div>${(() => { const before = words.slice(0, c.from).reverse().find((w) => w.at != null), at = out ? (before ? Math.max(0, before.at - 1.2) : 0) : when(c.from, c.to); return at != null ? `<button class="jump" data-seek="${at}" aria-label="Послухати це місце">▶ ${out ? "стик" : "послухати"}</button>` : ""; })()}<button data-cut="${c.from}-${c.to}" data-back="${out ? 1 : ""}">${out ? "Повернути" : "Вирізати"}</button></div>`;
   }).join("");
   const offers = state.corrections.filter((c) => c.by === "ai");
   $("fixBox").style.display = offers.length ? "" : "none";
@@ -193,6 +249,7 @@ function draw(force) {
   $("style").innerHTML = `
     <div class="row"><span>Акцент</span>${ACCENTS.map((c) => `<button class="sw${st.accent === c ? " on" : ""}" style="background:${c}" data-style='${JSON.stringify({ accent: c })}' aria-label="Колір ${c}"></button>`).join("")}<input type="color" id="accent" value="${st.accent}" aria-label="Власний колір"></div>
     <div class="row"><span>Субтитри</span>${seg("subtitle_size", [["s", "Малі"], ["m", "Середні"], ["l", "Великі"]])}${seg("subtitle_place", [["low", "Внизу"], ["middle", "Посередині"]])}</div>
+    <div class="row"><span>Ритм кадру</span>${seg("rhythm", [[true, "Міняти крупність"], [false, "Один план"]])}</div>
     <div class="row"><span>Слова</span>${seg("karaoke", [[true, "Загоряються по черзі"], [false, "Усі одразу"]])}</div>
     <div class="row"><span>Титр</span>${seg("title_glow", [[true, "Зі світінням"], [false, "Без світіння"]])}</div>
     <div class="row"><span>Картинка зверху</span>${seg("picture", [["card", "Картка"], ["edge", "На всю ширину"]])}</div>
@@ -241,7 +298,8 @@ document.addEventListener("click", async (e) => {
   if (d.mode) { mode = d.mode; from = null; range = null; editing = null; document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b === t)); draw(true); }
   else if (d.w !== undefined) {
     const id = +d.w, word = state.words[id];
-    if (mode === "hot") edit({ emphasis: id });
+    if (mode === "play") seek(word.at ?? (state.words.slice(id).find((w) => w.at != null) || {}).at);
+    else if (mode === "hot") edit({ emphasis: id });
     else if (mode === "fix") { editing = id; draw(true); }
     else if (mode === "cut" && !word.kept) edit({ drop: [id, id], restore: true });
     else if (from === null) { from = id; range = null; draw(true); }
@@ -257,6 +315,7 @@ document.addEventListener("click", async (e) => {
   else if (d.beat) edit({ beat: d.beat });
   else if (d.remove) edit({ remove_beat: d.remove });
   else if (d.fix) edit({ correction: +d.fix });
+  else if (d.seek !== undefined) seek(+d.seek);
   else if (d.cut) edit({ drop: d.cut.split("-").map(Number), restore: !!d.back });
   else if (d.skip) edit({ skip: d.skip });
   else if (d.clear) edit({ assign: { need: d.clear, asset: null } });

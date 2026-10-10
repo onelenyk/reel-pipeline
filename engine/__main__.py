@@ -6,6 +6,7 @@
   drop PROJECT FROM TO        cut the words FROM..TO (numbers) out of the video
   beat PROJECT KIND FROM TO [FILE|TEXT]   add your own beat over the words FROM..TO: backdrop, cutaway (with a picture), title (with a text), zoom
   unbeat PROJECT ID           remove a beat
+  replan PROJECT              ask the AI for the montage again, keeping the words and the cuts
   show PROJECT                what the project holds: the text, the beats and the open requests
   serve [PORT]                the web page: watch the pipeline, edit the text, answer requests, render
 """
@@ -50,6 +51,15 @@ def heard(transcript):
     return transcript
 
 
+def replan(folder):
+    """Asks the AI for the montage again, for a project that already has its words. The text, the cuts and the pictures stay."""
+    doc = project.load(folder); kept = set()
+    for s in doc["edit"]["segments"]: kept.update(range(s["from"], s["to"] + 1))
+    ideas = suggest.suggest(doc["words"], set(range(len(doc["words"]))) - kept)
+    doc.update(emphasis=ideas["emphasis"], beats=ideas["beats"], needs=ideas["needs"], corrections=[c for c in doc["corrections"] if c["by"] == "user"] + ideas["corrections"])
+    project.save(folder, doc); show(folder)
+
+
 def new(video, name=None):
     video = Path(video); folder = ROOT / (name or video.stem)
     took = create(video, folder)
@@ -90,6 +100,6 @@ def serve(port="8787"):
 
 
 if __name__ == "__main__":
-    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "serve": serve}
+    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "replan": replan, "serve": serve}
     if len(sys.argv) < 2 or sys.argv[1] not in commands or (len(sys.argv) < 3 and sys.argv[1] != "serve"): sys.exit(__doc__)
     commands[sys.argv[1]](*sys.argv[2:])
