@@ -1,9 +1,9 @@
 """Saved styles: a look worked out once and reused on other videos. One JSON file per style."""
 import json, re
 from pathlib import Path
-from . import project
+from . import HOME, project
 
-ROOT = Path("/work/styles")
+ROOT = HOME / "styles"
 DEFAULT = ROOT / "default.txt"
 
 

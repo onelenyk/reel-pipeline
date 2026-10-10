@@ -7,11 +7,12 @@ import json, re, tempfile, threading, traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
-from . import find, project, render, styles
+from . import HOME, find, project, render, styles
 from .__main__ import ROOT, create
 
 PAGE = Path(__file__).resolve().parent / "page.html"
-INBOX = Path("/work/media")
+INBOX = HOME / "media"
+SCRATCH = HOME / "out"
 changing = threading.Lock()  # one change to a project document at a time
 busy = {}  # project name → what is running, so two jobs never write the same project at once
 NAME = re.compile(r"^[\w.-]{1,60}$")
@@ -61,7 +62,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def upload(self, suffix):
         """Streams the request body to a temporary file (videos are large) and returns its path."""
-        left = int(self.headers.get("Content-Length") or 0); tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir="/work/out")
+        left = int(self.headers.get("Content-Length") or 0); tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=str(SCRATCH))
         while left > 0:
             chunk = self.rfile.read(min(left, 1 << 20))
             if not chunk: break
@@ -90,7 +91,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def route(self):
         parts = [unquote(p) for p in self.path.split("?")[0].strip("/").split("/") if p]
-        if any(not NAME.match(p) for p in parts): return None  # no path tricks
+        if any(not NAME.match(p) or not p.strip(".") for p in parts): return None  # no path tricks
         return parts
 
     def do_GET(self):
@@ -106,7 +107,8 @@ class Handler(BaseHTTPRequestHandler):
             names = sorted((p.name for p in ROOT.iterdir() if p.is_dir()), key=lambda n: -(ROOT / n).stat().st_mtime) if ROOT.exists() else []
             return self.send([{"name": n, "busy": busy.get(n), "has_render": (ROOT / n / "render.mp4").exists()} for n in names])
         if parts == ["api", "styles"]: return self.send(styles.listing())
-        if len(parts) == 3 and parts[:2] == ["api", "projects"]: return self.send(summary(parts[2]))
+        if len(parts) == 3 and parts[:2] == ["api", "projects"]:
+            return self.send(summary(parts[2])) if (ROOT / parts[2]).is_dir() else self.send({"error": "there is no such project"}, 404)
         if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "search":
             # Pictures from the internet: by the author's own words, or for one of the requests
             try:
@@ -131,9 +133,12 @@ class Handler(BaseHTTPRequestHandler):
             if parts is None: return self.send({"error": "bad path"}, 400)
             if parts[:2] == ["api", "new"] and len(parts) == 3:
                 # A raw take arrives: keep it in the inbox and start the pipeline, ending with a first render
-                name = Path(parts[2]).stem; tmp = self.upload(Path(parts[2]).suffix or ".mov")
-                INBOX.mkdir(exist_ok=True); video = INBOX / parts[2]; tmp.replace(video); folder = ROOT / name
-                if (folder / "status.json").exists(): (folder / "status.json").unlink()
+                stem, suffix = Path(parts[2]).stem, Path(parts[2]).suffix or ".mov"; tmp = self.upload(suffix)
+                with changing:  # a take with a name already in use becomes a new project; the earlier one and its edits stay
+                    name, count = stem, 1
+                    while (ROOT / name).exists() or busy.get(name): count += 1; name = f"{stem}-{count}"
+                    folder = ROOT / name; folder.mkdir(parents=True)
+                INBOX.mkdir(parents=True, exist_ok=True); video = INBOX / f"{name}{suffix}"; tmp.replace(video)
                 background(name, "pipeline", lambda: (create(video, folder), render.render(folder)))
                 return self.send({"project": name})
             if parts[:2] == ["api", "styles"] and len(parts) == 4 and parts[3] in ("default", "delete"):
@@ -142,6 +147,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(styles.listing())
             if len(parts) < 4 or parts[:2] != ["api", "projects"]: return self.send({"error": "not found"}, 404)
             name, action = parts[2], parts[3]; folder = ROOT / name
+            if not (folder / "project.json").exists(): return self.send({"error": "there is no such project"}, 404)
             if busy.get(name) and action != "state": return self.send({"error": f"{busy[name]} is still running"}, 409)
             if action == "render": background(name, "render", lambda: render.render(folder)); return self.send(summary(name))
             changing.acquire(); self.held = True
@@ -197,6 +203,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def run(port):
-    ROOT.mkdir(exist_ok=True); Path("/work/out").mkdir(exist_ok=True)
+    ROOT.mkdir(parents=True, exist_ok=True); SCRATCH.mkdir(parents=True, exist_ok=True)
     print(f"reel: http://127.0.0.1:{port}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()

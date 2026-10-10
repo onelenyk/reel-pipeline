@@ -10,3 +10,4 @@ models/
 *.wav
 __pycache__/
 styles/
+e2e/work/

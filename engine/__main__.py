@@ -11,9 +11,9 @@
 """
 import json, sys, time
 from pathlib import Path
-from . import media, project, render, speech, styles, suggest
+from . import HOME, media, project, render, speech, styles, suggest
 
-ROOT = Path("/work/projects")
+ROOT = HOME / "projects"
 
 
 def say(data): print(json.dumps(data, ensure_ascii=False, indent=2))
@@ -28,11 +28,25 @@ def create(video, folder):
         except Exception as error: project.progress(folder, name, "failed", error=str(error)[-300:]); raise
         took[name] = round(time.time() - started, 1); project.progress(folder, name, "done", seconds=took[name]); return result
     for name in ("probe", "transcribe", "suggest", "render"): project.progress(folder, name, "waiting")
-    facts = step("probe", lambda: media.probe(video))
-    transcript = step("transcribe", lambda: speech.transcribe(video))
+    facts = step("probe", lambda: usable(video))
+    transcript = step("transcribe", lambda: heard(speech.transcribe(video)))
     ideas = step("suggest", lambda: suggest.suggest(transcript["words"]))
     project.save(folder, project.new(video, facts, transcript, ideas, styles.default()))
     return took
+
+
+def usable(video):
+    """The facts about a take, or the reason it cannot be used, in words a person can act on."""
+    try: facts = media.probe(video)
+    except (media.ToolError, ValueError, KeyError): raise ValueError("this file is not a video the pipeline can read")
+    if not facts["width"] or not facts["height"] or facts["seconds"] < 1: raise ValueError("this file is not a video the pipeline can read")
+    if not facts["has_audio"]: raise ValueError("the video has no sound, and the pipeline works from the words")
+    return facts
+
+
+def heard(transcript):
+    if not transcript["words"]: raise ValueError("no speech was heard in this video")
+    return transcript
 
 
 def new(video, name=None):

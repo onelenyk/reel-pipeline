@@ -23,7 +23,8 @@ def build(folder):
     width, height, fps = timeline["width"], timeline["height"], timeline["fps"]
     (folder / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
     keep = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in timeline["spans"])
-    chain = [media.tone_filter(source["hdr"]), f"select='{keep}'", "setpts=N/FRAME_RATE/TB", f"fps={fps}",
+    # Even frames first: a phone's frames do not arrive evenly, and cutting by counting them would let the picture run ahead of the sound
+    chain = [f"fps={fps}", f"select='{keep}'", "setpts=N/FRAME_RATE/TB", f"fps={fps}", media.tone_filter(source["hdr"]),
              f"scale={width}:{height}:force_original_aspect_ratio=increase", f"crop={width}:{height}"]
     # Backdrops: the speaker, cut out, over a picture. Each needs a matte of that stretch of the take.
     inputs, graph, last, mattes = ["-i", source["file"]], [f"[0:v]{','.join(chain)}[v0]"], "v0", {}
@@ -60,7 +61,7 @@ def build(folder):
         layer = inputs.count("-i")
         media.ffmpeg(*inputs, "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{width}x{height}", "-r", str(fps), "-i", "pipe:0",
                      "-filter_complex", ";".join(graph) + f";[{last}][{layer}:v]overlay=shortest=1:format=auto,format=yuv420p[v];[0:a]{audio}[a]",
-                     "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(draft), stdin=drawer.stdout)
+                     "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-c:a", "aac", "-b:a", "192k", "-t", f"{timeline['seconds']:.3f}", "-movflags", "+faststart", str(draft), stdin=drawer.stdout)
     finally:
         drawer.stdout.close(); errors = drawer.stderr.read().decode(errors="replace"); drawer.wait()
     if drawer.returncode not in (0, None) and "EPIPE" not in errors: raise media.ToolError(f"renderer failed:\n{errors[-1500:]}")

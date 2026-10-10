@@ -1,9 +1,21 @@
 """Speech to words with timings."""
-import os, tempfile
+import os, re, tempfile, threading
 from pathlib import Path
 from .media import ffmpeg
 
 MODELS = Path("/work/models")
+FOREIGN = re.compile("[ыэъёЫЭЪЁ]")
+
+
+_models, _loading = {}, threading.Lock()
+
+
+def recogniser(name):
+    with _loading:
+        if name not in _models:
+            from faster_whisper import WhisperModel
+            _models[name] = WhisperModel(name, device="cpu", compute_type="int8", download_root=str(MODELS), cpu_threads=os.cpu_count() or 8)
+        return _models[name]
 
 
 def last_voiced(wav):
@@ -18,12 +30,10 @@ def last_voiced(wav):
 
 
 def transcribe(video, model_name="large-v3-turbo"):
-    from faster_whisper import WhisperModel
     with tempfile.TemporaryDirectory() as tmp:
         wav = Path(tmp) / "speech.wav"
         ffmpeg("-i", str(video), "-vn", "-ac", "1", "-ar", "16000", str(wav))
-        model = WhisperModel(model_name, device="cpu", compute_type="int8", download_root=str(MODELS), cpu_threads=os.cpu_count() or 8)
-        segments, meta = model.transcribe(str(wav), word_timestamps=True, vad_filter=True, beam_size=5)
+        segments, meta = recogniser(model_name).transcribe(str(wav), word_timestamps=True, vad_filter=True, beam_size=5)
         raw = [w for s in segments for w in (s.words or [])]
         voiced_until = last_voiced(wav)
     # The recogniser invents a polite sign-off in the silence after the speech ("Дякую за перегляд!"), squeezed
@@ -38,4 +48,8 @@ def transcribe(video, model_name="large-v3-turbo"):
             words[-1] = {**words[-1], "text": words[-1]["text"] + text, "end": round(w.end, 2), "confidence": round(min(words[-1]["confidence"], w.probability), 2)}
         else:
             words.append({"text": text, "start": round(w.start, 2), "end": round(w.end, 2), "confidence": round(w.probability, 2)})
+    if meta.language == "uk":
+        # Letters Ukrainian does not have mean the word was heard as Russian: mark it as doubtful, so the page points at it
+        for word in words:
+            if FOREIGN.search(word["text"]): word["confidence"] = min(word["confidence"], 0.3)
     return {"language": meta.language, "words": words}

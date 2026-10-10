@@ -7,6 +7,7 @@ credit travels with the picture so it can be given where the video is posted.
 import os, re, tempfile
 from pathlib import Path
 import requests
+from . import HOME
 
 API = "https://api.openverse.org/v1/images/"
 AGENT = {"User-Agent": "reel-pipeline/0.1 (local tool)"}
@@ -48,7 +49,7 @@ def fetch(image_id):
         kind = download.headers.get("Content-Type", "")
         if not kind.startswith("image/"): raise ValueError("that address is not a picture")
         suffix = {"image/png": ".png", "image/webp": ".webp"}.get(kind.split(";")[0], ".jpg")
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir="/work/out"); size = 0
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=str(HOME / "out")); size = 0
         for chunk in download.iter_content(1 << 16):
             size += len(chunk)
             if size > MAX_BYTES: tmp.close(); Path(tmp.name).unlink(); raise ValueError("the picture is too large")

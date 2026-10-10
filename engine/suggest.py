@@ -26,7 +26,12 @@ needs: проси лише матеріал, який справді є в ав�
 """
 
 
+def enabled():
+    return bool(os.environ.get("DEEPSEEK_API_KEY")) and os.environ.get("REEL_AI", "on") != "off"
+
+
 def suggest(words):
+    if not enabled() or not words: return clean({}, len(words))  # no key or switched off: the video is made without suggestions
     numbered = " ".join(f"[{i}]{w['text']}" for i, w in enumerate(words))
     response = requests.post("https://api.deepseek.com/chat/completions", timeout=180, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"},
                              json={"model": "deepseek-flash", "thinking": {"type": "disabled"}, "response_format": {"type": "json_object"}, "temperature": 0.3,
