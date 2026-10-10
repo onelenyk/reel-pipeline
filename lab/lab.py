@@ -8,6 +8,7 @@
   cut FILE                   H4  remove pauses, by the word timings from `transcribe`
   highlight FILE             H5  ask the AI which words to emphasise and what to correct
   subs FILE                  H5  burn subtitles in the reference style
+  needs FILE                 H9  the AI plans the edit from the words: inserts, titles, zooms, and what material it needs for them
   all FILE                   H6  the whole chain on one file, with timings
 """
 import json, os, re, subprocess, sys, time
@@ -206,6 +207,32 @@ def highlight(args):
                  "fixes": [f"{words[f['i']]['w']} -> {f['to']}" for f in fixes], "emphasis": [words[i]["w"] for i in emphasis]})
 
 
+def needs(args):
+    """The AI reads what is said and plans the montage: where a picture should cover or sit behind the speaker, where a title
+    or a closer framing belongs, and which material it needs from the author for that (a REQUIRE list)."""
+    import requests
+    src = Path(args[0]); words = words_of(src)
+    numbered = " ".join(f"[{i}]{w['w']}" for i, w in enumerate(words))
+    prompt = ("Ти монтажер коротких вертикальних відео про нерухомість. Нижче розшифровка одного дубля, де людина говорить у камеру; слова пронумеровані. "
+              "Сплануй монтаж так, щоб відео не було статичним. Поверни JSON:\n"
+              '{"beats": [{"kind": "backdrop" | "cutaway" | "title" | "zoom", "from": номер_слова, "to": номер_слова, "need": id_потреби_або_null, "text": "текст титру або null", "why": "коротко"}],\n'
+              ' "needs": [{"id": "n1", "what": "що саме потрібно від автора: конкретне фото чи відео", "kind": "photo" | "video" | "plan" | "logo", "optional": true | false}]}\n'
+              "Види: backdrop - мовця вирізано з фону, за ним картинка; cutaway - картинка на весь кадр, голос триває; title - напис у кадрі; zoom - крупніший план для наголосу.\n"
+              "Правила: вставка починається на слові, де про це заговорили, і триває 2-4 секунди мовлення; не більше однієї вставки одночасно; перші 2 секунди лишаються з мовцем; "
+              "титр з назвою з'являється тоді, коли назву вимовляють; zoom - на 1-2 ключових фразах; проси лише матеріал, який справді є в автора (фото об'єкта, план, вид згори, логотип), не більше 5 потреб.\n\n" + numbered)
+    started = time.time()
+    response = requests.post("https://api.deepseek.com/chat/completions", timeout=180, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"},
+                             json={"model": "deepseek-flash", "thinking": {"type": "disabled"}, "response_format": {"type": "json_object"}, "temperature": 0.3,
+                                   "messages": [{"role": "user", "content": prompt}]})
+    response.raise_for_status()
+    plan = json.loads(response.json()["choices"][0]["message"]["content"])
+    ok = lambda i: isinstance(i, int) and 0 <= i < len(words)
+    beats = [b for b in plan.get("beats", []) if ok(b.get("from")) and ok(b.get("to")) and b["to"] >= b["from"]]
+    (OUT / f"{src.stem}.needs.json").write_text(json.dumps({"beats": beats, "needs": plan.get("needs", [])}, ensure_ascii=False, indent=1), encoding="utf-8")
+    return show({"seconds": round(time.time() - started, 1), "needs": plan.get("needs", []),
+                 "beats": [f"{b['kind']:8} {words[b['from']]['s']:5.1f}-{words[b['to']]['e']:5.1f}s  \"{' '.join(w['w'] for w in words[b['from']:b['to'] + 1])}\"  need={b.get('need')} text={b.get('text')}  ({b.get('why')})" for b in beats]})
+
+
 def subs(args, spans=None, source=None, name="subs"):
     """Subtitles in the reference style: two or three words at a time, bold white with a soft shadow, emphasised words in yellow."""
     src = Path(args[0]); words = [dict(w) for w in words_of(src)]; meta = info(source or src)
@@ -270,6 +297,6 @@ def everything(args):
 
 
 if __name__ == "__main__":
-    commands = {"probe": probe, "normalize": normalize, "denoise": denoise, "stabilize": stabilize, "transcribe": transcribe, "cut": cut, "highlight": highlight, "subs": subs, "all": everything}
+    commands = {"probe": probe, "normalize": normalize, "denoise": denoise, "stabilize": stabilize, "transcribe": transcribe, "cut": cut, "highlight": highlight, "needs": needs, "subs": subs, "all": everything}
     if len(sys.argv) < 3 or sys.argv[1] not in commands: sys.exit(__doc__)
     commands[sys.argv[1]](sys.argv[2:])
