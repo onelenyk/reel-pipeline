@@ -7,7 +7,7 @@ import json, re, tempfile, threading, traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
-from . import HOME, find, project, render, styles
+from . import HOME, find, project, render, styles, suggest
 from .__main__ import ROOT, create
 
 PAGE = Path(__file__).resolve().parent / "page.html"
@@ -42,7 +42,7 @@ def summary(name):
         out.update(source=doc["sources"][0], language=doc["language"],
                    words=[{"id": w["id"], "text": fixed.get(w["id"], w["text"]), "heard": w["text"], "fixed": w["id"] in fixed, "start": w["start"], "at": at.get(w["id"]), "kept": w["id"] in kept,
                            "hot": w["id"] in hot, "unsure": w["confidence"] < 0.5} for w in doc["words"]],
-                   corrections=doc["corrections"], cuts=doc["cuts"], seconds=plan["seconds"], style=doc["style"],
+                   corrections=doc["corrections"], cuts=doc["cuts"], kinds={b["id"]: b["kind"] for b in plan["beats"]}, seconds=plan["seconds"], style=doc["style"],
                    beats=[{**b, "file": Path(assets[b["asset"]]["file"]).name if b.get("asset") in assets else None} for b in doc["beats"]],
                    assets=[{"id": a["id"], "file": Path(a["file"]).name, "credit": a.get("credit")} for a in doc["assets"]],
                    needs=[{**n, "file": Path(assets[n["asset"]]["file"]).name if n.get("asset") in assets else None, "credit": assets.get(n.get("asset"), {}).get("credit")} for n in doc["needs"]],
@@ -123,6 +123,10 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as error:
                 traceback.print_exc(); return self.send({"error": str(error)[-200:]}, 502)
         if len(parts) == 3 and parts[0] == "video": return self.file(ROOT / parts[1] / "render.mp4", "video/mp4")
+        if len(parts) == 3 and parts[0] == "strip":
+            folder = ROOT / parts[1]
+            if not (folder / "strip.jpg").exists() and (folder / "render.mp4").exists(): render.strip(folder)  # videos built before the timeline existed
+            return self.file(folder / "strip.jpg", "image/jpeg")
         if len(parts) == 3 and parts[0] == "asset":
             kind = {".png": "image/png", ".webp": "image/webp"}.get(Path(parts[2]).suffix, "image/jpeg")
             return self.file(ROOT / parts[1] / "assets" / parts[2], kind)
@@ -151,6 +155,15 @@ class Handler(BaseHTTPRequestHandler):
             if not (folder / "project.json").exists(): return self.send({"error": "there is no such project"}, 404)
             if busy.get(name) and action != "state": return self.send({"error": f"{busy[name]} is still running"}, 409)
             if action == "render": background(name, "render", lambda: render.render(folder)); return self.send(summary(name))
+            if action == "ask":
+                # The author marked a stretch and said what is wrong with it; the AI answers with changes, which are applied
+                asked = json.loads(self.body() or b"{}"); doc = project.load(folder); count = len(doc["words"])
+                first, last = sorted((int(asked.get("from", 0)), int(asked.get("to", 0)))); request = str(asked.get("text", "")).strip()
+                if not request or not 0 <= first <= last < count: return self.send({"error": "mark a stretch and say what to change"}, 400)
+                kept = {i for s in doc["edit"]["segments"] for i in range(s["from"], s["to"] + 1)}
+                answer = suggest.edit(doc["words"], kept, first, last, request)
+                with changing: project.apply(folder, answer["ops"])
+                return self.send({**summary(name), "said": answer["say"], "changed": len(answer["ops"])})
             changing.acquire(); self.held = True
             if False: pass
             elif action == "assets" and len(parts) == 5:

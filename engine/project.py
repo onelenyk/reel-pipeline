@@ -224,6 +224,19 @@ def add_beat(folder, kind, first, last, file=None, text=None, name=None, asset=N
 
 
 # ---------- progress, for anyone watching ----------
+def apply(folder, ops):
+    """Carries out operations proposed for the author's request (see suggest.edit)."""
+    for o in ops:
+        if o["op"] in ("cut", "restore"): drop(folder, o["from"], o["to"], restore=o["op"] == "restore")
+        elif o["op"] == "text": set_text(folder, o["word"], o["to"])
+        elif o["op"] in ("title", "zoom"): add_beat(folder, o["op"], o["from"], o["to"], text=o.get("text"))
+        elif o["op"] == "emphasis":
+            doc = load(folder); found = next((e for e in doc["emphasis"] if e["word"] == o["word"]), None)
+            if found: found["accepted"] = o["on"]; found["by"] = "user"
+            elif o["on"]: doc["emphasis"].append({"word": o["word"], "by": "user", "accepted": True})
+            save(folder, doc)
+
+
 def progress(folder, step, state, **facts):
     """Records where the pipeline is: one line per step, rewritten as it moves from running to done or failed."""
     path = Path(folder) / "status.json"

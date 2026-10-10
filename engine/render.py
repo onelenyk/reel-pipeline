@@ -20,6 +20,16 @@ def render(folder):
     project.progress(folder, "render", "done", seconds=result["took_seconds"]); return result
 
 
+STRIP = 24  # frames in the strip under the timeline
+
+
+def strip(folder):
+    """One wide picture with evenly spaced frames of the finished video."""
+    folder = Path(folder); video = folder / "render.mp4"; seconds = media.probe(video)["seconds"]
+    media.ffmpeg("-i", str(video), "-vf", f"fps={STRIP}/{max(seconds, 1):.3f},scale=54:96,tile={STRIP}x1", "-frames:v", "1", "-q:v", "5", str(folder / "strip.part.jpg"))
+    (folder / "strip.part.jpg").replace(folder / "strip.jpg")
+
+
 def build(folder):
     folder = Path(folder); doc = project.load(folder); timeline = project.resolve(doc); source = doc["sources"][0]
     width, height, fps = timeline["width"], timeline["height"], timeline["fps"]
@@ -72,5 +82,6 @@ def build(folder):
         drawer.stdout.close(); errors = drawer.stderr.read().decode(errors="replace"); drawer.wait()
     if drawer.returncode not in (0, None) and "EPIPE" not in errors: raise media.ToolError(f"renderer failed:\n{errors[-1500:]}")
     draft.replace(out)  # the previous render stays playable until the new one is whole
+    project.progress(folder, "render", "running", note="strip"); strip(folder)
     return {"file": str(out), "seconds": timeline["seconds"], "took_seconds": round(time.time() - started, 1), "beats_drawn": [b["kind"] for b in timeline["beats"]], "mattes": mattes,
             "waiting_for_material": [n["what"] for n in doc.get("needs", []) if n["status"] == "open"], "sound": media.loudness(out)}

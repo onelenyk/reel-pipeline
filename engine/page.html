@@ -37,6 +37,14 @@
   .bar { height: 5px; border-radius: 3px; background: var(--chip2); overflow: hidden; margin-top: 8px; } .bar i { display: block; height: 100%; background: var(--brand); transition: width .4s; }
   .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
   .steps li.running { font-weight: 700; } .steps li.waiting { color: var(--subtle); }
+  #line { position: relative; height: 68px; border-radius: 10px; background: #111 center / 100% 100% no-repeat; cursor: pointer; touch-action: none; user-select: none; overflow: hidden; }
+  #lineHead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.5); pointer-events: none; }
+  #lineSel { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--brand) 30%, transparent); border: 2px solid var(--brand); border-radius: 8px; display: none; pointer-events: none; }
+  #lanes { position: relative; height: 16px; margin-top: 5px; }
+  #lanes i { position: absolute; height: 6px; border-radius: 3px; top: 0; min-width: 3px; } #lanes i.cutmark { top: 9px; width: 3px; height: 7px; background: var(--bad); }
+  #lanes .full { background: #0a84ff; } #lanes .cutaway { background: #30d158; } #lanes .backdrop { background: #bf5af2; } #lanes .title { background: var(--brand); } #lanes .zoom { background: #ff9f0a; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--subtle); margin: 2px 0 0; } .legend b { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  #ask input[type=text] { flex: 1; min-width: 0; }
   .jump { background: none; padding: 2px 8px; font-size: 13px; color: var(--muted); flex: none; }
   .steps li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--chip2); flex: none; }
@@ -97,6 +105,14 @@
   </div>
   <div>
     <div id="error"></div>
+    <section id="lineBox">
+      <h2>Стрічка</h2>
+      <div id="line"><div id="lineSel"></div><div id="lineHead"></div></div>
+      <div id="lanes"></div>
+      <p class="legend"><span><b style="background:#0a84ff"></b>на весь кадр</span><span><b style="background:#30d158"></b>картинка зверху</span><span><b style="background:#bf5af2"></b>за мовцем</span><span><b style="background:var(--brand)"></b>титр</span><span><b style="background:#ff9f0a"></b>наближення</span><span><b style="background:var(--bad)"></b>склейка</span></p>
+      <p class="hint">Торкніться стрічки, щоб перейти в це місце. Протягніть по ній, щоб позначити відрізок і сказати AI, що в ньому змінити.</p>
+      <div id="ask"></div>
+    </section>
     <section id="needsBox"><h2>Потрібно для цього відео</h2><div id="needs"></div></section>
     <section>
       <h2>Текст</h2>
@@ -118,7 +134,7 @@
 const $ = (id) => document.getElementById(id);
 const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", render: "Збираю відео" };
 const KIND = { full: "Картинка на весь кадр", title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
-const NOTE = { preparing: "готуюсь", "building the video": "кодую" };
+const NOTE = { strip: "готую стрічку кадрів", preparing: "готуюсь", "building the video": "кодую" };
 const HINT = {
   play: "Торкніться слова, і відео перейде в це місце. Під час відтворення слово, яке звучить, підсвічується. Пробіл: пауза.",
   hot: "Торкніться слова, щоб виділити його жовтим або зняти виділення.",
@@ -153,7 +169,7 @@ function seek(seconds, play = true) {
 let lit = null;
 function follow() {
   const v = video();
-  if (v && state && state.words && !edited) {
+  if (v && state && state.words) {
     const t = v.currentTime + 0.05; let now = null;
     for (const w of state.words) { if (w.at != null && w.at <= t) now = w.id; else if (w.at != null) break; }
     if (now !== lit) {
@@ -162,6 +178,7 @@ function follow() {
       if (el) { el.classList.add("now"); if (!v.paused) { const box = el.getBoundingClientRect(); if (box.top < 80 || box.bottom > innerHeight - 40) el.scrollIntoView({ block: "center", behavior: "smooth" }); } }
       lit = now;
     }
+    if (v.duration) $("lineHead").style.left = (100 * v.currentTime / v.duration).toFixed(2) + "%";
   }
   requestAnimationFrame(follow);
 }
@@ -171,6 +188,48 @@ document.addEventListener("keydown", (e) => {
   const v = video(); if (!v) return;
   e.preventDefault(); v.paused ? v.play().catch(() => {}) : v.pause();
 });
+
+// ---------- the timeline: frames of the video, what happens when, and a stretch marked for a request to the AI ----------
+let sel = null, drag = null, said = "";
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const lineTime = (e) => { const box = $("line").getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - box.left) / box.width)) * (state.seconds || 0); };
+const selWords = () => { if (!sel) return null; const ids = state.words.filter((w) => w.at != null && w.at >= sel[0] - 0.15 && w.at <= sel[1]).map((w) => w.id); return ids.length ? [ids[0], ids[ids.length - 1]] : null; };
+function drawLine() {
+  $("lineBox").style.display = state.has_render && state.words ? "" : "none";
+  if (!state.has_render || !state.words) return;
+  $("line").style.backgroundImage = `url(/strip/${name}/strip.jpg?v=${state.render_version})`;
+  const total = state.seconds || 1, words = state.words, pct = (t) => (100 * t / total).toFixed(2) + "%";
+  const after = (id) => (words.slice(id + 1).find((w) => w.at != null) || { at: total }).at, start = (id) => (words.slice(id).find((w) => w.at != null) || {}).at;
+  $("lanes").innerHTML = state.beats.filter((b) => state.kinds[b.id]).map((b) => { const a = start(b.from); return a == null ? "" : `<i class="${b.kind}" style="left:${pct(a)};width:${pct(Math.max(0.4, after(b.to) - a))}" title="${KIND[b.kind]}"></i>`; }).join("")
+    + words.map((w, i) => !w.kept && (i === 0 || words[i - 1].kept) && start(i) != null && i > 0 ? `<i class="cutmark" style="left:${pct(start(i))}" title="склейка"></i>` : "").join("");
+  $("lineSel").style.display = sel ? "block" : "none";
+  if (sel) { $("lineSel").style.left = pct(sel[0]); $("lineSel").style.width = pct(sel[1] - sel[0]); }
+}
+function drawAsk() {
+  const picked = selWords();
+  if (!sel || !picked) { $("ask").innerHTML = said ? `<div class="card"><div class="what">AI: ${esc(said)}</div></div>` : ""; return; }
+  const text = state.words.slice(picked[0], picked[1] + 1).filter((w) => w.kept).map((w) => w.text).join(" ");
+  $("ask").innerHTML = `<div class="card"><div class="what">${mmss(sel[0])}–${mmss(sel[1])} · ${esc(text.length > 140 ? text.slice(0, 140) + "…" : text)}</div><button class="jump" data-seek="${sel[0]}">▶ послухати</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input type="text" id="askText" maxlength="300" placeholder="Що тут змінити? Наприклад: слова повторюються, лиши один раз" aria-label="Прохання до AI">
+    <button class="primary" id="askGo">Попросити AI</button><button id="askCut">Вирізати</button><button class="quiet" id="askNo">Скасувати</button></div>`;
+}
+async function askAi() {
+  const picked = selWords(), text = $("askText").value.trim();
+  if (!picked || !text) { $("askText").focus(); return; }
+  $("askGo").disabled = true; $("askGo").textContent = "AI думає…";
+  try {
+    $("error").innerHTML = ""; const fresh = await api(`/api/projects/${name}/ask`, { method: "POST", body: JSON.stringify({ from: picked[0], to: picked[1], text }) });
+    state = fresh; said = fresh.said + (fresh.changed ? " Щоб побачити це у відео, натисніть «Зібрати відео»." : ""); if (fresh.changed) edited = true; sel = null; draw(true); drawAsk();
+  } catch (error) { fail(error); $("askGo").disabled = false; $("askGo").textContent = "Попросити AI"; }
+}
+$("line").addEventListener("pointerdown", (e) => { if (!state || !state.seconds) return; drag = { x: e.clientX, t: lineTime(e) }; $("line").setPointerCapture(e.pointerId); });
+$("line").addEventListener("pointermove", (e) => { if (!drag || Math.abs(e.clientX - drag.x) < 6) return; const t = lineTime(e); sel = [Math.min(drag.t, t), Math.max(drag.t, t)]; drag.moved = true; drawLine(); });
+$("line").addEventListener("pointerup", (e) => {
+  if (!drag) return;
+  if (drag.moved) { said = ""; drawAsk(); const input = $("askText"); if (input) input.focus(); } else { sel = null; seek(drag.t, false); drawLine(); drawAsk(); }
+  drag = null;
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id === "askText") askAi(); });
 
 function drawSteps() {
   const busy = !!state.busy;
@@ -201,12 +260,12 @@ function draw(force) {
   if (!state) return;
   drawSteps();
   // Everything below is rebuilt only when the project itself changed, so typing in a field is never interrupted
-  const signature = JSON.stringify([state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds]);
+  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds]);
   if (!force && signature === drawn) return;
   if (editing !== null && !force) return;
-  drawn = signature; lit = null;
+  drawn = signature; lit = null; drawLine();
   $("top").textContent = state.source ? `${state.source.width}×${state.source.height}, ${state.source.seconds.toFixed(1)} с сирого → ${state.seconds.toFixed(1)} с у ролику` : "";
-  if (!state.words) { for (const id of ["needs", "words", "beats", "fixes", "style", "beatMenu"]) $(id).innerHTML = ""; return; }
+  if (!state.words) { drawLine(); for (const id of ["needs", "words", "beats", "fixes", "style", "beatMenu"]) $(id).innerHTML = ""; return; }
   const words = state.words, phrase = (b) => words.slice(b.from, b.to + 1).map((w) => w.text).join(" ");
   $("words").innerHTML = words.map((w) => editing === w.id
     ? `<input type="text" id="fixInput" value="${esc(w.text)}" maxlength="40" aria-label="Виправлення слова">`
@@ -316,6 +375,9 @@ document.addEventListener("click", async (e) => {
   else if (d.remove) edit({ remove_beat: d.remove });
   else if (d.fix) edit({ correction: +d.fix });
   else if (d.seek !== undefined) seek(+d.seek);
+  else if (t.id === "askGo") askAi();
+  else if (t.id === "askNo") { sel = null; said = ""; drawLine(); drawAsk(); }
+  else if (t.id === "askCut") { const picked = selWords(); sel = null; said = ""; drawAsk(); if (picked) edit({ drop: picked }); }
   else if (d.cut) edit({ drop: d.cut.split("-").map(Number), restore: !!d.back });
   else if (d.skip) edit({ skip: d.skip });
   else if (d.clear) edit({ assign: { need: d.clear, asset: null } });

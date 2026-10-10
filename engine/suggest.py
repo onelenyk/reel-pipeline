@@ -70,6 +70,39 @@ def clean_cuts(raw, count):
     return cuts if len(gone) <= 0.7 * count else []
 
 
+EDIT = """Ти редактор відео. Нижче розшифровка дубля; слова пронумеровані, слова у дужках (ось так) уже вирізані з відео.
+Автор позначив слова від {first} до {last} і просить: "{request}"
+Зроби саме те, що просять, і лише там, де це стосується прохання (зазвичай у позначеному місці та поруч). Поверни один JSON:
+{{"say": "одне-два речення українською: що зроблено, або чому нічого не зроблено",
+ "ops": [{{"op": "cut", "from": n, "to": n}} | {{"op": "restore", "from": n, "to": n}} | {{"op": "text", "word": n, "to": "нове слово"}} |
+         {{"op": "emphasis", "word": n, "on": true | false}} | {{"op": "title", "from": n, "to": n, "text": "до 14 символів"}} | {{"op": "zoom", "from": n, "to": n}}]}}
+
+- cut прибирає слова з відео разом із картинкою і звуком; після вирізання мова має лишатися зв'язною, тому ріж на межах фраз.
+- Якщо щось сказано двічі, лишай останню повну версію і вирізай попередню.
+- text лише виправляє написання в субтитрах; звук не змінюється. Нові слова в мовлення додати неможливо.
+- Якщо прохання незрозуміле або його не можна виконати цими діями, поверни порожній ops і поясни в say.
+
+"""
+
+
+def edit(words, kept, first, last, request):
+    """What to change for the author's request about the words first..last: a list of checked operations and a sentence about them."""
+    if not enabled(): return {"say": "AI вимкнено: немає ключа.", "ops": []}
+    lo, hi = max(0, first - 150), min(len(words), last + 151)  # the stretch with enough around it to see repeats
+    text = " ".join(f"[{i}]{words[i]['text']}" if i in kept else f"([{i}]{words[i]['text']})" for i in range(lo, hi))
+    raw = ask(EDIT.format(first=first, last=last, request=request.replace('"', "'")[:400]) + text, think=True)
+    ok = lambda i: isinstance(i, int) and not isinstance(i, bool) and lo <= i < hi
+    ops = []
+    for o in raw.get("ops", [])[:20] if isinstance(raw.get("ops"), list) else []:
+        if not isinstance(o, dict): continue
+        kind = o.get("op")
+        if kind in ("cut", "restore", "zoom") and ok(o.get("from")) and ok(o.get("to")) and o["from"] <= o["to"]: ops.append({"op": kind, "from": o["from"], "to": o["to"]})
+        elif kind == "title" and ok(o.get("from")) and ok(o.get("to")) and o["from"] <= o["to"] and isinstance(o.get("text"), str) and o["text"].strip(): ops.append({"op": kind, "from": o["from"], "to": o["to"], "text": o["text"].strip()[:40]})
+        elif kind == "text" and ok(o.get("word")) and isinstance(o.get("to"), str) and o["to"].strip(): ops.append({"op": kind, "word": o["word"], "to": o["to"].strip()[:40]})
+        elif kind == "emphasis" and ok(o.get("word")): ops.append({"op": kind, "word": o["word"], "on": bool(o.get("on", True))})
+    return {"say": raw.get("say").strip()[:300] if isinstance(raw.get("say"), str) and raw.get("say").strip() else ("Зроблено." if ops else "Нічого не змінено."), "ops": ops}
+
+
 def enabled():
     return bool(os.environ.get("DEEPSEEK_API_KEY")) and os.environ.get("REEL_AI", "on") != "off"
 

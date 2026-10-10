@@ -42,6 +42,19 @@ class Review(unittest.TestCase):
         self.assertEqual(suggest.clean_cuts({"cuts": [{"from": 0, "to": 6, "why": "aside"}]}, 8), [])
 
 
+class Request(Case):
+    def test_operations_proposed_for_a_request_are_carried_out(self):
+        project.apply(self.folder, [{"op": "cut", "from": 10, "to": 12}, {"op": "text", "word": 1, "to": "нове!"}, {"op": "emphasis", "word": 3, "on": False},
+                                    {"op": "emphasis", "word": 0, "on": True}, {"op": "zoom", "from": 0, "to": 2}])
+        doc = self.doc()
+        self.assertEqual([(s["from"], s["to"]) for s in doc["edit"]["segments"]], [(0, 9)])
+        self.assertIn("нове!", self.spoken())
+        self.assertEqual({e["word"] for e in doc["emphasis"] if e["accepted"]}, {0, 6})
+        self.assertEqual(doc["beats"][-1]["kind"], "zoom")
+        project.apply(self.folder, [{"op": "restore", "from": 10, "to": 12}])
+        self.assertEqual([(s["from"], s["to"]) for s in self.doc()["edit"]["segments"]], [(0, 12)])
+
+
 class Text(Case):
     def test_own_correction_is_used_and_ai_one_is_not(self):
         self.assertIn("містечко", self.spoken())  # the AI's "селище" is only an offer
