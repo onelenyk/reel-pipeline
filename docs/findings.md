@@ -39,7 +39,7 @@ Correction: an earlier version of this page said she also dropped a closing sent
 | H5 | Subtitles in her style, with the right words highlighted | **Content: yes. Look: not yet** | The AI (DeepSeek Flash, no thinking, 1.4-2.4 s, about 800 tokens) picked the same kind of words she highlights: 22, 15, 10, 150, the place names. It also proposed a title ("G-Village котеджі") and "corrected" the village name to "Горенка", which is a guess: AI corrections of names must be shown as suggestions, not applied silently. The look made with ffmpeg's subtitle renderer is plainer than hers (no word-by-word fill, no glow on the title). Our own canvas renderer from Plan Highlighter can draw exactly this; the subtitle renderer in ffmpeg cannot be pushed much further. |
 | H6 | The whole chain saves real time | **Promising** | Raw file to subtitled, levelled, trimmed video in 40-44 s for a 40.7 s clip over two runs: about 29 s speech recognition, 1-1.4 s AI, 9-13 s render. The result is 1080x1920, 30 fps, -17.0 LUFS (hers: -15.6). That is machine time with no one at the screen. How long the same work takes her by hand is not known yet; that number decides this hypothesis. |
 | H7 | Mac as the engine, phone as the remote | **Not tested** | Docker hung once when a container was given the Downloads folder (most likely a macOS permission prompt nobody saw) and had to be force-restarted. Media must live in a folder the engine owns, not in Downloads/Documents/Desktop. |
-| H8 | Cutting the speaker out of the background | **Not tested** | Used in the reference for the first insert. Needs a segmentation model and a look at hair and edges. |
+| H8 | Cutting the speaker out of the background | **Yes, on this clip** | Robust Video Matting (MobileNetV3) on CPU: 105 frames (3.5 s) in 18 s, computed at 432x768 and scaled up with a slight blur. Hair, shoulders and the hand are clean on a speaker in front of a window and a brick wall. It keeps the person only; her version also keeps the table in front of him. One clip, one speaker, a tripod shot. See `img/backdrop.jpg`. |
 | H9 | The AI can plan the montage from the words and say what material it needs | **Promising** | Given only the numbered transcript (2.3 s, no thinking), the model proposed six beats and three requests for material. Two of its beats match hers closely: the title "G-Village" at 10.0-14.4 s (hers: about 11-14 s), and "a general view of the settlement, from above or from the street" behind the speaker at 14.6-17.6 s (hers: an aerial picture at 13.9-16.8 s). It missed her first insert at 2.6-5.4 s (the prompt told it to leave the opening alone) and added three beats she did not make (facades, a floor plan for "150 m²", a call-to-action title). Its requests were concrete and plausible: an overview of the settlement, facades of the single-storey houses, a plan of a 150 m² house (optional). One clip, one run. |
 
 ## What this changes in the plan
@@ -72,3 +72,11 @@ On this frame the words, the highlighted number and the title are there, and wha
 - Machine time for this 38 s video: about 32 s to transcribe, 2-3 s for the AI, 21-24 s to render (Docker, CPU only).
 
 Not there yet: her opening insert (the speaker cut out over renders of the houses), her closer framing on some phrases beyond the one zoom the AI chose, the added music or effects, and the finer points of her look (her picture fills the top of the frame edge to edge; her title has a stronger glow). Nobody but the author of this page has judged the result.
+
+## Backdrop and zoom
+
+Left: her opening insert. Middle: the engine's backdrop on the same words, with the stand-in picture. Right: the engine's zoom on a key phrase.
+
+![backdrop and zoom](img/backdrop.jpg)
+
+Her insert shows several renders in curved frames in the upper part and keeps the table; ours fills the frame with one picture behind the cut-out speaker. The mechanism is there; the layout of the insert is a style to add.

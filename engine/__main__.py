@@ -4,9 +4,12 @@
   render PROJECT              build the video from the project document
   fill PROJECT NEED FILE      give the project the material one of its requests asks for
   drop PROJECT FROM TO        cut the words FROM..TO (numbers) out of the video
+  beat PROJECT KIND FROM TO [FILE|TEXT]   add your own beat over the words FROM..TO: backdrop, cutaway (with a picture), title (with a text), zoom
+  unbeat PROJECT ID           remove a beat
   show PROJECT                what the project holds: the text, the beats and the open requests
+  serve [PORT]                the web page: watch the pipeline, edit the text, answer requests, render
 """
-import json, shutil, sys, time
+import json, sys, time
 from pathlib import Path
 from . import media, project, render, speech, suggest
 
@@ -16,12 +19,25 @@ ROOT = Path("/work/projects")
 def say(data): print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
-def new(video, name=None):
-    video = Path(video); folder = ROOT / (name or video.stem); took = {}
-    t = time.time(); facts = media.probe(video); took["probe"] = round(time.time() - t, 1)
-    t = time.time(); transcript = speech.transcribe(video); took["transcribe"] = round(time.time() - t, 1)
-    t = time.time(); ideas = suggest.suggest(transcript["words"]); took["suggest"] = round(time.time() - t, 1)
+def create(video, folder):
+    """A project from a raw take. Each step reports its progress, so the page can show it live."""
+    took = {}
+    def step(name, work):
+        project.progress(folder, name, "running"); started = time.time()
+        try: result = work()
+        except Exception as error: project.progress(folder, name, "failed", error=str(error)[-300:]); raise
+        took[name] = round(time.time() - started, 1); project.progress(folder, name, "done", seconds=took[name]); return result
+    for name in ("probe", "transcribe", "suggest", "render"): project.progress(folder, name, "waiting")
+    facts = step("probe", lambda: media.probe(video))
+    transcript = step("transcribe", lambda: speech.transcribe(video))
+    ideas = step("suggest", lambda: suggest.suggest(transcript["words"]))
     project.save(folder, project.new(video, facts, transcript, ideas))
+    return took
+
+
+def new(video, name=None):
+    video = Path(video); folder = ROOT / (name or video.stem)
+    took = create(video, folder)
     show(folder); say({"project": str(folder), "took_seconds": took})
 
 
@@ -37,26 +53,28 @@ def show(folder):
 
 
 def fill(folder, need_id, file):
-    folder = Path(folder); doc = project.load(folder); need = next((n for n in doc["needs"] if n["id"] == need_id), None)
-    if not need: sys.exit(f"no request {need_id}")
-    (folder / "assets").mkdir(exist_ok=True)
-    asset_id = f"a{len(doc['assets']) + 1}"; kept = folder / "assets" / f"{asset_id}{Path(file).suffix.lower()}"
-    shutil.copyfile(file, kept)
-    doc["assets"].append({"id": asset_id, "file": str(kept), "kind": need["kind"]}); need["status"] = "filled"; need["asset"] = asset_id
-    project.save(folder, doc); say({"filled": need["what"], "with": str(kept)})
+    say({"filled": project.fill(folder, need_id, file)["what"]})
+
+
+def beat(folder, kind, first, last, extra=None):
+    item = project.add_beat(folder, kind, first, last, file=None if kind in ("title", "zoom") else extra, text=extra if kind == "title" else None)
+    doc = project.load(folder); say({"added": item["id"], "kind": kind, "over": " ".join(w["text"] for w in doc["words"][item["from"]:item["to"] + 1])})
+
+
+def unbeat(folder, beat_id):
+    doc = project.load(folder); doc["beats"] = [b for b in doc["beats"] if b["id"] != beat_id]; project.save(folder, doc); say({"removed": beat_id})
 
 
 def drop(folder, first, last):
-    doc = project.load(folder); first, last = int(first), int(last); segments = []
-    for s in doc["edit"]["segments"]:
-        if last < s["from"] or first > s["to"]: segments.append(s); continue
-        if s["from"] < first: segments.append({**s, "to": first - 1})
-        if s["to"] > last: segments.append({**s, "from": last + 1})
-    doc["edit"]["segments"] = segments; project.save(folder, doc)
-    say({"dropped": " ".join(w["text"] for w in doc["words"][first:last + 1]), "kept": [[s["from"], s["to"]] for s in segments]})
+    say({"kept": [[s["from"], s["to"]] for s in project.drop(folder, int(first), int(last))]})
+
+
+def serve(port="8787"):
+    from . import server
+    server.run(int(port))
 
 
 if __name__ == "__main__":
-    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "show": show}
-    if len(sys.argv) < 3 or sys.argv[1] not in commands: sys.exit(__doc__)
+    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "serve": serve}
+    if len(sys.argv) < 2 or sys.argv[1] not in commands or (len(sys.argv) < 3 and sys.argv[1] != "serve"): sys.exit(__doc__)
     commands[sys.argv[1]](*sys.argv[2:])

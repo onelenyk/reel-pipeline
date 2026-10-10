@@ -27,7 +27,7 @@ const font = (size, weight = 800) => { ctx.font = `${weight} ${size}px ${FONT}`;
 
 const pictures = new Map();
 for (const beat of timeline.beats) {
-  if (beat.file && !pictures.has(beat.file)) pictures.set(beat.file, await loadImage(beat.file).catch(() => null));
+  if (beat.kind === "cutaway" && beat.file && !pictures.has(beat.file)) pictures.set(beat.file, await loadImage(beat.file).catch(() => null));
 }
 
 // ---------- pictures: a card in the upper part of the frame; the speaker stays visible below ----------
@@ -142,7 +142,8 @@ process.stdout.on("error", () => process.exit(0)); // ffmpeg has all it needs
 
 for (let frame = 0; frame < frames; frame++) {
   const t = frame / fps;
-  const pictureNow = timeline.beats.filter((b) => (b.kind === "cutaway" || b.kind === "backdrop") && t >= b.start - 0.05 && t <= b.end + 0.05);
+  // Backdrops are composited by ffmpeg behind the speaker; here only pictures that sit on top are drawn
+  const pictureNow = timeline.beats.filter((b) => b.kind === "cutaway" && t >= b.start - 0.05 && t <= b.end + 0.05);
   const titles = timeline.beats.filter((b) => b.kind === "title" && t >= b.start && t <= b.end);
   const line = timeline.lines.find((l) => t >= l.start - 0.06 && t < l.end);
   if (!pictureNow.length && !titles.length && !line) { await write(blank); continue; }

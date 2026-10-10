@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="uk">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reel</title>
+<style>
+  :root { --ink: #000; --panel: #0e0e0f; --chip: #1c1c1e; --chip2: #2c2c2e; --line: #242426; --fg: #f2f2f2; --muted: #aeaeb2; --subtle: #8e8e93; --brand: #ffd60a; --ok: #30d158; --bad: #ff453a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ink); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 17px; margin: 0 8px 0 0; }
+  h2 { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--subtle); margin: 0 0 8px; font-weight: 600; }
+  main { display: grid; gap: 20px; padding: 16px; max-width: 1200px; margin: 0 auto; }
+  @media (min-width: 900px) { main { grid-template-columns: 330px minmax(0, 1fr); align-items: start; } .left { position: sticky; top: 16px; } }
+  section { margin-bottom: 22px; }
+  button, .btn, select { font: inherit; font-weight: 600; font-size: 13px; color: var(--fg); background: var(--chip); border: 0; border-radius: 9px; height: 38px; padding: 0 14px; cursor: pointer; }
+  button:hover, .btn:hover { background: var(--chip2); }
+  button.primary { background: var(--brand); color: #000; }
+  button:disabled { opacity: .4; cursor: default; }
+  .seg { display: inline-flex; background: var(--chip); border-radius: 9px; padding: 3px; }
+  .seg button { height: 32px; background: none; color: var(--muted); }
+  .seg button.on { background: var(--chip2); color: var(--fg); }
+  video { width: 100%; aspect-ratio: 9 / 16; background: #111; border-radius: 12px; display: block; }
+  .empty { aspect-ratio: 9 / 16; display: grid; place-items: center; background: var(--panel); border-radius: 12px; color: var(--subtle); text-align: center; padding: 20px; }
+  .steps { list-style: none; margin: 0; padding: 0; }
+  .steps li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--chip2); flex: none; }
+  .running .dot { background: var(--brand); animation: pulse 1s infinite; } .done .dot { background: var(--ok); } .failed .dot { background: var(--bad); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .steps .note { margin-left: auto; color: var(--subtle); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+  .words { line-height: 2.1; font-size: 17px; }
+  .w { padding: 3px 4px; border-radius: 6px; cursor: pointer; }
+  .w:hover { background: var(--chip); }
+  .w.hot { color: var(--brand); font-weight: 700; }
+  .w.cut { color: var(--subtle); text-decoration: line-through; opacity: .55; }
+  .w.unsure { border-bottom: 2px dotted var(--bad); }
+  .w.picked { background: var(--bad); color: #fff; }
+  .card { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .card .what { flex: 1 1 220px; min-width: 0; }
+  .card small { display: block; color: var(--subtle); font-size: 12px; }
+  .card img { width: 64px; height: 44px; object-fit: cover; border-radius: 6px; }
+  .off { opacity: .45; }
+  .tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle); min-width: 78px; }
+  .hint { color: var(--subtle); font-size: 12px; margin: 6px 0 0; }
+  .error { background: rgba(255, 69, 58, .15); border-radius: 9px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+  input[type=file] { display: none; }
+</style>
+<header>
+  <h1>Reel</h1>
+  <select id="pick" aria-label="Відео"></select>
+  <label class="btn" style="display:inline-flex;align-items:center">Нове відео<input type="file" id="take" accept="video/*"></label>
+  <span id="top" class="hint" style="margin:0"></span>
+</header>
+<main>
+  <div class="left">
+    <section>
+      <div id="player"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="primary" id="render" style="flex:1">Зібрати відео</button>
+      </div>
+      <p class="hint" id="stale"></p>
+    </section>
+    <section><h2>Що відбувається</h2><ul class="steps" id="steps"></ul></section>
+  </div>
+  <div>
+    <div id="error"></div>
+    <section id="needsBox"><h2>Потрібно для цього відео</h2><div id="needs"></div></section>
+    <section>
+      <h2>Текст</h2>
+      <div class="seg" role="group" aria-label="Що робить дотик до слова">
+        <button data-mode="hot" class="on">Виділяти</button><button data-mode="cut">Вирізати</button>
+      </div>
+      <p class="hint" id="modeHint"></p>
+      <div class="words" id="words"></div>
+    </section>
+    <section><h2>Монтаж</h2><div id="beats"></div></section>
+    <section id="fixBox"><h2>Можливі помилки розпізнавання</h2><div id="fixes"></div></section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", suggest: "AI планує монтаж", render: "Збираю відео" };
+const KIND = { title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
+const NOTE = { preparing: "готуюсь", "building the video": "кодую" };
+let name = new URLSearchParams(location.search).get("p"), state = null, mode = "hot", from = null, shown = 0, edited = false;
+
+const api = async (path, options) => {
+  const response = await fetch(path, options); const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "помилка " + response.status);
+  return data;
+};
+const fail = (error) => { $("error").innerHTML = `<div class="error"></div>`; $("error").firstChild.textContent = String(error.message || error); };
+const act = async (path, options) => { try { $("error").innerHTML = ""; state = await api(path, options); edited = true; draw(); } catch (error) { fail(error); } };
+const edit = (change) => act(`/api/projects/${name}/edit`, { method: "POST", body: JSON.stringify(change) });
+const esc = (text) => String(text ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function draw() {
+  if (!state) return;
+  const busy = !!state.busy;
+  $("render").disabled = busy || !state.words;
+  $("render").textContent = busy ? "Працюю…" : "Зібрати відео";
+  $("top").textContent = state.source ? `${state.source.width}×${state.source.height}, ${state.source.seconds.toFixed(1)} с сирого → ${state.seconds.toFixed(1)} с у ролику` : "";
+  $("stale").textContent = edited && state.has_render && !busy ? "Є зміни, яких ще немає у відео. Натисніть «Зібрати відео»." : "";
+  if (state.has_render && shown !== state.render_version) {
+    shown = state.render_version; edited = false;
+    $("player").innerHTML = `<video controls playsinline src="/video/${name}/render.mp4?v=${shown}"></video>`;
+  } else if (!state.has_render) $("player").innerHTML = `<div class="empty">Відео ще не зібране</div>`;
+  $("steps").innerHTML = state.steps.map((s) => `<li class="${s.state}"><span class="dot"></span>${STEP[s.step] || s.step}<span class="note">${
+    s.state === "done" ? s.seconds + " с" : s.state === "failed" ? esc(s.error) : s.state === "running" ? esc(NOTE[s.note] || (s.note ? "вирізаю мовця з фону" : "триває")) + ` · ${Math.max(0, Math.round(Date.now() / 1000 - s.at))} с` : ""}</span></li>`).join("");
+  if (!state.words) { for (const id of ["needs", "words", "beats", "fixes"]) $(id).innerHTML = ""; return; }
+  const words = state.words, phrase = (b) => words.slice(b.from, b.to + 1).map((w) => w.text).join(" ");
+  $("words").innerHTML = words.map((w) => `<span class="w${w.hot ? " hot" : ""}${w.kept ? "" : " cut"}${w.unsure ? " unsure" : ""}${from === w.id ? " picked" : ""}" data-w="${w.id}">${esc(w.text)}</span>`).join(" ");
+  $("modeHint").textContent = mode === "hot" ? "Торкніться слова, щоб виділити його жовтим або зняти виділення."
+    : from === null ? "Торкніться першого слова шматка, який треба вирізати. Закреслене слово повертається одним дотиком." : "Тепер торкніться останнього слова цього шматка.";
+  $("needsBox").style.display = state.needs.length ? "" : "none";
+  $("needs").innerHTML = state.needs.map((n) => {
+    const file = n.asset && `/asset/${name}/${n.asset}.jpg`;
+    return `<div class="card${n.status === "skipped" ? " off" : ""}">${n.status === "filled" ? `<img src="${file}" alt="">` : ""}<div class="what">${esc(n.what)}<small>${n.status === "filled" ? "додано" : n.status === "skipped" ? "пропущено" : n.optional ? "необов'язково" : "чекає на матеріал"}</small></div>
+      <label class="btn" style="display:inline-flex;align-items:center">${n.status === "filled" ? "Замінити" : "Додати фото"}<input type="file" accept="image/*" data-need="${n.id}"></label>
+      ${n.status === "filled" ? "" : `<button data-skip="${n.id}">${n.status === "skipped" ? "Повернути" : "Пропустити"}</button>`}</div>`; }).join("");
+  $("beats").innerHTML = state.beats.map((b) => {
+    const need = b.need && state.needs.find((n) => n.id === b.need), waiting = need && need.status !== "filled";
+    return `<div class="card${b.accepted ? "" : " off"}"><span class="tag">${KIND[b.kind]}</span><div class="what">${b.text ? `«${esc(b.text)}» · ` : ""}${esc(phrase(b))}<small>${
+      waiting ? "чекає: " + esc(need.what) : esc(b.why || "")}${b.by === "user" ? " · додано вручну" : ""}</small></div><button data-beat="${b.id}">${b.accepted ? "Вимкнути" : "Увімкнути"}</button></div>`; }).join("") || `<p class="hint">Вставок немає.</p>`;
+  $("fixBox").style.display = state.corrections.length ? "" : "none";
+  $("fixes").innerHTML = state.corrections.map((c) => `<div class="card"><div class="what">${esc(words[c.word].text)} → <b>${esc(c.text)}</b><small>${c.accepted ? "прийнято" : "пропозиція AI, не застосована"}</small></div><button data-fix="${c.word}">${c.accepted ? "Скасувати" : "Прийняти"}</button></div>`).join("");
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  if (t.dataset.mode) { mode = t.dataset.mode; from = null; document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b === t)); draw(); }
+  else if (t.dataset.w !== undefined) {
+    const id = +t.dataset.w, word = state.words[id];
+    if (mode === "hot") edit({ emphasis: id });
+    else if (!word.kept) edit({ drop: [id, id], restore: true });
+    else if (from === null) { from = id; draw(); }
+    else { const range = [Math.min(from, id), Math.max(from, id)]; from = null; edit({ drop: range }); }
+  }
+  else if (t.dataset.beat) edit({ beat: t.dataset.beat });
+  else if (t.dataset.fix) edit({ correction: +t.dataset.fix });
+  else if (t.dataset.skip) edit({ skip: t.dataset.skip });
+  else if (t.id === "render") act(`/api/projects/${name}/render`, { method: "POST" });
+});
+document.addEventListener("change", async (e) => {
+  const input = e.target, file = input.files && input.files[0];
+  if (!file) return;
+  const safe = file.name.replace(/[^\w.-]/g, "_").slice(-50) || "file";
+  if (input.dataset.need) await act(`/api/projects/${name}/needs/${input.dataset.need}/${safe}`, { method: "POST", body: file });
+  else if (input.id === "take") {
+    try { $("top").textContent = "Вивантажую…"; const made = await api(`/api/new/${safe}`, { method: "POST", body: file }); location.search = "?p=" + made.project; } catch (error) { fail(error); }
+  }
+  input.value = "";
+});
+$("pick").addEventListener("change", (e) => { location.search = "?p=" + e.target.value; });
+
+async function tick() {
+  try {
+    const list = await api("/api/projects");
+    if (!name && list.length) name = list[0].name;
+    $("pick").innerHTML = list.map((p) => `<option value="${esc(p.name)}"${p.name === name ? " selected" : ""}>${esc(p.name)}</option>`).join("") || `<option>немає відео</option>`;
+    if (name) { const fresh = await api(`/api/projects/${name}`); const wasEdited = edited; state = fresh; edited = wasEdited; draw(); }
+  } catch (error) { /* the engine is restarting: keep the last picture */ }
+  setTimeout(tick, state && state.busy ? 1000 : 2500);
+}
+tick();
+</script>
+</html>

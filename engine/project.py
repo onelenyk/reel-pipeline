@@ -1,5 +1,5 @@
 """The project document: one JSON file that fully describes a video. Rendering is a pure function of it."""
-import json
+import json, shutil, time
 from pathlib import Path
 
 FORMAT = 1
@@ -72,10 +72,11 @@ def resolve(doc):
     for b in doc.get("beats", []):
         inside = [w for w in words[b["from"]:b["to"] + 1] if w["id"] in kept_ids]
         if not b.get("accepted") or not inside: continue  # the words it belongs to were cut
-        asset = assets.get(filled.get(b.get("need"))) if b.get("need") else None
+        asset = assets.get(b.get("asset")) or (assets.get(filled.get(b.get("need"))) if b.get("need") else None)
         if b["kind"] in ("cutaway", "backdrop") and not asset: continue  # waiting for material: the speaker stays
         start = at(inside[0]["start"])
-        beats.append({"kind": b["kind"], "start": start, "end": min(total, max(at(inside[-1]["end"]), start + MIN_BEAT[b["kind"]])), "text": b.get("text"), "file": asset["file"] if asset else None})
+        end = min(total, max(at(inside[-1]["end"]), start + MIN_BEAT[b["kind"]]))
+        beats.append({"id": b["id"], "kind": b["kind"], "start": start, "end": end, "source_start": inside[0]["start"], "text": b.get("text"), "file": asset["file"] if asset else None})
     # A title and a picture share the top of the frame: the title leaves as the picture arrives
     pictures = [b for b in beats if b["kind"] in ("cutaway", "backdrop")]
     for title in (b for b in beats if b["kind"] == "title"):
@@ -83,3 +84,55 @@ def resolve(doc):
             if title["start"] < picture["start"] < title["end"]: title["end"] = round(picture["start"] + 0.15, 3)
     beats = [b for b in beats if b["end"] - b["start"] >= 0.8]
     return {"spans": spans, "seconds": round(total, 3), "lines": lines, "beats": beats, "style": doc["style"], **doc["output"]}
+
+
+# ---------- changes to a project ----------
+def keep_asset(folder, doc, file, kind="photo", name=None):
+    """Copies material into the project and registers it."""
+    folder = Path(folder); (folder / "assets").mkdir(exist_ok=True)
+    asset_id = f"a{len(doc['assets']) + 1}"
+    kept = folder / "assets" / f"{asset_id}{Path(name or file).suffix.lower() or '.jpg'}"
+    shutil.copyfile(file, kept)
+    doc["assets"].append({"id": asset_id, "file": str(kept), "kind": kind})
+    return asset_id
+
+
+def fill(folder, need_id, file, name=None):
+    doc = load(folder); need = next((n for n in doc["needs"] if n["id"] == need_id), None)
+    if not need: raise KeyError(f"no request {need_id}")
+    need["asset"] = keep_asset(folder, doc, file, need["kind"], name); need["status"] = "filled"
+    save(folder, doc); return need
+
+
+def drop(folder, first, last, restore=False):
+    """Cuts the words first..last out of the video, or puts them back."""
+    doc = load(folder); count = len(doc["words"])
+    kept = [False] * count
+    for s in doc["edit"]["segments"]:
+        for i in range(s["from"], s["to"] + 1): kept[i] = True
+    for i in range(max(0, first), min(count - 1, last) + 1): kept[i] = restore
+    segments, start = [], None
+    for i, on in enumerate(kept + [False]):
+        if on and start is None: start = i
+        if not on and start is not None: segments.append({"source": "s1", "from": start, "to": i - 1}); start = None
+    doc["edit"]["segments"] = segments; save(folder, doc); return segments
+
+
+def add_beat(folder, kind, first, last, file=None, text=None, name=None):
+    doc = load(folder)
+    if kind not in ("backdrop", "cutaway", "title", "zoom"): raise ValueError("kind must be backdrop, cutaway, title or zoom")
+    item = {"id": f"b{max([int(b['id'][1:]) for b in doc['beats']] + [0]) + 1}", "kind": kind, "from": int(first), "to": int(last), "need": None,
+            "text": (text or "")[:40] or None, "why": None, "by": "user", "accepted": True}
+    if kind in ("backdrop", "cutaway"):
+        if not file: raise ValueError("a picture is needed")
+        item["asset"] = keep_asset(folder, doc, file, "photo", name)
+    doc["beats"].append(item); save(folder, doc); return item
+
+
+# ---------- progress, for anyone watching ----------
+def progress(folder, step, state, **facts):
+    """Records where the pipeline is: one line per step, rewritten as it moves from running to done or failed."""
+    path = Path(folder) / "status.json"
+    steps = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    steps = [s for s in steps if s["step"] != step] + [{"step": step, "state": state, "at": round(time.time(), 1), **facts}]
+    Path(folder).mkdir(parents=True, exist_ok=True); path.write_text(json.dumps(steps, ensure_ascii=False), encoding="utf-8")

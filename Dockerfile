@@ -7,6 +7,8 @@ RUN pip install --no-cache-dir faster-whisper==1.1.1 requests \
 RUN mkdir -p /opt/rnnoise && curl -fsSL -o /opt/rnnoise/std.rnnn https://raw.githubusercontent.com/GregorR/rnnoise-models/master/somnolent-hogwash-2018-09-01/sh.rnnn
 # The graphics renderer's native canvas, kept outside the mounted source tree
 RUN mkdir -p /opt/renderer && cd /opt/renderer && npm init -y >/dev/null && npm install --no-audit --no-fund @napi-rs/canvas@0.1.65 >/dev/null
-ENV NODE_PATH=/opt/renderer/node_modules PYTHONPATH=/work PYTHONUNBUFFERED=1
+# Person matting (cutting the speaker out of the background)
+RUN pip install --no-cache-dir torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cpu
+ENV TORCH_HOME=/work/models/torch NODE_PATH=/opt/renderer/node_modules PYTHONPATH=/work PYTHONUNBUFFERED=1
 WORKDIR /work
 ENTRYPOINT ["python", "-m", "engine"]
