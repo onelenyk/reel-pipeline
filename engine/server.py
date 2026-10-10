@@ -7,7 +7,7 @@ import json, re, tempfile, threading, traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
-from . import HOME, find, project, render, styles, suggest
+from . import HOME, find, project, render, speech, styles, suggest
 from .__main__ import ROOT, create
 
 PAGE = Path(__file__).resolve().parent / "page.html"
@@ -108,6 +108,7 @@ class Handler(BaseHTTPRequestHandler):
             names = sorted((p.name for p in ROOT.iterdir() if p.is_dir()), key=lambda n: -(ROOT / n).stat().st_mtime) if ROOT.exists() else []
             return self.send([{"name": n, "busy": busy.get(n), "has_render": (ROOT / n / "render.mp4").exists()} for n in names])
         if parts == ["api", "styles"]: return self.send(styles.listing())
+        if parts == ["api", "vocabulary"]: return self.send({"terms": speech.vocabulary()})
         if len(parts) == 3 and parts[:2] == ["api", "projects"]:
             return self.send(summary(parts[2])) if (ROOT / parts[2]).is_dir() else self.send({"error": "there is no such project"}, 404)
         if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "search":
@@ -125,8 +126,9 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 3 and parts[0] == "video": return self.file(ROOT / parts[1] / "render.mp4", "video/mp4")
         if len(parts) == 3 and parts[0] == "strip":
             folder = ROOT / parts[1]
-            if not (folder / "strip.jpg").exists() and (folder / "render.mp4").exists(): render.strip(folder)  # videos built before the timeline existed
-            return self.file(folder / "strip.jpg", "image/jpeg")
+            picture = folder / f"strip{render.STRIP}.jpg"
+            if (folder / "render.mp4").exists() and (not picture.exists() or picture.stat().st_mtime < (folder / "render.mp4").stat().st_mtime): render.strip(folder)  # built before the timeline existed
+            return self.file(picture, "image/jpeg")
         if len(parts) == 3 and parts[0] == "asset":
             kind = {".png": "image/png", ".webp": "image/webp"}.get(Path(parts[2]).suffix, "image/jpeg")
             return self.file(ROOT / parts[1] / "assets" / parts[2], kind)
@@ -146,6 +148,8 @@ class Handler(BaseHTTPRequestHandler):
                 INBOX.mkdir(parents=True, exist_ok=True); video = INBOX / f"{name}{suffix}"; tmp.replace(video)
                 background(name, "pipeline", lambda: (create(video, folder), render.render(folder)))
                 return self.send({"project": name})
+            if parts == ["api", "vocabulary"]:
+                terms = json.loads(self.body() or b"{}").get("terms"); return self.send({"terms": speech.set_vocabulary(terms if isinstance(terms, list) else [])})
             if parts[:2] == ["api", "styles"] and len(parts) == 4 and parts[3] in ("default", "delete"):
                 if parts[3] == "delete": styles.remove(parts[2])
                 else: styles.set_default("" if parts[2] == "built-in" else parts[2])
@@ -182,7 +186,8 @@ class Handler(BaseHTTPRequestHandler):
                 styles.save(str(wanted), doc["style"]); project.set_style(folder, {"name": str(wanted)})
             elif action == "edit":
                 change = json.loads(self.body() or b"{}"); doc = project.load(folder)
-                if "text" in change: project.set_text(folder, int(change["text"]["word"]), str(change["text"].get("to", "")))
+                if "text" in change:
+                    project.set_text(folder, int(change["text"]["word"]), str(change["text"].get("to", ""))); speech.learn(str(change["text"].get("to", "")))
                 elif "assign" in change: project.assign(folder, change["assign"]["need"], change["assign"].get("asset"))
                 elif "style" in change: project.set_style(folder, change["style"])
                 elif "apply_style" in change: project.set_style(folder, styles.get(change["apply_style"]))

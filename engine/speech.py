@@ -1,10 +1,42 @@
 """Speech to words with timings."""
 import os, re, tempfile, threading
 from pathlib import Path
+from . import HOME
 from .media import ffmpeg
 
 MODELS = Path("/work/models")
 FOREIGN = re.compile("[ыэъёЫЭЪЁ]")
+
+
+# Names and terms the recogniser should expect. Without them it writes "котерне містечко" and "перед покій";
+# with them, the same audio comes out right, at no cost in time. The author adds their own on the page.
+VOCABULARY = HOME / "vocabulary.txt"
+SEED = ["котеджне містечко", "передпокій", "кухня-вітальня", "гардеробна", "санвузол", "пральня", "тераса", "навіс", "бомбосховище", "панорамні вікна"]
+
+
+def vocabulary():
+    if not VOCABULARY.exists(): return list(SEED)
+    return [line.strip() for line in VOCABULARY.read_text(encoding="utf-8").splitlines() if line.strip()][:60]
+
+
+def primer():
+    """The vocabulary as an opening the recogniser continues from. Written as sentences: a bare list of words makes it drop full stops."""
+    terms = vocabulary()
+    return ("Розповідь про нерухомість. У ній звучать слова: " + ", ".join(terms)[:600] + ". Далі сама розповідь.") if terms else None
+
+
+def set_vocabulary(terms):
+    clean, seen = [], set()
+    for term in terms:
+        term = re.sub(r"\s+", " ", str(term)).strip(" ,.;")[:40]
+        if term and term.lower() not in seen: seen.add(term.lower()); clean.append(term)
+    VOCABULARY.parent.mkdir(parents=True, exist_ok=True); VOCABULARY.write_text("\n".join(clean[:60]) + "\n", encoding="utf-8"); return clean[:60]
+
+
+def learn(term):
+    """A corrected word that looks like a name (a capital letter or Latin letters) is remembered for the next videos."""
+    term = term.strip(" ,.;!?«»\"")
+    if len(term) >= 3 and (term[0].isupper() or re.search("[A-Za-z]", term)) and term.lower() not in {t.lower() for t in vocabulary()}: set_vocabulary(vocabulary() + [term])
 
 
 _models, _loading = {}, threading.Lock()
@@ -33,7 +65,7 @@ def transcribe(video, model_name="large-v3-turbo"):
     with tempfile.TemporaryDirectory() as tmp:
         wav = Path(tmp) / "speech.wav"
         ffmpeg("-i", str(video), "-vn", "-ac", "1", "-ar", "16000", str(wav))
-        segments, meta = recogniser(model_name).transcribe(str(wav), word_timestamps=True, vad_filter=True, beam_size=5)
+        segments, meta = recogniser(model_name).transcribe(str(wav), word_timestamps=True, vad_filter=True, beam_size=5, initial_prompt=primer())
         raw = [w for s in segments for w in (s.words or [])]
         voiced_until = last_voiced(wav)
     # The recogniser invents a polite sign-off in the silence after the speech ("Дякую за перегляд!"), squeezed

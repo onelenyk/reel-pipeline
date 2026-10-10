@@ -20,14 +20,14 @@ def render(folder):
     project.progress(folder, "render", "done", seconds=result["took_seconds"]); return result
 
 
-STRIP = 24  # frames in the strip under the timeline
+STRIP = 48  # frames in the strip under the timeline
 
 
 def strip(folder):
     """One wide picture with evenly spaced frames of the finished video."""
     folder = Path(folder); video = folder / "render.mp4"; seconds = media.probe(video)["seconds"]
     media.ffmpeg("-i", str(video), "-vf", f"fps={STRIP}/{max(seconds, 1):.3f},scale=54:96,tile={STRIP}x1", "-frames:v", "1", "-q:v", "5", str(folder / "strip.part.jpg"))
-    (folder / "strip.part.jpg").replace(folder / "strip.jpg")
+    (folder / "strip.part.jpg").replace(folder / f"strip{STRIP}.jpg")
 
 
 def build(folder):

@@ -37,13 +37,29 @@
   .bar { height: 5px; border-radius: 3px; background: var(--chip2); overflow: hidden; margin-top: 8px; } .bar i { display: block; height: 100%; background: var(--brand); transition: width .4s; }
   .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
   .steps li.running { font-weight: 700; } .steps li.waiting { color: var(--subtle); }
-  #line { position: relative; height: 68px; border-radius: 10px; background: #111 center / 100% 100% no-repeat; cursor: pointer; touch-action: none; user-select: none; overflow: hidden; }
-  #lineHead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.5); pointer-events: none; }
-  #lineSel { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--brand) 30%, transparent); border: 2px solid var(--brand); border-radius: 8px; display: none; pointer-events: none; }
-  #lanes { position: relative; height: 16px; margin-top: 5px; }
-  #lanes i { position: absolute; height: 6px; border-radius: 3px; top: 0; min-width: 3px; } #lanes i.cutmark { top: 9px; width: 3px; height: 7px; background: var(--bad); }
+  #lineWrap { overflow-x: auto; overflow-y: hidden; border-radius: 10px; background: #0c0c0e; padding: 0 0 4px; }
+  #lineInner { position: relative; min-width: 100%; touch-action: pan-x; user-select: none; }
+  #ruler { position: relative; height: 20px; font-size: 10px; color: var(--subtle); font-variant-numeric: tabular-nums; }
+  #ruler i { position: absolute; bottom: 0; width: 1px; height: 5px; background: var(--chip2); } #ruler i.big { height: 9px; background: var(--subtle); }
+  #ruler span { position: absolute; top: 1px; transform: translateX(3px); white-space: nowrap; }
+  #line { position: relative; height: 76px; background: #111 center / 100% 100% no-repeat; cursor: crosshair; touch-action: none; overflow: hidden; }
+  #lineHead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.5); pointer-events: none; z-index: 3; }
+  #lineHover { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.55); pointer-events: none; display: none; z-index: 2; }
+  #lineTip { position: absolute; top: 4px; padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,.82); color: #fff; font-size: 11px; white-space: nowrap; pointer-events: none; display: none; z-index: 4; font-variant-numeric: tabular-nums; }
+  .shade { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.55); pointer-events: none; display: none; }
+  #lineSel { position: absolute; top: 0; bottom: 0; border: 2px solid var(--brand); border-left-width: 0; border-right-width: 0; background: color-mix(in srgb, var(--brand) 14%, transparent); display: none; pointer-events: none; z-index: 2; }
+  #lineSel .grip { position: absolute; top: -2px; bottom: -2px; width: 12px; background: var(--brand); display: grid; place-items: center; } #lineSel .grip::after { content: ""; width: 2px; height: 22px; border-radius: 1px; background: rgba(0,0,0,.55); }
+  #lineSel .grip.a { left: -12px; border-radius: 7px 0 0 7px; } #lineSel .grip.b { right: -12px; border-radius: 0 7px 7px 0; }
+  #lineSel .edge { position: absolute; bottom: 3px; padding: 1px 5px; border-radius: 5px; background: var(--brand); color: #000; font-size: 10px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  #lineSel .edge.a { left: 3px; } #lineSel .edge.b { right: 3px; } #lineSel .len { position: absolute; top: 3px; left: 50%; transform: translateX(-50%); padding: 1px 6px; border-radius: 5px; background: rgba(0,0,0,.8); color: var(--brand); font-size: 11px; font-weight: 700; white-space: nowrap; }
+  #lanes { position: relative; height: 18px; margin-top: 4px; }
+  #lanes i { position: absolute; height: 8px; border-radius: 3px; top: 0; min-width: 3px; cursor: pointer; } #lanes i.cutmark { top: 10px; width: 3px; height: 8px; background: var(--bad); }
   #lanes .full { background: #0a84ff; } #lanes .cutaway { background: #30d158; } #lanes .backdrop { background: #bf5af2; } #lanes .title { background: var(--brand); } #lanes .zoom { background: #ff9f0a; }
-  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--subtle); margin: 2px 0 0; } .legend b { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  #wordLane { position: relative; height: 18px; font-size: 10px; color: var(--muted); overflow: hidden; }
+  #wordLane span { position: absolute; top: 0; height: 18px; line-height: 18px; overflow: hidden; white-space: nowrap; border-left: 1px solid var(--chip2); padding-left: 2px; box-sizing: border-box; cursor: pointer; } #wordLane span.hot { color: var(--brand); }
+  .lineTools { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; } .lineTools button { padding: 4px 10px; font-size: 13px; } .lineTools .where { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--subtle); margin: 6px 0 0; } .legend b { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  textarea { width: 100%; min-height: 96px; background: var(--chip); color: inherit; border: 0; border-radius: 10px; padding: 10px; font: inherit; font-size: 14px; resize: vertical; box-sizing: border-box; }
   #ask input[type=text] { flex: 1; min-width: 0; }
   .jump { background: none; padding: 2px 8px; font-size: 13px; color: var(--muted); flex: none; }
   .steps li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
@@ -107,10 +123,15 @@
     <div id="error"></div>
     <section id="lineBox">
       <h2>Стрічка</h2>
-      <div id="line"><div id="lineSel"></div><div id="lineHead"></div></div>
-      <div id="lanes"></div>
+      <div class="lineTools"><button id="zoomOut" aria-label="Віддалити стрічку">−</button><button id="zoomIn" aria-label="Наблизити стрічку">+</button><button id="zoomFit">Уся</button><span class="where" id="lineWhere"></span></div>
+      <div id="lineWrap"><div id="lineInner">
+        <div id="ruler"></div>
+        <div id="line"><div class="shade" id="shadeA"></div><div class="shade" id="shadeB"></div><div id="lineSel"><span class="grip a"></span><span class="grip b"></span><span class="edge a"></span><span class="edge b"></span><span class="len"></span></div><div id="lineHover"></div><div id="lineTip"></div><div id="lineHead"></div></div>
+        <div id="lanes"></div>
+        <div id="wordLane"></div>
+      </div></div>
       <p class="legend"><span><b style="background:#0a84ff"></b>на весь кадр</span><span><b style="background:#30d158"></b>картинка зверху</span><span><b style="background:#bf5af2"></b>за мовцем</span><span><b style="background:var(--brand)"></b>титр</span><span><b style="background:#ff9f0a"></b>наближення</span><span><b style="background:var(--bad)"></b>склейка</span></p>
-      <p class="hint">Торкніться стрічки, щоб перейти в це місце. Протягніть по ній, щоб позначити відрізок і сказати AI, що в ньому змінити.</p>
+      <p class="hint">Дотик переходить у це місце, протягування позначає відрізок (він прилипає до меж слів, краї можна тягнути). + і − наближають стрічку до окремих слів. Стрілки ← → пересувають на секунду, Esc знімає виділення.</p>
       <div id="ask"></div>
     </section>
     <section id="needsBox"><h2>Потрібно для цього відео</h2><div id="needs"></div></section>
@@ -127,6 +148,11 @@
     <section id="cutBox"><h2>AI прибрав із відео</h2><div id="cuts"></div></section>
     <section id="fixBox"><h2>Пропозиції AI щодо слів</h2><div id="fixes"></div></section>
     <section><h2>Стиль</h2><div id="style"></div></section>
+    <section><h2>Словник</h2>
+      <p class="hint">Назви об'єктів, сіл і терміни, по одному в рядку. Розпізнавач чекає на ці слова в нових відео, тому пише їх правильно. Виправлені вами назви додаються сюди самі.</p>
+      <textarea id="vocab" aria-label="Словник"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button id="vocabSave">Зберегти словник</button><span class="hint" id="vocabSaid" style="margin:0"></span></div>
+    </section>
   </div>
 </main>
 <div id="picker"></div>
@@ -178,7 +204,11 @@ function follow() {
       if (el) { el.classList.add("now"); if (!v.paused) { const box = el.getBoundingClientRect(); if (box.top < 80 || box.bottom > innerHeight - 40) el.scrollIntoView({ block: "center", behavior: "smooth" }); } }
       lit = now;
     }
-    if (v.duration) $("lineHead").style.left = (100 * v.currentTime / v.duration).toFixed(2) + "%";
+    if (v.duration) {
+      $("lineHead").style.left = (100 * v.currentTime / v.duration).toFixed(3) + "%";
+      if (!drag) $("lineWhere").textContent = sel ? `${exact(sel[0])} – ${exact(sel[1])}` : `${exact(v.currentTime)} / ${mmss(v.duration)}`;
+      if (zoom > 1 && !v.paused && !drag) { const wrap = $("lineWrap"), x = (v.currentTime / v.duration) * $("lineInner").offsetWidth; if (x < wrap.scrollLeft + 20 || x > wrap.scrollLeft + wrap.clientWidth - 40) wrap.scrollLeft = x - 60; }
+    }
   }
   requestAnimationFrame(follow);
 }
@@ -189,27 +219,54 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault(); v.paused ? v.play().catch(() => {}) : v.pause();
 });
 
-// ---------- the timeline: frames of the video, what happens when, and a stretch marked for a request to the AI ----------
-let sel = null, drag = null, said = "";
-const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+// ---------- the timeline: frames of the video with a ruler, what happens when, the words, and a stretch marked for a request to the AI ----------
+let sel = null, drag = null, said = "", zoom = 1;
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`, exact = (s) => `${mmss(s)}.${Math.floor((s % 1) * 10)}`;
 const lineTime = (e) => { const box = $("line").getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - box.left) / box.width)) * (state.seconds || 0); };
-const selWords = () => { if (!sel) return null; const ids = state.words.filter((w) => w.at != null && w.at >= sel[0] - 0.15 && w.at <= sel[1]).map((w) => w.id); return ids.length ? [ids[0], ids[ids.length - 1]] : null; };
+const spoken = () => state.words.filter((w) => w.at != null);
+const wordAt = (t) => { let found = null; for (const w of spoken()) { if (w.at <= t + 0.02) found = w; else break; } return found; };
+const selWords = () => { if (!sel) return null; const ids = spoken().filter((w) => w.at >= sel[0] - 0.02 && w.at < sel[1] - 0.02).map((w) => w.id); return ids.length ? [ids[0], ids[ids.length - 1]] : null; };
+// A marked stretch begins where a word begins and ends where the next word begins
+function snap(range) {
+  const list = spoken(), total = state.seconds; if (!list.length) return range;
+  const starts = list.map((w) => w.at).concat(total), near = (t) => starts.reduce((best, x) => Math.abs(x - t) < Math.abs(best - t) ? x : best, starts[0]);
+  let a = near(range[0]), b = near(range[1]);
+  if (b <= a) b = starts.find((x) => x > a + 0.01) ?? total;
+  return [a, b];
+}
+function drawSel() {
+  const total = state.seconds || 1, pct = (t) => (100 * t / total).toFixed(3) + "%";
+  for (const id of ["lineSel", "shadeA", "shadeB"]) $(id).style.display = sel ? "block" : "none";
+  if (!sel) return;
+  $("lineSel").style.left = pct(sel[0]); $("lineSel").style.width = pct(sel[1] - sel[0]);
+  $("shadeA").style.left = "0"; $("shadeA").style.width = pct(sel[0]); $("shadeB").style.left = pct(sel[1]); $("shadeB").style.right = "0";
+  const [a, b, len] = ["edge.a", "edge.b", "len"].map((c) => $("lineSel").querySelector("." + c));
+  a.textContent = exact(sel[0]); b.textContent = exact(sel[1]); len.textContent = (sel[1] - sel[0]).toFixed(1) + " с";
+  const narrow = $("lineSel").getBoundingClientRect().width < 110; a.style.display = b.style.display = narrow ? "none" : "";
+}
 function drawLine() {
   $("lineBox").style.display = state.has_render && state.words ? "" : "none";
   if (!state.has_render || !state.words) return;
+  $("lineInner").style.width = zoom * 100 + "%";
   $("line").style.backgroundImage = `url(/strip/${name}/strip.jpg?v=${state.render_version})`;
-  const total = state.seconds || 1, words = state.words, pct = (t) => (100 * t / total).toFixed(2) + "%";
+  const total = state.seconds || 1, words = state.words, pct = (t) => (100 * t / total).toFixed(3) + "%", width = $("lineInner").getBoundingClientRect().width || 800;
+  // The ruler: a label about every 70 pixels, on a round number of seconds
+  const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find((x) => (x / total) * width >= 70) || 300; let ruler = "";
+  for (let t = 0; t <= total; t += step / (step >= 2 ? 5 : 2)) { const big = Math.abs(t / step - Math.round(t / step)) < 1e-6; ruler += `<i class="${big ? "big" : ""}" style="left:${pct(t)}"></i>` + (big && t < total - step * 0.4 ? `<span style="left:${pct(t)}">${step < 1 ? exact(t) : mmss(t)}</span>` : ""); }
+  $("ruler").innerHTML = ruler;
   const after = (id) => (words.slice(id + 1).find((w) => w.at != null) || { at: total }).at, start = (id) => (words.slice(id).find((w) => w.at != null) || {}).at;
-  $("lanes").innerHTML = state.beats.filter((b) => state.kinds[b.id]).map((b) => { const a = start(b.from); return a == null ? "" : `<i class="${b.kind}" style="left:${pct(a)};width:${pct(Math.max(0.4, after(b.to) - a))}" title="${KIND[b.kind]}"></i>`; }).join("")
-    + words.map((w, i) => !w.kept && (i === 0 || words[i - 1].kept) && start(i) != null && i > 0 ? `<i class="cutmark" style="left:${pct(start(i))}" title="склейка"></i>` : "").join("");
-  $("lineSel").style.display = sel ? "block" : "none";
-  if (sel) { $("lineSel").style.left = pct(sel[0]); $("lineSel").style.width = pct(sel[1] - sel[0]); }
+  $("lanes").innerHTML = state.beats.filter((b) => state.kinds[b.id]).map((b) => { const a = start(b.from); return a == null ? "" : `<i class="${b.kind}" data-seek="${a}" style="left:${pct(a)};width:${pct(Math.max(0.4, after(b.to) - a))}" title="${KIND[b.kind]}${b.text ? ": " + esc(b.text) : ""} · ${mmss(a)}"></i>`; }).join("")
+    + words.map((w, i) => !w.kept && i > 0 && words[i - 1].kept && start(i) != null ? `<i class="cutmark" data-seek="${Math.max(0, start(i) - 1.2)}" style="left:${pct(start(i))}" title="склейка · ${mmss(start(i))}"></i>` : "").join("");
+  // The words themselves, where there is room for them
+  const list = spoken();
+  $("wordLane").innerHTML = list.map((w, i) => { const end = i + 1 < list.length ? list[i + 1].at : total, px = ((end - w.at) / total) * width; return px < 26 ? "" : `<span class="${w.hot ? "hot" : ""}" data-seek="${w.at}" style="left:${pct(w.at)};width:${pct(end - w.at)}">${esc(w.text)}</span>`; }).join("");
+  drawSel();
 }
 function drawAsk() {
   const picked = selWords();
   if (!sel || !picked) { $("ask").innerHTML = said ? `<div class="card"><div class="what">AI: ${esc(said)}</div></div>` : ""; return; }
   const text = state.words.slice(picked[0], picked[1] + 1).filter((w) => w.kept).map((w) => w.text).join(" ");
-  $("ask").innerHTML = `<div class="card"><div class="what">${mmss(sel[0])}–${mmss(sel[1])} · ${esc(text.length > 140 ? text.slice(0, 140) + "…" : text)}</div><button class="jump" data-seek="${sel[0]}">▶ послухати</button></div>
+  $("ask").innerHTML = `<div class="card"><div class="what">${exact(sel[0])} – ${exact(sel[1])} · ${state.words.slice(picked[0], picked[1] + 1).filter((w) => w.kept).length} сл. · ${esc(text.length > 140 ? text.slice(0, 140) + "…" : text)}</div><button class="jump" data-seek="${sel[0]}">▶ послухати</button></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input type="text" id="askText" maxlength="300" placeholder="Що тут змінити? Наприклад: слова повторюються, лиши один раз" aria-label="Прохання до AI">
     <button class="primary" id="askGo">Попросити AI</button><button id="askCut">Вирізати</button><button class="quiet" id="askNo">Скасувати</button></div>`;
 }
@@ -222,14 +279,41 @@ async function askAi() {
     state = fresh; said = fresh.said + (fresh.changed ? " Щоб побачити це у відео, натисніть «Зібрати відео»." : ""); if (fresh.changed) edited = true; sel = null; draw(true); drawAsk();
   } catch (error) { fail(error); $("askGo").disabled = false; $("askGo").textContent = "Попросити AI"; }
 }
-$("line").addEventListener("pointerdown", (e) => { if (!state || !state.seconds) return; drag = { x: e.clientX, t: lineTime(e) }; $("line").setPointerCapture(e.pointerId); });
-$("line").addEventListener("pointermove", (e) => { if (!drag || Math.abs(e.clientX - drag.x) < 6) return; const t = lineTime(e); sel = [Math.min(drag.t, t), Math.max(drag.t, t)]; drag.moved = true; drawLine(); });
-$("line").addEventListener("pointerup", (e) => {
+function setZoom(next, around) {
+  const wrap = $("lineWrap"), share = around ?? (video() && video().duration ? video().currentTime / video().duration : 0.5);
+  zoom = Math.max(1, Math.min(32, next)); drawLine();
+  wrap.scrollLeft = Math.max(0, share * $("lineInner").getBoundingClientRect().width - wrap.clientWidth / 2);
+}
+$("line").addEventListener("pointerdown", (e) => {
+  if (!state || !state.seconds) return;
+  const t = lineTime(e), box = $("line").getBoundingClientRect(), px = (x) => (x / state.seconds) * box.width + box.left;
+  // Close to an edge of the marked stretch, the pointer moves that edge; anywhere else it starts over
+  const edge = sel ? (Math.abs(e.clientX - px(sel[0])) < 14 ? 0 : Math.abs(e.clientX - px(sel[1])) < 14 ? 1 : null) : null;
+  drag = { x: e.clientX, t, edge, fixed: edge === null ? null : sel[1 - edge], moved: edge !== null }; $("line").setPointerCapture(e.pointerId);
+});
+$("line").addEventListener("pointermove", (e) => {
+  const t = lineTime(e);
+  if (!drag) { const w = wordAt(t), box = $("line").getBoundingClientRect(), x = e.clientX - box.left; $("lineHover").style.display = $("lineTip").style.display = "block"; $("lineHover").style.left = x + "px";
+    $("lineTip").textContent = exact(t) + (w ? " · " + w.text : ""); $("lineTip").style.left = Math.min(Math.max(4, x + 8), box.width - $("lineTip").offsetWidth - 4) + "px"; return; }
+  if (drag.edge === null && Math.abs(e.clientX - drag.x) < 6) return;
+  const other = drag.edge === null ? drag.t : drag.fixed; sel = [Math.min(other, t), Math.max(other, t)]; drag.moved = true; drawSel();
+  $("lineWhere").textContent = `${exact(sel[0])} – ${exact(sel[1])}`;
+});
+$("line").addEventListener("pointerleave", () => { $("lineHover").style.display = $("lineTip").style.display = "none"; });
+$("line").addEventListener("pointerup", () => {
   if (!drag) return;
-  if (drag.moved) { said = ""; drawAsk(); const input = $("askText"); if (input) input.focus(); } else { sel = null; seek(drag.t, false); drawLine(); drawAsk(); }
+  if (drag.moved && sel) { sel = snap(sel); said = ""; drawSel(); drawAsk(); const input = $("askText"); if (input && drag.edge === null) input.focus(); }
+  else { sel = null; seek(drag.t, false); drawSel(); drawAsk(); }
   drag = null;
 });
-document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id === "askText") askAi(); });
+$("lineWrap").addEventListener("wheel", (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); const box = $("line").getBoundingClientRect(); setZoom(zoom * (e.deltaY < 0 ? 1.25 : 0.8), (e.clientX - box.left) / box.width); }, { passive: false });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.id === "askText") return askAi();
+  if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  const v = video();
+  if (e.key === "Escape" && sel) { sel = null; said = ""; drawSel(); drawAsk(); }
+  else if (v && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); seek(v.currentTime + (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 5 : 1), false); }
+});
 
 function drawSteps() {
   const busy = !!state.busy;
@@ -376,7 +460,9 @@ document.addEventListener("click", async (e) => {
   else if (d.fix) edit({ correction: +d.fix });
   else if (d.seek !== undefined) seek(+d.seek);
   else if (t.id === "askGo") askAi();
-  else if (t.id === "askNo") { sel = null; said = ""; drawLine(); drawAsk(); }
+  else if (t.id === "zoomIn") setZoom(zoom * 2); else if (t.id === "zoomOut") setZoom(zoom / 2); else if (t.id === "zoomFit") setZoom(1);
+  else if (t.id === "vocabSave") { try { const saved = await api("/api/vocabulary", { method: "POST", body: JSON.stringify({ terms: $("vocab").value.split("\n") }) }); $("vocab").value = saved.terms.join("\n"); $("vocabSaid").textContent = `Збережено: ${saved.terms.length}. Діє для нових відео.`; } catch (error) { fail(error); } }
+  else if (t.id === "askNo") { sel = null; said = ""; drawSel(); drawAsk(); }
   else if (t.id === "askCut") { const picked = selWords(); sel = null; said = ""; drawAsk(); if (picked) edit({ drop: picked }); }
   else if (d.cut) edit({ drop: d.cut.split("-").map(Number), restore: !!d.back });
   else if (d.skip) edit({ skip: d.skip });
@@ -424,6 +510,9 @@ document.addEventListener("change", async (e) => {
   input.value = "";
 });
 $("pick").addEventListener("change", (e) => { location.search = "?p=" + e.target.value; });
+
+api("/api/vocabulary").then((v) => { $("vocab").value = v.terms.join("\n"); }).catch(() => {});
+window.addEventListener("resize", () => { if (state) drawLine(); });
 
 async function tick() {
   try {
