@@ -1,6 +1,6 @@
 # Lab for the pipeline experiments: everything heavy lives in this image, nothing is installed on the Mac.
 FROM python:3.11-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl ca-certificates fonts-noto-core fonts-inter && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl git ca-certificates fonts-noto-core fonts-inter && rm -rf /var/lib/apt/lists/*
 # Speech recognition (CPU), a neural speech denoiser, person segmentation
 RUN pip install --no-cache-dir faster-whisper==1.1.1 requests \
  && pip install --no-cache-dir torch==2.1.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu \

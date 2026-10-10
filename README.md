@@ -13,7 +13,7 @@ implementation plan that follows from it.
 Everything heavy runs in a container; nothing is installed on the host.
 
     docker build -t reel-lab lab
-    ./lab/run.sh probe /in/IMG_7821.MOV      # source videos are read from ~/Downloads, read-only
+    ./lab/run.sh probe /in/IMG_7821.MOV      # source videos are read from media/, read-only
     ./lab/run.sh all /in/IMG_7821.MOV        # the whole chain; the result lands in out/
 
 The AI key goes in `.env` (see `.env.example`); `.env`, media and model weights are never committed.

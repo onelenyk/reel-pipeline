@@ -1,6 +1,7 @@
 # Secrets, media and model weights never go into the repository
 .env
 out/
+media/
 models/
 *.MOV
 *.mov

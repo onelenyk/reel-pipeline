@@ -14,12 +14,12 @@ import json, os, re, subprocess, sys, time
 from pathlib import Path
 
 OUT = Path("/work/out"); OUT.mkdir(exist_ok=True)
-LEVEL = "loudnorm=I=-16:TP=-1.5:LRA=7"  # the loudness social platforms expect
+LEVEL = "loudnorm=I=-14.5:TP=-1.5:LRA=7,aresample=48000"  # one pass lands about 1.5 LU under its target; social platforms expect about -16..-14
 
 
 def run(cmd, capture=False):
     started = time.time()
-    result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE if capture else subprocess.DEVNULL, stderr=subprocess.PIPE)
+    result = subprocess.run(cmd, text=True, errors="replace", stdout=subprocess.PIPE if capture else subprocess.DEVNULL, stderr=subprocess.PIPE)
     if result.returncode:
         sys.exit(f"FAILED: {' '.join(cmd[:6])} ...\n{result.stderr[-1500:]}")
     return (result.stdout or "") + (result.stderr or "") if capture else round(time.time() - started, 1)
@@ -126,7 +126,6 @@ def stabilize(args):
     # Left: source. Right: stabilised (smoothed over about a second, zoomed just enough to hide the moving borders)
     apply = ffmpeg(*cut, "-i", str(src), "-filter_complex", f"[0:v]{tone},split[a][b];[b]vidstabtransform=input={trf}:smoothing=30:optzoom=1:interpol=bicubic,unsharp=5:5:0.6:3:3:0.3[s];[a][s]hstack,scale=1920:-2",
                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-an", str(dst))
-    moves = [abs(float(x)) for x in re.findall(r"LM \S+ \S+ \S+ (\S+) \S+", trf.read_text(errors="ignore"))[:2000]] if trf.exists() else []
     return show({"file": dst.name, "detect_seconds": detect, "apply_seconds": apply, "excerpt_seconds": float(cut[3])})
 
 
@@ -155,7 +154,12 @@ def transcribe(args):
 def words_of(src):
     path = OUT / f"{Path(src).stem}.words.json"
     if not path.exists(): sys.exit("run `transcribe` first")
-    return [w for r in json.loads(path.read_text(encoding="utf-8")) for w in r["words"]]
+    words = []
+    for w in (w for r in json.loads(path.read_text(encoding="utf-8")) for w in r["words"]):
+        # The recogniser splits "G-Village" into "G" and "-Village": put such pieces back together
+        if words and (w["w"].startswith("-") or words[-1]["w"].endswith("-")): words[-1] = {**words[-1], "w": words[-1]["w"] + w["w"], "e": w["e"], "p": min(words[-1]["p"], w["p"])}
+        else: words.append(dict(w))
+    return words
 
 
 # ---------- H4 ----------
@@ -222,20 +226,20 @@ def subs(args, spans=None, source=None, name="subs"):
     for w in words:
         current.append(w)
         text = " ".join(x["w"] for x in current)
-        if len(current) >= 3 or len(text) >= 18 or re.search(r"[.!?]$", w["w"]): chunks.append(current); current = []
+        if len(current) >= 3 or len(text) >= 16 or re.search(r"[.!?]$", w["w"]): chunks.append(current); current = []
     if current: chunks.append(current)
     stamp = lambda t: f"{int(t // 3600)}:{int(t % 3600 // 60):02}:{t % 60:05.2f}"
     width, height = (1080, 1920) if abs(meta["rotation"] or 0) == 90 or "1080x1920" in meta["video"] else (1920, 1080)
     lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {width}", f"PlayResY: {height}", "WrapStyle: 0", "", "[V4+ Styles]",
              "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV",
-             f"Style: Sub,Inter,{round(height * 0.036)},&H00FFFFFF,&H50000000,&H78000000,-1,1,2,3,2,90,90,{round(height * 0.25)}",
-             f"Style: Title,Inter,{round(height * 0.04)},&H000AD6FF,&H50000000,&H78000000,-1,1,2,3,8,60,60,{round(height * 0.07)}", "", "[Events]",
+             f"Style: Sub,Inter,{round(height * 0.05)},&H00FFFFFF,&H50000000,&H78000000,-1,1,2,3,2,110,110,{round(height * 0.24)}",
+             f"Style: Title,Inter,{round(height * 0.052)},&H000AD6FF,&H50000000,&H78000000,-1,1,2,3,8,60,60,{round(height * 0.09)}", "", "[Events]",
              "Format: Layer, Start, End, Style, Text"]
     for index, chunk in enumerate(chunks):
         end = min(chunk[-1]["e"] + 0.25, chunks[index + 1][0]["s"]) if index + 1 < len(chunks) else chunk[-1]["e"] + 0.4
         text = " ".join(("{\\c&H0AD6FF&}" + w["w"] + "{\\c&HFFFFFF&}") if w.get("hot") else w["w"] for w in chunk)
         lines.append(f"Dialogue: 0,{stamp(chunk[0]['s'])},{stamp(max(end, chunk[0]['s'] + 0.3))},Sub,{{\\fad(80,60)}}{text}")
-    if plan.get("title"): lines.append(f"Dialogue: 1,{stamp(0.4)},{stamp(4.5)},Title,{{\\fad(250,250)}}{plan['title']}")
+    if plan.get("title"): lines.append(f"Dialogue: 1,{stamp(0.4)},{stamp(max(5, words[-1]['e'] if words else 5))},Title,{{\\fad(250,250)\\blur3}}{plan['title']}")
     ass = OUT / f"{src.stem}.ass"; ass.write_text("\n".join(lines), encoding="utf-8")
     if source is None:
         dst = OUT / f"{src.stem}.{name}.mp4"
@@ -256,7 +260,7 @@ def everything(args):
     expr = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in spans)
     dst = OUT / f"{src.stem}.final.mp4"
     t = time.time()
-    ffmpeg("-i", str(src), "-vf", f"{tone_filter(meta)},select='{expr}',setpts=N/FRAME_RATE/TB,ass={ass}",
+    ffmpeg("-i", str(src), "-vf", f"{tone_filter(meta)},select='{expr}',setpts=N/FRAME_RATE/TB,fps={round(meta['fps'] or 30)},ass={ass}",
            "-af", f"aselect='{expr}',asetpts=N/SR/TB,highpass=f=80,arnndn=m=/opt/rnnoise/std.rnnn,{LEVEL}",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(dst))
     mark("render", t)
