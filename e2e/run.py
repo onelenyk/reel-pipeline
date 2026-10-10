@@ -148,7 +148,7 @@ def clear_line(plan):
 def finished(name, state, source_seconds, level=-15):
     """The checks every finished video must pass. Returns the file and its timeline."""
     done = states(state)
-    if not check("every step finished", all(done.get(s) == "done" for s in ("probe", "transcribe", "suggest", "render")), done): return None, None
+    if not check("every step finished", all(done.get(s) == "done" for s in ("probe", "transcribe", "review", "suggest", "render")), done): return None, None
     video = fetch(name); f = facts(video); line_up = timeline(name)
     check("portrait 1080x1920, 30 frames a second, ordinary colour", (f["codec"], f["width"], f["height"], f["rate"], f["pixels"]) == ("h264", W, H, "30/1", "yuv420p"), f)
     check("sound is AAC at 48 kHz", (f["sound"], f["sound_rate"]) == ("aac", 48000), f)

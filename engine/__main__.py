@@ -27,11 +27,12 @@ def create(video, folder):
         try: result = work()
         except Exception as error: project.progress(folder, name, "failed", error=str(error)[-300:]); raise
         took[name] = round(time.time() - started, 1); project.progress(folder, name, "done", seconds=took[name]); return result
-    for name in ("probe", "transcribe", "suggest", "render"): project.progress(folder, name, "waiting")
+    for name in ("probe", "transcribe", "review", "suggest", "render"): project.progress(folder, name, "waiting")
     facts = step("probe", lambda: usable(video))
     transcript = step("transcribe", lambda: heard(speech.transcribe(video)))
-    ideas = step("suggest", lambda: suggest.suggest(transcript["words"]))
-    project.save(folder, project.new(video, facts, transcript, ideas, styles.default()))
+    cuts = step("review", lambda: suggest.review(transcript["words"]))
+    ideas = step("suggest", lambda: suggest.suggest(transcript["words"], {i for c in cuts for i in range(c["from"], c["to"] + 1)}))
+    project.save(folder, project.new(video, facts, transcript, ideas, styles.default(), cuts))
     return took
 
 

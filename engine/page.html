@@ -96,6 +96,7 @@
       <div id="beatMenu"></div>
     </section>
     <section><h2>Монтаж</h2><div id="beats"></div></section>
+    <section id="cutBox"><h2>AI прибрав із відео</h2><div id="cuts"></div></section>
     <section id="fixBox"><h2>Пропозиції AI щодо слів</h2><div id="fixes"></div></section>
     <section><h2>Стиль</h2><div id="style"></div></section>
   </div>
@@ -103,7 +104,7 @@
 <div id="picker"></div>
 <script>
 const $ = (id) => document.getElementById(id);
-const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", suggest: "AI планує монтаж", render: "Збираю відео" };
+const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", render: "Збираю відео" };
 const KIND = { title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
 const NOTE = { preparing: "готуюсь", "building the video": "кодую" };
 const HINT = {
@@ -147,7 +148,7 @@ function draw(force) {
   if (!state) return;
   drawSteps();
   // Everything below is rebuilt only when the project itself changed, so typing in a field is never interrupted
-  const signature = JSON.stringify([state.words, state.needs, state.beats, state.corrections, state.style, state.assets, styles, state.seconds]);
+  const signature = JSON.stringify([state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds]);
   if (!force && signature === drawn) return;
   if (editing !== null && !force) return;
   drawn = signature;
@@ -177,6 +178,13 @@ function draw(force) {
       ${pictured && !need ? `<button data-pick-beat="${b.id}">${file ? "Змінити фото" : "Обрати фото"}</button>` : ""}
       <button data-beat="${b.id}">${b.accepted ? "Вимкнути" : "Увімкнути"}</button><button class="quiet" data-remove="${b.id}" aria-label="Видалити вставку">Видалити</button></div>`; }).join("") || `<p class="hint">Вставок немає. У розділі «Текст» оберіть «Вставка» і позначте слова.</p>`;
 
+  // What the review took out: each piece can be put back, and taken out again
+  const WHY = { retake: "повтор", aside: "не для глядача", rude: "лайка" }, cuts = state.cuts || [];
+  $("cutBox").style.display = cuts.length ? "" : "none";
+  $("cuts").innerHTML = cuts.map((c) => {
+    const piece = words.slice(c.from, c.to + 1), out = piece.every((w) => !w.kept), text = piece.map((w) => w.text).join(" ");
+    return `<div class="card"><div class="what">${esc(text.length > 110 ? text.slice(0, 110) + "…" : text)}<small>${WHY[c.why] || ""}${c.note ? ": " + esc(c.note) : ""} · ${out ? "вирізано" : "повернуто"}</small></div><button data-cut="${c.from}-${c.to}" data-back="${out ? 1 : ""}">${out ? "Повернути" : "Вирізати"}</button></div>`;
+  }).join("");
   const offers = state.corrections.filter((c) => c.by === "ai");
   $("fixBox").style.display = offers.length ? "" : "none";
   $("fixes").innerHTML = offers.map((c) => `<div class="card"><div class="what">${esc(words[c.word].heard)} → <b>${esc(c.text)}</b><small>${c.accepted ? "прийнято" : "не застосовано"}</small></div><button data-fix="${c.word}">${c.accepted ? "Скасувати" : "Прийняти"}</button></div>`).join("");
@@ -249,6 +257,7 @@ document.addEventListener("click", async (e) => {
   else if (d.beat) edit({ beat: d.beat });
   else if (d.remove) edit({ remove_beat: d.remove });
   else if (d.fix) edit({ correction: +d.fix });
+  else if (d.cut) edit({ drop: d.cut.split("-").map(Number), restore: !!d.back });
   else if (d.skip) edit({ skip: d.skip });
   else if (d.clear) edit({ assign: { need: d.clear, asset: null } });
   else if (d.pickNeed) { const need = state.needs.find((n) => n.id === d.pickNeed); picker = { target: { need: need.id }, title: need.what }; drawPicker(); }

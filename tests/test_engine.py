@@ -24,6 +24,24 @@ class Case(unittest.TestCase):
     def spoken(self): return [w["text"] for line in self.timeline()["lines"] for w in line["words"]]
 
 
+class Review(unittest.TestCase):
+    def test_cuts_are_applied_and_can_be_seen(self):
+        cuts = suggest.clean_cuts({"cuts": [{"from": 2, "to": 3, "why": "retake", "note": "повтор"}, {"from": 9, "to": 4}, {"from": 1, "to": 99}, "x"]}, 8)
+        self.assertEqual([(c["from"], c["to"], c["why"]) for c in cuts], [(2, 3, "retake")])
+        facts = {"seconds": 8.0, "width": 1080, "height": 1920, "fps": 30, "hdr": False, "has_audio": True}
+        doc = project.new("take.mov", facts, {"language": "uk", "words": words(*"a b c d e f g h".split())}, suggest.clean({}, 8), cuts=cuts)
+        self.assertEqual([(s["from"], s["to"]) for s in doc["edit"]["segments"]], [(0, 1), (4, 7)])
+        self.assertEqual(doc["cuts"][0]["note"], "повтор")
+
+    def test_a_title_must_be_made_of_spoken_words(self):
+        said = words("будинку", "в", "Джівілич,", "який")
+        self.assertFalse(suggest.spoken("Живіличі", said)); self.assertTrue(suggest.spoken("джівілич", said))
+        self.assertTrue(suggest.spoken("G-Village", words("воно", "G-Village,", "яке")))
+
+    def test_a_review_that_would_cut_nearly_everything_is_ignored(self):
+        self.assertEqual(suggest.clean_cuts({"cuts": [{"from": 0, "to": 6, "why": "aside"}]}, 8), [])
+
+
 class Text(Case):
     def test_own_correction_is_used_and_ai_one_is_not(self):
         self.assertIn("містечко", self.spoken())  # the AI's "селище" is only an offer

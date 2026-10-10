@@ -3,7 +3,7 @@
 Everything it returns is a suggestion. Emphasis and beats are accepted by default (they are easy to see and undo);
 changes to words are never applied until a person accepts them, because the model guesses names it cannot know.
 """
-import json, os
+import json, os, re
 import requests
 
 PROMPT = """Ти монтажер коротких вертикальних відео про нерухомість. Нижче розшифровка одного дубля, де людина говорить у камеру; слова пронумеровані.
@@ -19,25 +19,74 @@ beats, щоб відео не було статичним:
 - backdrop: мовця вирізано з фону, за ним картинка; cutaway: картинка у верхній частині кадру, мовець лишається видимим; title: напис у кадрі; zoom: крупніший план для наголосу.
 - разом не більше 6 beats; між ними лишай час, де в кадрі просто мовець.
 - вставка починається на слові, де про це заговорили, і охоплює 6-12 слів (2-4 секунди мовлення); не більше однієї вставки одночасно.
-- title: лише один, з назвою об'єкта (до 14 символів), на тих словах, де назву вимовляють, і ще 6-8 слів після.
+- title: лише один, з назвою об'єкта (до 14 символів), на тих словах, де назву вимовляють, і ще 6-8 слів після. Текст титру бери зі слів дослівно; якщо назва звучить дивно або схожа на недочуту, не вгадуй її і титр не роби.
 - zoom на 1-2 ключових фразах, по 5-8 слів.
 needs: проси лише матеріал, який справді є в автора (фото об'єкта, вид згори, план, логотип), конкретно; не більше 5.
 
 """
 
 
+REVIEW = """Ти редактор відео про нерухомість. Нижче розшифровка одного дубля; слова пронумеровані. Людина говорить у камеру, не зупиняючи запис:
+коли збивається, вона починає фразу або цілий шматок заново; іноді каже щось не для глядача. Знайди все, що не має потрапити в готове відео.
+Поверни один JSON: {"cuts": [{"from": номер_слова, "to": номер_слова, "why": "retake" | "aside" | "rude", "note": "коротко, що це"}]}
+
+- retake: невдала спроба, яку далі сказано заново. Вирізай ПЕРШУ спробу цілком, від її початку до слова перед початком вдалого повтору; лишається остання повна версія.
+  Якщо заново сказано кілька речень поспіль, вирізай увесь перший варіант. Обірване речення без продовження теж сюди.
+- aside: слова не для глядача: коментарі про власну обмовку, пошук слова вголос, звертання до того, хто знімає, питання "я погано сказав?".
+- rude: лайка.
+- Після вирізання мова має лишатися зв'язною: межі вирізу ставай на межах фраз.
+- Не вирізай те, що просто незграбно сказано, і не скорочуй зміст. Якщо сумніваєшся, не вирізай. Якщо вирізати нічого, поверни {"cuts": []}.
+
+"""
+
+
+def ask(prompt, think=False):
+    """One question to the model, answered as JSON. Thinking costs seconds; it is for the questions where a quick answer is often wrong."""
+    body = {"model": "deepseek-flash", "thinking": {"type": "enabled" if think else "disabled"}, "response_format": {"type": "json_object"}, "max_tokens": 32000 if think else 8000,
+            "messages": [{"role": "user", "content": prompt}]}
+    if not think: body["temperature"] = 0.3
+    response = requests.post("https://api.deepseek.com/chat/completions", timeout=300, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"}, json=body)
+    response.raise_for_status()
+    return json.loads(response.json()["choices"][0]["message"]["content"])
+
+
+def review(words):
+    """What should not reach the viewer: failed attempts that were said again, remarks not meant for the viewer, swearing."""
+    if not enabled() or not words: return []
+    return clean_cuts(ask(REVIEW + " ".join(f"[{i}]{w['text']}" for i, w in enumerate(words)), think=True), len(words))
+
+
+def clean_cuts(raw, count):
+    cuts = []
+    for c in raw.get("cuts", [])[:40] if isinstance(raw, dict) and isinstance(raw.get("cuts"), list) else []:
+        if not isinstance(c, dict): continue
+        first, last = c.get("from"), c.get("to")
+        if not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < count for i in (first, last)) or last < first: continue
+        note = c.get("note").strip()[:120] if isinstance(c.get("note"), str) and c.get("note").strip() else None
+        cuts.append({"id": f"c{len(cuts) + 1}", "from": first, "to": last, "why": c.get("why") if c.get("why") in ("retake", "aside", "rude") else "retake", "note": note, "by": "ai"})
+    # Never the whole take: if the review would leave almost nothing, it has misunderstood
+    gone = {i for c in cuts for i in range(c["from"], c["to"] + 1)}
+    return cuts if len(gone) <= 0.7 * count else []
+
+
 def enabled():
     return bool(os.environ.get("DEEPSEEK_API_KEY")) and os.environ.get("REEL_AI", "on") != "off"
 
 
-def suggest(words):
+def suggest(words, skip=()):
+    """The montage plan for the words that stay; the words in `skip` were cut by the review and are not shown to the model."""
     if not enabled() or not words: return clean({}, len(words))  # no key or switched off: the video is made without suggestions
-    numbered = " ".join(f"[{i}]{w['text']}" for i, w in enumerate(words))
-    response = requests.post("https://api.deepseek.com/chat/completions", timeout=180, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"},
-                             json={"model": "deepseek-flash", "thinking": {"type": "disabled"}, "response_format": {"type": "json_object"}, "temperature": 0.3,
-                                   "messages": [{"role": "user", "content": PROMPT + numbered}]})
-    response.raise_for_status()
-    return clean(json.loads(response.json()["choices"][0]["message"]["content"]), len(words))
+    skip = set(skip)
+    numbered = " ".join(f"[{i}]{w['text']}" for i, w in enumerate(words) if i not in skip)
+    ideas = clean(ask(PROMPT + numbered), len(words))
+    ideas["beats"] = [b for b in ideas["beats"] if not any(i in skip for i in range(b["from"], b["to"] + 1)) and (b["kind"] != "title" or spoken(b["text"], words[b["from"]:b["to"] + 1]))]
+    return ideas
+
+
+def spoken(title, words):
+    """A title must be made of what was actually said: the model likes to 'repair' a misheard name into a place that does not exist."""
+    letters = lambda text: re.sub(r"[\W_]+", "", text.lower())
+    return bool(letters(title)) and letters(title) in letters(" ".join(w["text"] for w in words))
 
 
 def clean(raw, count):

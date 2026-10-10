@@ -26,15 +26,26 @@ def clean_style(raw):
     return out
 
 
-def new(source_file, facts, transcript, suggestions, style=None):
-    words = transcript["words"]
+def segments_of(kept):
+    """Runs of kept words as segments."""
+    segments, start = [], None
+    for i, on in enumerate(list(kept) + [False]):
+        if on and start is None: start = i
+        if not on and start is not None: segments.append({"source": "s1", "from": start, "to": i - 1}); start = None
+    return segments
+
+
+def new(source_file, facts, transcript, suggestions, style=None, cuts=()):
+    words = transcript["words"]; gone = {i for c in cuts for i in range(c["from"], c["to"] + 1)}
     return {
         "format": FORMAT,
         "sources": [{"id": "s1", "file": str(source_file), **facts}],
         "language": transcript["language"],
         "words": [{"id": i, "source": "s1", **w} for i, w in enumerate(words)],
         # The cut, in words: one segment keeps everything from one word to another, inclusive
-        "edit": {"segments": [{"source": "s1", "from": 0, "to": len(words) - 1}] if words else []},
+        "edit": {"segments": segments_of(i not in gone for i in range(len(words)))},
+        # What the review took out and why; each is undone by putting its words back
+        "cuts": list(cuts),
         **suggestions,
         "assets": [],
         "style": clean_style(style),
@@ -55,7 +66,7 @@ def load(folder):
     doc = json.loads((Path(folder) / "project.json").read_text(encoding="utf-8"))
     if doc.get("format") != FORMAT: raise ValueError(f"project format {doc.get('format')} is not supported")
     doc["style"] = clean_style(doc.get("style"))  # also upgrades projects made before styles existed
-    for key in ("emphasis", "corrections", "beats", "needs", "assets"): doc.setdefault(key, [])
+    for key in ("emphasis", "corrections", "beats", "needs", "assets", "cuts"): doc.setdefault(key, [])
     return doc
 
 
@@ -178,10 +189,7 @@ def drop(folder, first, last, restore=False):
     for s in doc["edit"]["segments"]:
         for i in range(s["from"], s["to"] + 1): kept[i] = True
     for i in range(max(0, first), min(count - 1, last) + 1): kept[i] = restore
-    segments, start = [], None
-    for i, on in enumerate(kept + [False]):
-        if on and start is None: start = i
-        if not on and start is not None: segments.append({"source": "s1", "from": start, "to": i - 1}); start = None
+    segments = segments_of(kept)
     doc["edit"]["segments"] = segments; save(folder, doc); return segments
 
 

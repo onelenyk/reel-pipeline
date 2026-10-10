@@ -44,7 +44,7 @@ def transcribe(video, model_name="large-v3-turbo"):
         text = w.word.strip()
         if not text: continue
         # The recogniser splits "G-Village" into "G" and "-Village": put such pieces back together
-        if words and (text.startswith("-") or words[-1]["text"].endswith("-")):
+        if words and (text.startswith("-") or words[-1]["text"].endswith("-") or (re.match(r"[.,]\d", text) and words[-1]["text"][-1:].isdigit())):
             words[-1] = {**words[-1], "text": words[-1]["text"] + text, "end": round(w.end, 2), "confidence": round(min(words[-1]["confidence"], w.probability), 2)}
         else:
             words.append({"text": text, "start": round(w.start, 2), "end": round(w.end, 2), "confidence": round(w.probability, 2)})
