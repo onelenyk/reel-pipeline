@@ -22,6 +22,7 @@ Everything runs in a container; nothing is installed on the host. Raw takes go i
     ./reel serve                                 # the web page: http://127.0.0.1:8787
     ./reel plans-setup                           # once: fetch the plan reader (CubiCasa5k, non-commercial licence)
     ./reel rooms media/kit/plan.jpg              # find the rooms of a floor plan; a picture to look at lands in out/
+    ./reel decorate projects/g-village           # ask the AI for overlays: numbers counting up, stickers, lists
     ./reel mark projects/g-village               # find the plans' rooms and the moments each room is spoken of
     ./reel run lab/plans/score.py plans/cubicasa 20   # any script from lab/ or tools/, in the container
 
@@ -33,6 +34,7 @@ The web page (in Ukrainian) shows the pipeline step by step as it runs and plays
 - **set the style** (font: a dozen families with Cyrillic or any Google font by name, fetched once and kept in `fonts/`; capitals; accent colour, subtitle size and place, word-by-word or all at once, title glow, picture layout, loudness), **save it under a name**, apply it to another video, or make it the default for new ones;
 - **light up rooms on a floor plan**: the plan is read and each room gets a guessed name to correct once; the AI lists the moments a room is spoken of and each takes its room by name (see `docs/plans.md`);
 - **see a change at once**: after any change the paused player shows that moment as it would be built (one frame, drawn in half a second), so the video is built only when everything looks right;
+- **liven the video**: the AI lays numbers that count up, stickers and lists over the speaker on the words they belong to (each checked against what was said); switch them off, remove them, or ask for others;
 - upload a new take, and render.
 
 It listens on this machine only. `./reel test` runs the engine's tests (no video or network needed).
@@ -69,7 +71,7 @@ Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output
 
 ## Three kinds of check
 
-- `./reel test` after any change to `engine/`: 35 tests, under a second.
-- `./reel page player|timeline|ask|rooms|zones|draw-zone|reshape-zone|peek|font [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
+- `./reel test` after any change to `engine/`: 37 tests, under a second.
+- `./reel page player|timeline|ask|rooms|zones|draw-zone|reshape-zone|peek|font|overlays [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
 - `./reel e2e` before trusting the whole: about eight minutes.
 

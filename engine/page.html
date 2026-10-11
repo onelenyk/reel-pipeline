@@ -201,6 +201,8 @@
     <div class="tab" data-tab="montage">
     <section id="needsBox"><h2>Потрібно для цього відео</h2><div id="needs"></div></section>
     <section><h2>Вставки</h2><div id="beats"></div></section>
+    <section><h2>Накладки</h2><p class="hint" style="margin:0 0 10px">Числа, що набігають, наліпки й списки поверх мовця: з'являються на слові, про яке йдеться.</p><div id="overlays"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button id="decorate">Придумати накладки заново (AI)</button></div></section>
     </div>
     <div class="tab" data-tab="plan">
     <section id="planBox"><h2>Кімнати на плані</h2><div id="plans"></div></section>
@@ -218,7 +220,7 @@
 <div id="picker"></div>
 <script>
 const $ = (id) => document.getElementById(id);
-const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", render: "Збираю відео" };
+const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", decorate: "AI додає накладки", render: "Збираю відео" };
 const KIND = { full: "Картинка на весь кадр", title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
 const NOTE = { strip: "готую стрічку кадрів", preparing: "готуюсь", "building the video": "кодую" };
 const HINT = {
@@ -424,7 +426,7 @@ function drawSteps() {
   const number = running ? state.steps.filter((s) => order.indexOf(s.step) <= order.indexOf(running.step)).length : 0;
   $("status").innerHTML = `<div class="status ${kind}"><span class="spin"></span><div style="flex:1;min-width:0"><div class="big">${
     kind === "running" ? (running ? `Крок ${number} з ${total}: ${STEP[running.step] || running.step}` : "Починаю…") : kind === "failed" ? `Зупинилось: ${STEP[failed.step] || failed.step}` : kind === "done" ? "Відео готове" : "Очікую відео"}</div><div class="sub">${
-    kind === "running" ? esc(running && running.note ? NOTE[running.note] || "вирізаю мовця з фону" : state.busy === "rooms" ? "шукаю кімнати на плані й у тексті" : state.busy === "render" ? "перезбираю з вашими змінами" : "обробка нового відео") : kind === "failed" ? esc(failed.error) : kind === "done" ? (edited ? "є зміни, яких ще немає у відео" : "усі кроки пройдені") : ""}</div>${
+    kind === "running" ? esc(running && running.note ? NOTE[running.note] || "вирізаю мовця з фону" : state.busy === "decorate" ? "AI придумує накладки" : state.busy === "rooms" ? "шукаю кімнати на плані й у тексті" : state.busy === "render" ? "перезбираю з вашими змінами" : "обробка нового відео") : kind === "failed" ? esc(failed.error) : kind === "done" ? (edited ? "є зміни, яких ще немає у відео" : "усі кроки пройдені") : ""}</div>${
     kind === "running" && total > 1 ? `<div class="bar"><i style="width:${Math.round(100 * (done + 0.5) / total)}%"></i></div>` : ""}</div>${
     kind === "running" && running ? `<span class="clock">${clock(Math.max(0, Date.now() / 1000 - running.at))}</span>` : ""}</div>`;
   document.title = kind === "running" ? `⏳ ${running ? STEP[running.step] : "Працюю"} · Reel` : kind === "failed" ? "⚠ Помилка · Reel" : "Reel";
@@ -445,7 +447,7 @@ function draw(force) {
   if (!state) return;
   drawSteps(); drawTabs();
   // Everything below is rebuilt only when the project itself changed, so typing in a field is never interrupted
-  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.busy, marked, more, sketch && sketch.asset, reshape && reshape.room]);
+  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.overlays, state.busy, marked, more, sketch && sketch.asset, reshape && reshape.room]);
   if (!force && signature === drawn) return;
   if (editing !== null && !force) return;
   drawn = signature; lit = null; drawLine();
@@ -486,6 +488,14 @@ function draw(force) {
     return `<div class="card"><div class="what">${esc(text.length > 110 ? text.slice(0, 110) + "…" : text)}<small>${WHY[c.why] || ""}${c.note ? ": " + esc(c.note) : ""} · ${out ? "вирізано" : "повернуто"}</small></div>${(() => { const before = words.slice(0, c.from).reverse().find((w) => w.at != null), at = out ? (before ? Math.max(0, before.at - 1.2) : 0) : when(c.from, c.to); return at != null ? `<button class="jump" data-seek="${at}" aria-label="Послухати це місце">▶ ${out ? "стик" : "послухати"}</button>` : ""; })()}<button data-cut="${c.from}-${c.to}" data-back="${out ? 1 : ""}">${out ? "Повернути" : "Вирізати"}</button></div>`;
   }).join("");
   drawPlans(); drawTabs(); loadFonts();
+  const KINDS = { number: "Число", sticker: "Наліпка", list: "Список" }, live = new Set(state.shown_overlays || []);
+  $("decorate").disabled = !!state.busy; $("decorate").textContent = state.busy === "decorate" ? "AI думає…" : "Придумати накладки заново (AI)";
+  $("overlays").innerHTML = (state.overlays || []).slice().sort((a, b) => a.from - b.from).map((o) => {
+    const said = words.slice(o.from, o.to + 1).filter((w) => w.at != null), at = said.length ? said[0].at : null;
+    const what = o.kind === "number" ? `${esc(o.value)} ${esc(o.unit || "")}${o.caption ? " · " + esc(o.caption) : ""}` : o.kind === "list" ? `${esc(o.title || "")}: ${o.items.map((i) => esc(i.text)).join(", ")}` : `${esc(o.icon || "")} ${esc(o.text)}`;
+    return `<div class="card${o.accepted ? "" : " off"}"><span class="tag">${KINDS[o.kind]}</span><div class="what">${what}<small>${o.accepted ? (live.has(o.id) ? "на словах: " + esc(said.map((w) => w.text).join(" ").slice(0, 50)) : "не показується: у цей час кадр зайнятий іншим") : "вимкнено"}</small></div>
+      ${at != null ? `<button class="jump" data-seek="${at + 0.9}">▶ ${mmss(at)}</button>` : ""}<button data-overlay="${o.id}" data-on="${o.accepted ? 0 : 1}">${o.accepted ? "Вимкнути" : "Увімкнути"}</button><button class="quiet" data-overlay-remove="${o.id}">Видалити</button></div>`;
+  }).join("") || `<p class="hint">Накладок немає.</p>`;
   const offers = state.corrections.filter((c) => c.by === "ai");
   $("fixBox").style.display = offers.length ? "" : "none";
   $("fixes").innerHTML = offers.map((c) => `<div class="card"><div class="what">${esc(words[c.word].heard)} → <b>${esc(c.text)}</b><small>${c.accepted ? "прийнято" : "не застосовано"}</small></div><button data-fix="${c.word}">${c.accepted ? "Скасувати" : "Прийняти"}</button></div>`).join("");
@@ -500,7 +510,7 @@ function draw(force) {
     <div class="row"><span>Ритм кадру</span>${seg("rhythm", [[true, "Міняти крупність"], [false, "Один план"]])}</div>
     <div class="row"><span>Слова</span>${seg("karaoke", [[true, "Загоряються по черзі"], [false, "Усі одразу"]])}</div>
     <div class="row"><span>Титр</span>${seg("title_glow", [[true, "Зі світінням"], [false, "Без світіння"]])}</div>
-    <div class="row"><span>Картинка зверху</span>${seg("picture", [["card", "Картка"], ["edge", "На всю ширину"]])}</div>
+    <div class="row"><span>Картинка зверху</span>${seg("picture", [["card", "Картка"], ["edge", "На всю ширину"], ["polaroid", "Полароїд"], ["circle", "Коло"], ["mix", "По черзі"]])}</div>
     <div class="row"><span>Гучність</span><input type="range" id="level" min="-24" max="-10" step="1" value="${st.level}"><span id="levelText" style="width:auto">${st.level} LUFS</span></div>
     <div class="row"><span>Зберегти</span><input type="text" id="styleName" placeholder="Назва стилю" maxlength="40" value="${esc(st.name)}" style="flex:1 1 160px"><button id="styleSave">Зберегти стиль</button></div>
     ${styles.length ? styles.map((s) => `<div class="card"><span class="sw" style="background:${s.accent};flex:none"></span><div class="what">${esc(s.name)}<small>${s.default ? "типовий для нових відео" : ""}</small></div>
@@ -673,6 +683,9 @@ document.addEventListener("change", async (e) => {
 });
 document.addEventListener("focusin", (e) => { const input = e.target.closest && e.target.closest("input[data-zone]"); document.querySelectorAll(".plan polygon.hot").forEach((x) => x.classList.remove("hot")); if (input) { const shape = document.querySelector(`polygon[data-room="${input.dataset.zone}"][data-plan="${input.dataset.plan}"]`); if (shape) shape.classList.add("hot"); } });
 document.addEventListener("click", async (e) => {
+  if (e.target.id === "decorate") { await act(`/api/projects/${name}/decorate`, { method: "POST" }); return; }
+  if (e.target.closest("[data-overlay]")) { const b = e.target.closest("[data-overlay]"); await edit({ overlay: { id: b.dataset.overlay, accepted: b.dataset.on === "1" } }); return; }
+  if (e.target.closest("[data-overlay-remove]")) { await edit({ overlay: { id: e.target.closest("[data-overlay-remove]").dataset.overlayRemove, remove: true } }); return; }
   if (e.target.id === "fontSet") { const wanted = $("fontOther").value.trim(); if (wanted) await edit({ style: { font: wanted } }); return; }
   if (e.target.closest("#peek")) { $("peek").classList.remove("on"); return; }
   if (e.target.closest("[data-reshape]")) {

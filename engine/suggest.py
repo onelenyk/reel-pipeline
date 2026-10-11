@@ -196,6 +196,71 @@ def moments(words, spans):
     return sorted(found, key=lambda m: m["from"])
 
 
+DECORATE = """Ти режисер коротких вертикальних відео про нерухомість. Нижче розшифровка; слова пронумеровані. Мовець у кадрі, внизу йдуть субтитри.
+Твоє завдання: оживити відео накладками, які з'являються рівно на тих словах, де про це мовиться, і підсилюють сказане, а не повторюють субтитри.
+Поверни один JSON: {"overlays": [...]}. Види накладок:
+
+- {"kind": "number", "from": N, "to": N, "value": "154", "unit": "м²", "caption": "площа будинку"}
+  Велике число, що набігає. Для цифр, які продають: площа, кількість будинків, сотки, висота стелі, відстань, ціна. value бери зі слів дослівно.
+- {"kind": "sticker", "from": N, "to": N, "text": "Бомбосховище", "icon": "🛡️"}
+  Наліпка з коротким підписом (1-3 слова, до 22 знаків) і одним емодзі. Для переваг і особливостей: «Біля лісу» 🌲, «Закрита територія» 🔒, «Панорамні вікна» 🪟.
+  Підпис складай лише з того, що мовець сказав у цьому місці; не вигадуй фактів.
+- {"kind": "list", "from": N, "to": N, "title": "У будинку", "items": [{"at": N, "text": "Гардеробна"}, {"at": N, "text": "Пральня"}]}
+  Список, пункти якого з'являються по черзі, коли мовець їх називає (2-4 пункти, кожен 1-2 слова). Лише там, де мовець справді перелічує.
+
+Правила:
+- приблизно {count} накладок на все відео (не більше), розподілених рівномірно від початку до кінця; між сусідніми щонайменше 8 слів.
+- from - слово, на якому накладка з'являється (саме там, де звучить число чи ключове слово), to - останнє слово думки (3-10 слів далі).
+- не став накладки на слова з номерами: {busy} - там кадр уже зайнятий іншою картинкою.
+- різноманітність: чергуй види. Числа лише для справді важливих цифр; щонайменше половина накладок - наліпки про переваги, місце, особливості
+  (локація 📍, ліс 🌲, закрита територія 🔒, один поверх 🏠, тераса ☀️, паркінг 🚗, гардеробна 👗, санвузол 🚿, спальня 🛏️, кухня 🍳, запрошення написати ✉️).
+- емодзі лише одне й очевидне за змістом; якщо доречного немає, дай "icon": null.
+- якщо в якомусь місці нічого цікавого не сказано, нічого туди не став. Краще менше, але влучно.
+
+Розшифровка:
+"""
+
+ICONS = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF]")
+
+
+def decorate(words, skip=(), busy=(), fresh=False):
+    """Overlays that make the video livelier: a number counting up, a sticker, a list. Every one is checked against the words:
+    a number must be one that was said, a caption must be made of what was said near it."""
+    if not enabled() or not words: return []
+    skip = set(skip); kept = [i for i in range(len(words)) if i not in skip]; count = max(4, min(16, round(len(kept) / 18)))
+    taken = ", ".join(f"{a}-{b}" for a, b in busy) or "немає"
+    raw = ask(DECORATE.replace("{count}", str(count)).replace("{busy}", taken) + " ".join(f"[{i}]{words[i]['text']}" for i in kept), fresh=fresh)
+    stem = lambda text: {w[:4] for w in re.findall(r"\w+", text.lower()) if len(w) >= 3}
+    def said(text, first, last):   # the words of a caption were spoken near the place it stands
+        near = stem(" ".join(words[i]["text"] for i in range(max(0, first - 12), min(len(words), last + 13)) if i not in skip))
+        return bool(stem(text)) and len(stem(text) & near) >= max(1, len(stem(text)) - 1)
+    def icon(value): found = ICONS.findall(value) if isinstance(value, str) else []; return value.strip()[:8] if found and len(value.strip()) <= 8 else None
+    out, blocked = [], {i for a, b in busy for i in range(a, b + 1)}
+    for o in raw.get("overlays", []) if isinstance(raw, dict) and isinstance(raw.get("overlays"), list) else []:
+        if not isinstance(o, dict): continue
+        first, last = o.get("from"), o.get("to")
+        if not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(words) and i not in skip for i in (first, last)) or not first <= last <= first + 40: continue
+        if any(i in blocked for i in range(first, last + 1)) or any(first <= k["to"] + 1 and k["from"] <= last + 1 for k in out): continue
+        if o.get("kind") == "number":
+            # a range ("7-8 метрів") is a number too, and is kept as a range
+            only = lambda text: re.sub(r"[^\d,.\-]", "", text.replace("–", "-")).strip(".,-")
+            value = str(o.get("value", "")).strip(); digits = only(value)
+            if not re.search(r"\d", digits) or not any(only(words[i]["text"]) == digits for i in range(first, min(len(words), last + 1))): continue
+            item = {"kind": "number", "value": digits, "unit": str(o.get("unit") or "").strip()[:8], "caption": str(o.get("caption") or "").strip()[:28] or None}
+        elif o.get("kind") == "sticker":
+            text = str(o.get("text", "")).strip()[:22]
+            if not text or not said(text, first, last): continue
+            item = {"kind": "sticker", "text": text, "icon": icon(o.get("icon"))}
+        elif o.get("kind") == "list":
+            items = [{"at": i["at"], "text": str(i["text"]).strip()[:20]} for i in o.get("items", []) if isinstance(i, dict) and isinstance(i.get("at"), int) and first <= i["at"] <= last + 4 and isinstance(i.get("text"), str) and said(i["text"], i["at"], i["at"])][:4]
+            if len(items) < 2: continue
+            item = {"kind": "list", "title": str(o.get("title") or "").strip()[:20] or None, "items": sorted(items, key=lambda i: i["at"])}; last = max(last, items[-1]["at"])
+        else: continue
+        out.append({"id": f"o{len(out) + 1}", "from": first, "to": last, **item, "by": "ai", "accepted": True})
+        if len(out) >= count: break
+    return out
+
+
 def enabled():
     return bool(os.environ.get("DEEPSEEK_API_KEY")) and os.environ.get("REEL_AI", "on") != "off"
 

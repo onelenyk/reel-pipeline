@@ -36,31 +36,40 @@ for (const beat of timeline.beats) {
 }
 
 // ---------- pictures: a card in the upper part of the frame; the speaker stays visible below ----------
+// The containers a picture above the speaker can sit in. "mix" gives each next picture the next one, so a video with
+// several pictures does not show them all the same way.
+const CONTAINERS = ["card", "polaroid", "circle"];
+const cutaways = timeline.beats.filter((b) => b.kind === "cutaway");
+const containerOf = (beat) => (STYLE.picture === "mix" ? CONTAINERS[cutaways.indexOf(beat) % CONTAINERS.length] : STYLE.picture ?? "card");
 function drawPicture(beat, t) {
   const image = pictures.get(beat.file);
   if (!image) return;
   const a = presence(t, beat.start, beat.end, 0.4, 0.3);
   if (a <= 0) return;
-  // "card": a rounded card with air around it; "edge": the picture runs to the top and the sides of the frame
-  const edge = STYLE.picture === "edge";
-  const x = edge ? 0 : W * 0.05, w = edge ? W : W * 0.9, h = H * (edge ? 0.36 : 0.3), y = (edge ? 0 : H * 0.07) - (1 - a) * 60, r = edge ? 0 : 36;
-  ctx.save();
-  ctx.globalAlpha = a;
-  ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = 40; ctx.shadowOffsetY = 14;
-  ctx.fillStyle = "#000";
-  ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
-  ctx.shadowColor = "transparent";
-  ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.clip();
-  // Fill the card, cropping the picture rather than squeezing it; a slow push-in keeps it alive
-  const grow = 1 + 0.05 * clamp((t - beat.start) / Math.max(0.1, beat.end - beat.start));
-  const k = Math.max(w / image.width, h / image.height) * grow;
-  ctx.drawImage(image, x + w / 2 - (image.width * k) / 2, y + h / 2 - (image.height * k) / 2, image.width * k, image.height * k);
-  ctx.restore();
-  if (edge) return;
-  ctx.save();
-  ctx.globalAlpha = a;
-  ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.stroke();
+  const kind = containerOf(beat), grow = 1 + 0.05 * clamp((t - beat.start) / Math.max(0.1, beat.end - beat.start));
+  // the picture fills its container, cropped rather than squeezed; a slow push-in keeps it alive
+  const fill = (x, y, w, h) => { const k = Math.max(w / image.width, h / image.height) * grow; ctx.drawImage(image, x + w / 2 - (image.width * k) / 2, y + h / 2 - (image.height * k) / 2, image.width * k, image.height * k); };
+  ctx.save(); ctx.globalAlpha = a;
+  if (kind === "polaroid") {
+    // a printed photo: a white border, wider at the foot, a little askew, settling as it lands
+    const w = W * 0.74, h = H * 0.3, tilt = (cutaways.indexOf(beat) % 2 ? 3.5 : -3.5) * (1 + 1.2 * (1 - ease((t - beat.start) / 0.5)));
+    ctx.translate(W / 2, H * 0.225 - (1 - a) * 70); ctx.rotate(tilt * Math.PI / 180);
+    ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 44; ctx.shadowOffsetY = 18; ctx.fillStyle = "#fbfaf6"; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.shadowColor = "transparent";
+    const pad = w * 0.035; ctx.beginPath(); ctx.rect(-w / 2 + pad, -h / 2 + pad, w - 2 * pad, h - pad - h * 0.15); ctx.clip(); fill(-w / 2 + pad, -h / 2 + pad, w - 2 * pad, h - pad - h * 0.15);
+  } else if (kind === "circle") {
+    // a round window with a ring in the accent colour
+    const r = W * 0.27, cx = W / 2, cy = H * 0.2 - (1 - a) * 60, pop = 0.7 + 0.3 * back((t - beat.start) / 0.45);
+    ctx.translate(cx, cy); ctx.scale(pop, pop);
+    ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 40; ctx.shadowOffsetY = 14; ctx.beginPath(); ctx.arc(0, 0, r + 12, 0, Math.PI * 2); ctx.fillStyle = ACCENT; ctx.fill(); ctx.shadowColor = "transparent";
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.clip(); fill(-r, -r, 2 * r, 2 * r);
+  } else {
+    // "card": a rounded card with air around it; "edge": the picture runs to the top and the sides of the frame
+    const edge = kind === "edge", x = edge ? 0 : W * 0.05, w = edge ? W : W * 0.9, h = H * (edge ? 0.36 : 0.3), y = (edge ? 0 : H * 0.07) - (1 - a) * 60, r = edge ? 0 : 36;
+    ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = 40; ctx.shadowOffsetY = 14; ctx.fillStyle = "#000";
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); ctx.shadowColor = "transparent";
+    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.clip(); fill(x, y, w, h); ctx.restore();
+    if (!edge) { ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.stroke(); }
+  }
   ctx.restore();
 }
 
@@ -185,6 +194,61 @@ function paintPlan(ctx, beat, t, image, a) {
   }
 }
 
+// ---------- overlays: what makes the video livelier while the speaker is in the frame ----------
+// A number that counts up, a sticker with a few words and an emoji, a list whose items arrive as they are named.
+// They stand beside the head, left and right in turn, above the subtitles and below the title's place.
+const EMOJI = "'Noto Color Emoji'";
+const plate = (g, x, y, w, h, r, fill) => { g.beginPath(); g.roundRect(x, y, w, h, r); g.fillStyle = fill; g.fill(); };
+function fitted(g, text, size, most, weight = WEIGHT) { do { g.font = `${weight} ${size}px ${FONT}`; size -= 2; } while (g.measureText(text).width > most && size > 24); return size + 2; }
+function drawOverlay(o, t) {
+  const a = presence(t, o.start, o.end, 0.22, 0.25);
+  if (a <= 0) return;
+  const left = o.side === "left", pop = 0.6 + 0.4 * back((t - o.start) / 0.42);
+  ctx.save(); ctx.globalAlpha = a; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  if (o.kind === "sticker") {
+    // a paper sticker: white, a little askew, with a soft shadow
+    const size = fitted(ctx, o.text, 66, W * 0.42), tw = ctx.measureText(o.text).width, icon = o.icon ? size * 1.25 : 0, w = tw + icon + 70, h = size * 1.9;
+    ctx.translate(left ? W * 0.07 + w / 2 : W * 0.93 - w / 2, H * 0.185); ctx.rotate((left ? -5 : 4) * Math.PI / 180 * (1 + 0.6 * (1 - Math.min(1, (t - o.start) / 0.5)))); ctx.scale(pop, pop);
+    ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10; plate(ctx, -w / 2, -h / 2, w, h, h * 0.32, "#fff"); ctx.shadowColor = "transparent";
+    ctx.lineWidth = 7; ctx.strokeStyle = ACCENT; ctx.beginPath(); ctx.roundRect(-w / 2 + 9, -h / 2 + 9, w - 18, h - 18, h * 0.25); ctx.stroke();
+    if (o.icon) { ctx.font = `${size * 1.02}px ${EMOJI}`; ctx.fillText(o.icon, -w / 2 + 30, 4); }
+    ctx.font = `${WEIGHT} ${size}px ${FONT}`; ctx.fillStyle = "#15171c"; ctx.fillText(o.text, -w / 2 + 35 + icon, 2);
+  } else if (o.kind === "number") {
+    // the figure itself, large and in the accent colour, counting up to what was said
+    const goal = /\d-\d/.test(String(o.value)) ? NaN : parseFloat(String(o.value).replace(",", ".")), k = ease((t - o.start) / 0.75), whole = Number.isInteger(goal) && !/[.,]/.test(String(o.value));
+    const shown = !isFinite(goal) ? String(o.value).replace("-", "–") : whole ? String(Math.round(goal * k)) : (goal * k).toFixed(1).replace(".", ",");
+    const size = 190; ctx.font = `${WEIGHT} ${size}px ${FONT}`; const full = ctx.measureText(isFinite(goal) ? (whole ? String(goal) : goal.toFixed(1)) : shown).width;
+    ctx.font = `${WEIGHT} ${size * 0.4}px ${FONT}`; const uw = o.unit ? ctx.measureText(o.unit).width + 18 : 0, w = full + uw;
+    ctx.translate(left ? W * 0.08 + w / 2 : W * 0.92 - w / 2, H * 0.175); ctx.scale(pop, pop);
+    ctx.font = `${WEIGHT} ${size}px ${FONT}`; ctx.lineJoin = "round"; ctx.lineWidth = 22; ctx.strokeStyle = "rgba(0,0,0,0.78)"; ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
+    ctx.strokeText(shown, -w / 2, 0); ctx.shadowColor = "transparent"; ctx.fillStyle = ACCENT; ctx.fillText(shown, -w / 2, 0);
+    if (o.unit) { ctx.font = `${WEIGHT} ${size * 0.4}px ${FONT}`; ctx.lineWidth = 14; ctx.strokeText(o.unit, -w / 2 + full + 18, size * 0.2); ctx.fillStyle = "#fff"; ctx.fillText(o.unit, -w / 2 + full + 18, size * 0.2); }
+    if (o.caption) {
+      const cs = fitted(ctx, o.caption, 40, W * 0.42), cw = ctx.measureText(o.caption).width + 44, shownC = presence(t, o.start + 0.25, o.end, 0.3, 0.2);
+      ctx.globalAlpha = a * shownC; plate(ctx, left ? -w / 2 : w / 2 - cw, size * 0.62, cw, cs * 1.8, cs * 0.9, "rgba(17,17,17,0.86)");
+      ctx.font = `${WEIGHT} ${cs}px ${FONT}`; ctx.fillStyle = "#fff"; ctx.fillText(o.caption, (left ? -w / 2 : w / 2 - cw) + 22, size * 0.62 + cs * 0.93);
+    }
+  } else if (o.kind === "list") {
+    // items come in one by one, each when it is named
+    const x = left ? W * 0.06 : W * 0.5, row = 92; let y = H * 0.13;
+    if (o.title) { const ts = fitted(ctx, o.title, 44, W * 0.4), tw = ctx.measureText(o.title).width + 48; plate(ctx, x, y - 38, tw, 76, 38, ACCENT); ctx.fillStyle = "#111"; ctx.fillText(o.title, x + 24, y + 2); y += row; }
+    for (const item of o.items ?? []) {
+      const here = ease((t - item.start) / 0.3);
+      if (here > 0) {
+        ctx.save(); ctx.globalAlpha = a * here; ctx.translate((1 - here) * -40, 0);
+        const is = fitted(ctx, item.text, 46, W * 0.36), iw = ctx.measureText(item.text).width + 104;
+        ctx.shadowColor = "rgba(0,0,0,0.4)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6; plate(ctx, x, y - 38, iw, 76, 38, "#fff"); ctx.shadowColor = "transparent";
+        ctx.beginPath(); ctx.arc(x + 40, y, 22, 0, Math.PI * 2); ctx.fillStyle = ACCENT; ctx.fill();
+        ctx.strokeStyle = "#111"; ctx.lineWidth = 6; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.beginPath(); ctx.moveTo(x + 30, y + 1); ctx.lineTo(x + 38, y + 9); ctx.lineTo(x + 51, y - 8); ctx.stroke();
+        ctx.font = `${WEIGHT} ${is}px ${FONT}`; ctx.fillStyle = "#15171c"; ctx.fillText(item.text, x + 78, y + 2);
+        ctx.restore();
+      }
+      y += row;
+    }
+  }
+  ctx.restore();
+}
+
 // ---------- title: the accent colour with a glow, a small overshoot on the way in and a light sweep across it ----------
 const titleLayer = createCanvas(W, Math.round(H * 0.12));
 const titleCtx = titleLayer.getContext("2d");
@@ -291,11 +355,13 @@ function drawFrame(t) {
   const fullNow = timeline.beats.filter((b) => b.kind === "full" && t >= b.start - 0.05 && t <= b.end + 0.05);
   const titles = timeline.beats.filter((b) => b.kind === "title" && t >= b.start && t <= b.end);
   const line = timeline.lines.find((l) => t >= l.start - 0.06 && t < l.end);
-  if (!pictureNow.length && !fullNow.length && !titles.length && !line) return false;
+  const overlays = (timeline.overlays ?? []).filter((o) => t >= o.start && t <= o.end);
+  if (!pictureNow.length && !fullNow.length && !titles.length && !line && !overlays.length) return false;
   ctx.clearRect(0, 0, W, H);
   const clock = (what, work) => { if (!process.env.REEL_PROFILE) return work(); const a = performance.now(); work(); parts[what] = (parts[what] ?? 0) + performance.now() - a; };
   clock("pictures", () => { fullNow.forEach((beat) => (beat.plan ? drawPlan(beat, t) : drawFull(beat, t))); pictureNow.forEach((beat) => drawPicture(beat, t)); });
   clock("titles", () => titles.forEach((beat) => drawTitle(beat, t)));
+  clock("overlays", () => overlays.forEach((o) => drawOverlay(o, t)));
   clock("subtitles", () => { if (line) drawSubtitle(line, t, fullNow.some((b) => t >= b.start + 0.1 && t <= b.end - 0.1 && (b.plan || lightPictures.has(b.file)))); });
   return true;
 }

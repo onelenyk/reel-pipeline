@@ -1,6 +1,6 @@
 # Overlays: graphics the AI adds over the frame
 
-> Status, 2026-10-11: the room highlight on a plan is built, in a different way from the one sketched here (a network for walls, a person's click for which room). See `docs/plans.md`. The rest of this page is still a design.
+> Status, 2026-10-11: built so far - the room highlight on a plan (`docs/plans.md`), three overlays over the speaker (a number that counts up, a sticker, a list: `drawOverlay` in `renderer/render.mjs`, proposed by `decorate` in `engine/suggest.py` and checked against the words) and three containers for a picture (card, polaroid, circle). Slots are simpler than sketched here: left and right of the head in turn. The rest of this page is still a design.
 
 Status: design, nothing built. Goal: the things she draws by hand today (a highlighted room on the plan, a number that
 counts up, a label with a pointer) appear because the words call for them, placed by the AI and corrected by a sentence

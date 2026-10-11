@@ -14,7 +14,7 @@ MIN_BEAT = {"title": 2.6, "cutaway": 2.5, "backdrop": 2.5, "full": 2.5, "zoom": 
 
 # ---------- style: how the graphics and the sound of a video are finished; saved styles are reused across videos ----------
 STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "level": -15}
-CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge")}
+CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge", "polaroid", "circle", "mix")}
 
 
 def clean_style(raw):
@@ -71,10 +71,11 @@ def load(folder):
     doc = json.loads((Path(folder) / "project.json").read_text(encoding="utf-8"))
     if doc.get("format") != FORMAT: raise ValueError(f"project format {doc.get('format')} is not supported")
     doc["style"] = clean_style(doc.get("style"))  # also upgrades projects made before styles existed
-    for key in ("emphasis", "corrections", "beats", "needs", "assets", "cuts", "marks"): doc.setdefault(key, [])
+    for key in ("emphasis", "corrections", "beats", "needs", "assets", "cuts", "marks", "overlays"): doc.setdefault(key, [])
     return doc
 
 
+OVERLAY_LEAST, OVERLAY_MOST = 2.4, 5.0  # seconds an overlay stays on screen
 KEPT = 40  # earlier versions of a document kept in its history folder
 
 
@@ -151,7 +152,26 @@ def resolve(doc):
                 if total - moment >= (0.6 if forced else PUNCH_TAIL): punches.append(round(moment, 3)); last = moment
         edges = [0.0] + punches + [round(total, 3)]
         punches = [[edges[i], edges[i + 1]] for i in range(1, len(edges) - 1, 2)]  # every second stretch is the closer one
-    return {"spans": spans, "seconds": round(total, 3), "lines": lines, "beats": beats, "punches": punches, "style": doc["style"], **doc["output"]}
+    # Overlays: each appears on its word and stays a little after the thought ends. One that would fall on a picture
+    # covering the frame, or on the title, is not shown: the frame is already full there.
+    full = [(b["start"], b["end"]) for b in beats if b["kind"] in ("full", "cutaway", "title")]; overlays = []
+    for o in doc.get("overlays", []):
+        inside = [w for w in words[o["from"]:o["to"] + 1] if w["id"] in kept_ids]
+        if not o.get("accepted") or not inside or inside[0]["id"] != o["from"]: continue
+        start = at(inside[0]["start"]); end = min(total, max(at(inside[-1]["end"]) + 0.9, start + OVERLAY_LEAST)); end = min(end, start + OVERLAY_MOST)
+        ahead = [a for a, b in full if a < end and start < b]
+        if ahead:
+            # it leaves before the picture or the title comes, if that still gives it time to be read
+            if min(ahead) - start < OVERLAY_LEAST * 0.75: continue
+            end = round(min(ahead) - 0.1, 3)
+        if overlays and overlays[-1]["end"] > start - 0.15:
+            # the one before leaves as this one comes, if it has had its time; otherwise this one is not shown
+            if start - overlays[-1]["start"] < OVERLAY_LEAST * 0.75: continue
+            overlays[-1]["end"] = round(start - 0.15, 3)
+        item = {k: o[k] for k in ("id", "kind", "value", "unit", "caption", "text", "icon", "title") if o.get(k) is not None}
+        if o["kind"] == "list": item["items"] = [{"text": i["text"], "start": max(start, at(words[i["at"]]["start"]))} for i in o["items"] if i["at"] < len(words) and words[i["at"]]["id"] in kept_ids]
+        overlays.append({**item, "start": start, "end": end, "side": "left" if len(overlays) % 2 == 0 else "right"})
+    return {"spans": spans, "seconds": round(total, 3), "lines": lines, "beats": beats, "overlays": overlays, "punches": punches, "style": doc["style"], **doc["output"]}
 
 
 # ---------- changes to a project ----------

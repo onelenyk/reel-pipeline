@@ -8,6 +8,7 @@
   unbeat PROJECT ID           remove a beat
   replan PROJECT              ask the AI for the montage again, keeping the words and the cuts
   mark PROJECT                find the rooms on the project's plans and the moments each room is spoken of
+  decorate PROJECT            ask the AI to liven the video with overlays: numbers counting up, stickers, lists
   rooms PICTURE               find the rooms of a floor plan; writes PICTURE.rooms.json and a picture to look at in out/
   show PROJECT                what the project holds: the text, the beats and the open requests
   serve [PORT]                the web page: watch the pipeline, edit the text, answer requests, render
@@ -30,12 +31,13 @@ def create(video, folder):
         try: result = work()
         except Exception as error: project.progress(folder, name, "failed", error=str(error)[-300:]); raise
         took[name] = round(time.time() - started, 1); project.progress(folder, name, "done", seconds=took[name]); return result
-    for name in ("probe", "transcribe", "review", "suggest", "render"): project.progress(folder, name, "waiting")
+    for name in ("probe", "transcribe", "review", "suggest", "decorate", "render"): project.progress(folder, name, "waiting")
     facts = step("probe", lambda: usable(video))
     transcript = step("transcribe", lambda: heard(speech.transcribe(video)))
     cuts = step("review", lambda: suggest.review(transcript["words"]))
     ideas = step("suggest", lambda: suggest.suggest(transcript["words"], {i for c in cuts for i in range(c["from"], c["to"] + 1)}))
     project.save(folder, project.new(video, facts, transcript, ideas, styles.default(), cuts))
+    step("decorate", lambda: overlays(folder))
     return took
 
 
@@ -84,6 +86,23 @@ def find_rooms(folder):
         marks = sorted((m for m in doc["marks"] if m["asset"] == asset["id"]), key=lambda m: m["from"])
         report.append({"picture": asset["id"], "rooms": len(plan.outline(asset["file"])["rooms"]), "shown over": laid.get(asset["id"], []), "marks": [f"{m['room'] or '?'} {m['name']}" for m in marks]})
     return report
+
+
+def decorate(folder):
+    doc = overlays(folder, fresh=True)   # asked for by name: another answer is wanted
+    say([{"kind": o["kind"], "on": " ".join(w["text"] for w in doc["words"][o["from"]:o["to"] + 1])[:50], **{k: o[k] for k in ("value", "unit", "caption", "text", "icon", "title") if o.get(k)}, **({"items": [i["text"] for i in o["items"]]} if o.get("items") else {})} for o in doc["overlays"]])
+
+
+def overlays(folder, fresh=False):
+    """Asks the AI to lay overlays over the speaker (numbers counting up, stickers, lists) and keeps the ones a person made."""
+    doc = project.load(folder); kept = {w["id"] for s in doc["edit"]["segments"] for w in doc["words"][s["from"]:s["to"] + 1]}
+    filled = {n["id"] for n in doc["needs"] if n.get("status") == "filled"}
+    busy = [(b["from"], b["to"]) for b in doc["beats"] if b.get("accepted") and (b["kind"] == "title" or (b["kind"] in ("full", "cutaway") and (b.get("asset") or b.get("need") in filled)))]
+    mine = [o for o in doc["overlays"] if o.get("by") == "user"]
+    made = suggest.decorate(doc["words"], set(range(len(doc["words"]))) - kept, busy, fresh=fresh)
+    doc = project.load(folder); doc["overlays"] = mine + [{**o, "id": f"o{i}"} for i, o in enumerate((o for o in made if not any(o["from"] <= m["to"] and m["from"] <= o["to"] for m in mine)), len(mine) + 1)]
+    for i, o in enumerate(doc["overlays"], 1): o["id"] = f"o{i}"
+    project.save(folder, doc); return doc
 
 
 def replan(folder):
@@ -135,6 +154,6 @@ def serve(port="8787"):
 
 
 if __name__ == "__main__":
-    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "replan": replan, "rooms": rooms, "mark": mark, "serve": serve}
+    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "replan": replan, "rooms": rooms, "mark": mark, "decorate": decorate, "serve": serve}
     if len(sys.argv) < 2 or sys.argv[1] not in commands or (len(sys.argv) < 3 and sys.argv[1] != "serve"): sys.exit(__doc__)
     commands[sys.argv[1]](*sys.argv[2:])

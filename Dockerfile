@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir torchvision==0.16.2 --index-url https://download.
 RUN pip install --no-cache-dir "opencv-python-headless<4.11" "numpy<2"
 # Reading the numbers and the legend printed on a plan
 RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-ukr && rm -rf /var/lib/apt/lists/*
+# Emoji for stickers drawn over the video
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-color-emoji && rm -rf /var/lib/apt/lists/*
 ENV TORCH_HOME=/work/models/torch NODE_PATH=/opt/renderer/node_modules PYTHONPATH=/work PYTHONUNBUFFERED=1
 WORKDIR /work
 ENTRYPOINT ["python", "-m", "engine"]

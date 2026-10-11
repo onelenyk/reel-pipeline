@@ -316,3 +316,24 @@ class Fonts(unittest.TestCase):
         self.assertTrue(project.clean_style({"caps": True})["caps"])
         self.assertEqual(project.clean_style({"font": "../../etc/passwd"})["font"], "Inter")
         self.assertEqual(project.clean_style({})["font"], "Inter")
+
+
+class Overlays(unittest.TestCase):
+    """What the AI proposes to lay over the speaker is checked against the words before it is kept."""
+
+    def setUp(self):
+        self.words = [{"text": t} for t in "Будинок має 154 метри квадратних і перепад рельєфу 7-8 метрів, він біля лісу в Бірках і дуже затишний".split()]
+        self.was = (suggest.ask, suggest.enabled); self.addCleanup(lambda: (setattr(suggest, "ask", self.was[0]), setattr(suggest, "enabled", self.was[1]))); suggest.enabled = lambda: True
+
+    def kept(self, proposed, busy=()):
+        suggest.ask = lambda *a, **k: {"overlays": proposed}
+        return suggest.decorate(self.words, busy=busy)
+
+    def test_a_number_must_be_one_that_was_said(self):
+        made = self.kept([{"kind": "number", "from": 2, "to": 4, "value": "154", "unit": "м²"}, {"kind": "number", "from": 8, "to": 9, "value": "7-8", "unit": "м"}, {"kind": "number", "from": 12, "to": 14, "value": "200", "unit": "м"}])
+        self.assertEqual([(o["value"], o["unit"]) for o in made], [("154", "м²"), ("7-8", "м")])
+
+    def test_a_sticker_is_made_of_what_was_said_and_not_laid_over_a_picture(self):
+        made = self.kept([{"kind": "sticker", "from": 11, "to": 15, "text": "Біля лісу", "icon": "🌲"}, {"kind": "sticker", "from": 2, "to": 4, "text": "Басейн і сауна", "icon": "🏊"}])
+        self.assertEqual([(o["text"], o["icon"]) for o in made], [("Біля лісу", "🌲")])
+        self.assertEqual(self.kept([{"kind": "sticker", "from": 11, "to": 15, "text": "Біля лісу", "icon": "🌲"}], busy=[(10, 16)]), [])

@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 from . import HOME, find, fonts, plan as plans, project, render, speech, styles, suggest
-from .__main__ import ROOT, create, find_rooms
+from .__main__ import ROOT, create, find_rooms, overlays
 
 PAGE = Path(__file__).resolve().parent / "page.html"
 INBOX = HOME / "media"
@@ -47,7 +47,7 @@ def summary(name):
                    assets=[{"id": a["id"], "file": Path(a["file"]).name, "credit": a.get("credit")} for a in doc["assets"]],
                    needs=[{**n, "file": Path(assets[n["asset"]]["file"]).name if n.get("asset") in assets else None, "credit": assets.get(n.get("asset"), {}).get("credit")} for n in doc["needs"]],
                    credits=[a["credit"] for a in doc["assets"] if a.get("credit") and a["id"] in used],
-                   fonts=fonts.OFFERED, marks=doc["marks"], plans=[{"asset": a, "file": Path(assets[a]["file"]).name, "read": plans.stored(assets[a]["file"], lenient=True) is not None,
+                   fonts=fonts.OFFERED, overlays=doc["overlays"], shown_overlays=[o["id"] for o in plan["overlays"]], marks=doc["marks"], plans=[{"asset": a, "file": Path(assets[a]["file"]).name, "read": plans.stored(assets[a]["file"], lenient=True) is not None,
                                                "rooms": [{"id": r["id"], "shape": r["shape"], "at": r["at"], "name": r.get("name"), "number": r.get("number"), "guess": bool(r.get("guess")), "outdoors": bool(r.get("outdoors")), "by": r.get("by")} for r in project.rooms_of(assets[a]["file"])]} for a in assets if len(project.rooms_of(assets[a]["file"])) >= 3 or (a in project.plan_assets(doc) and plans.stored(assets[a]["file"], lenient=True) is None)])
     return out
 
@@ -167,6 +167,7 @@ class Handler(BaseHTTPRequestHandler):
             if not (folder / "project.json").exists(): return self.send({"error": "there is no such project"}, 404)
             if busy.get(name) and action != "state": return self.send({"error": f"{busy[name]} is still running"}, 409)
             if action == "render": background(name, "render", lambda: render.render(folder)); return self.send(summary(name))
+            if action == "decorate": background(name, "decorate", lambda: overlays(folder, fresh=True)); return self.send(summary(name))
             if action == "rooms": background(name, "rooms", lambda: find_rooms(folder)); return self.send(summary(name))
             if action == "ask":
                 # The author marked a stretch and said what is wrong with it; the AI answers with changes, which are applied
@@ -213,6 +214,16 @@ class Handler(BaseHTTPRequestHandler):
                     z = change["zone_remove"]; project.change_zones(folder, z.get("asset"), remove=z.get("room"))
                 elif "zone" in change:
                     z = change["zone"]; project.name_zone(folder, z.get("asset"), z.get("room"), z.get("name"), z.get("number"))
+                elif "overlay" in change:
+                    # switch an overlay on or off, change its words, or remove it
+                    o = change["overlay"]; found = next((x for x in doc["overlays"] if x["id"] == o.get("id")), None)
+                    if not found: return self.send({"error": "there is no such overlay"}, 404)
+                    if o.get("remove"): doc["overlays"].remove(found)
+                    else:
+                        if isinstance(o.get("accepted"), bool): found["accepted"] = o["accepted"]
+                        for key, most in (("text", 22), ("caption", 28), ("unit", 8), ("value", 10), ("title", 20), ("icon", 8)):
+                            if isinstance(o.get(key), str): found[key] = o[key].strip()[:most] or None; found["by"] = "user"
+                    project.save(folder, doc)
                 elif "remove_mark" in change: project.remove_mark(folder, change["remove_mark"])
                 elif "remove_beat" in change: project.change_beat(folder, change["remove_beat"], remove=True)
                 elif "drop" in change: project.drop(folder, int(change["drop"][0]), int(change["drop"][1]), restore=bool(change.get("restore")))
