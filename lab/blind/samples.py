@@ -88,8 +88,7 @@ def generated(count=36, seed=2026):
         area = rng.choice(list(AREAS)); numbers = [area]; rooms = rng.sample(list(ROOMS), rng.randint(2, 6))
         kept = [rng.choice(OPENINGS).format(what=rng.choice(WHAT), where=rng.choice(WHERE)), rng.choice(AREA).format(n=AREAS[area])]
         if rng.random() < 0.5: plot = rng.choice(list(PLOTS)); numbers.append(plot); kept.append(rng.choice(PLOT).format(n=PLOTS[plot]))
-        middle = [rng.choice(ROOMS[r]) for r in rooms] + rng.sample(FEATURES, rng.randint(1, 3))
-        tour = [rng.choice(ROOMS[r]) for r in rooms]; rest = [m for m in middle if m not in tour]
+        tour = [rng.choice(ROOMS[r]) for r in rooms]; rest = rng.sample(FEATURES, rng.randint(1, 3))   # each room is spoken of once
         for feature in rest: tour.insert(rng.randint(0, len(tour)), feature)
         kept += tour + [rng.choice(ENDINGS)]
         lines = [{"keep": True, "kind": "said", "text": text} for text in kept]

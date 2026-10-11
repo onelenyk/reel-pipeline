@@ -17,7 +17,7 @@ def close(a, b): return sum(m.size for m in difflib.SequenceMatcher(None, a, b).
 def stem(word): return re.sub(r"[^\w]", "", word.lower())[:5]
 
 
-kinds, damaged, rows, heard_all, rooms_all, numbers_all, mistakes = {}, [], [], [], [0, 0], [0, 0], []
+unheard, kinds, damaged, rows, heard_all, rooms_all, numbers_all, mistakes = [], {}, [], [], [], [0, 0], [0, 0], []
 for truth_file in sorted(WORK.glob("*.truth.json")):
     s = json.loads(truth_file.read_text(encoding="utf-8"))
     if only and s["name"] not in only: continue
@@ -27,22 +27,35 @@ for truth_file in sorted(WORK.glob("*.truth.json")):
     words = speech.spelled(words, speech.vocabulary())   # a kept transcript gets today's vocabulary
     heard = close(tokens(" ".join(l["text"] for l in s["lines"])), tokens(" ".join(w["text"] for w in words)))
     cuts = suggest.review(words, fresh=fresh); gone = {i for c in cuts for i in range(c["from"], c["to"] + 1)}
-    # the share of each line's words that was cut
-    lines = s["lines"]; share = []
-    for n, line in enumerate(lines):
-        low = (lines[n - 1]["end"] + line["start"]) / 2 if n else 0; high = (line["end"] + lines[n + 1]["start"]) / 2 if n + 1 < len(lines) else 1e9
-        mine = [i for i, w in enumerate(words) if low <= (w["start"] + w["end"]) / 2 < high]
-        share.append((sum(i in gone for i in mine) / len(mine)) if mine else None)
+    # which line each heard word belongs to: the heard words are laid along the spoken ones in order, and a word that
+    # matches nothing goes with the word before it. (By time it goes wrong: the recogniser's times drift by a second.)
+    lines = s["lines"]; spoken = [(n, t) for n, line in enumerate(lines) for t in tokens(line["text"])]; got = [(tokens(w["text"]) or [""])[0] for w in words]
+    owner = [None] * len(words)
+    for block in difflib.SequenceMatcher(None, [t for _, t in spoken], got, autojunk=False).get_matching_blocks():
+        for k in range(block.size): owner[block.b + k] = spoken[block.a + k][0]
+    for i in range(len(owner)):
+        if owner[i] is not None: continue
+        ahead = next((o for o in owner[i:] if o is not None), None); behind = owner[i - 1] if i else None
+        # a word after a full stop opens the next line; any other goes on with the line before it
+        owner[i] = ahead if behind is None or (ahead is not None and re.search(r"[.!?…]$", words[i - 1]["text"])) else behind
+        if owner[i] is None: owner[i] = 0
+    share = []
+    for n in range(len(lines)):
+        mine = [i for i, o in enumerate(owner) if o == n]; share.append((sum(i in gone for i in mine) / len(mine)) if mine else None)
     caught = missed = 0; notes = []
     for n, line in enumerate(lines):
-        if share[n] is None: continue
-        show = lambda k: " ".join(w["text"] for w in words if lines[k]["start"] - 0.3 <= (w["start"] + w["end"]) / 2 <= lines[k]["end"] + 0.4)
+        show = lambda k: " ".join(w["text"] for i, w in enumerate(words) if owner[i] == k)
+        if share[n] is None:
+            # the recogniser left the whole line out; a failed attempt left out is still in the sound
+            if not line["keep"]: unheard.append((s["name"], line["kind"], line["text"]))
+            continue
+        twin_after = not line["keep"] and n + 1 < len(lines) and tokens(lines[n + 1]["text"]) == tokens(line["text"])
         if line["keep"]:
             # said twice, either telling may be the one that goes
-            twin = n and lines[n - 1]["kind"] == "repeat"
+            twin = n and not lines[n - 1]["keep"] and tokens(lines[n - 1]["text"]) == tokens(line["text"])
             if share[n] > 0.2 and not (twin and (share[n - 1] or 0) < 0.2): damaged.append((s["name"], f"{share[n]:.0%}", show(n))); notes.append(f"damaged: {show(n)[:60]}")
             continue
-        ok = share[n] >= 0.8 or (line["kind"] == "repeat" and n + 1 < len(lines) and (share[n + 1] or 0) >= 0.8 and share[n] <= 0.2)
+        ok = share[n] >= 0.8 or (twin_after and (share[n + 1] or 0) >= 0.8 and share[n] <= 0.2)
         tally = kinds.setdefault(line["kind"], [0, 0]); tally[1] += 1; tally[0] += ok; caught += ok; missed += not ok
         if not ok: mistakes.append((s["name"], line["kind"], show(n))); notes.append(f"left {line['kind']}: {show(n)[:50]}")
     shown = [w if i not in gone else {**w, "text": "…"} for i, w in enumerate(words)]
@@ -59,5 +72,6 @@ report = ["# Takes with a known right answer", "", f"{len(rows)} takes, heard {s
           f"lines that should stay and were damaged: {len(damaged)}.", "", "| What should be cut | Cut | Of |", "|---|---|---|"]
 report += [f"| {kind} | {a} | {b} |" for kind, (a, b) in sorted(kinds.items())]
 report += ["", "| Take | Voice | Seconds | Heard | Cut right | Rooms | Figures | Notes |", "|---|---|---|---|---|---|---|---|"] + rows
+report += ["", f"Failed attempts the recogniser left out of the text (they stay in the sound): {len(unheard)}.", ""] + [f"- {n}, {kind}: {text}" for n, kind, text in unheard]
 report += ["", "## Left by mistake", ""] + [f"- {n}, {kind}: {text}" for n, kind, text in mistakes] + ["", "## Damaged", ""] + [f"- {n}, {part} cut: {text}" for n, part, text in damaged]
 Path("/work/out/blind.md").write_text("\n".join(report) + "\n", encoding="utf-8"); print("\n".join(report[:9 + len(kinds)]))

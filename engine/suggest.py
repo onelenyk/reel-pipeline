@@ -5,7 +5,7 @@ changes to words are never applied until a person accepts them, because the mode
 """
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-import base64, hashlib, json, os, re, time
+import base64, difflib, hashlib, json, os, re, time
 import requests
 from . import HOME
 
@@ -110,11 +110,45 @@ VOTERS = 3
 
 def review(words, fresh=False):
     """What should not reach the viewer: failed attempts that were said again, remarks not meant for the viewer, swearing."""
-    if not enabled() or not words: return []
+    if not words: return []
+    if not enabled(): return merged([], restarts(words))
     # Three answers at once, and a word is cut when most of them cut it: one answer alone sometimes strays
     prompt = REVIEW + " ".join(f"[{i}]{w['text']}" for i, w in enumerate(words))
     with ThreadPoolExecutor(VOTERS) as pool: answers = list(pool.map(lambda n: clean_cuts(ask(prompt, think=True, sample=n, fresh=fresh), len(words)), range(VOTERS)))
-    return vote(answers)
+    return merged([c for c in vote(answers) if c["why"] != "garble" or empty(words, c)], restarts(words))
+
+
+def bare(word): return re.sub(r"[^\w]", "", word["text"].lower())
+def same(a, b): return a == b or (min(len(a), len(b)) >= 4 and difflib.SequenceMatcher(None, a, b).ratio() >= 0.8)
+
+
+def restarts(words):
+    """Phrases begun and at once begun again, found without the AI: "Санвузол уже з. Санвузол уже з ремонтом" loses its first three words.
+    The words must open a sentence and be followed straight away by the same words; the longest such run is taken."""
+    cuts, i = [], 0
+    while i < len(words):
+        opens = i == 0 or re.search(r"[.!?…]$", words[i - 1]["text"])
+        run = next((n for n in range(min(14, (len(words) - i) // 2), 1, -1) if all(bare(words[i + k]) and same(bare(words[i + k]), bare(words[i + n + k])) for k in range(n))), 0) if opens else 0
+        if run: cuts.append({"from": i, "to": i + run - 1, "why": "retake", "note": "почато і одразу сказано заново", "by": "ai"}); i += run
+        else: i += 1
+    return cuts
+
+
+def empty(words, cut):
+    """Whether a phrase the AI calls senseless may go. A scrap of a sentence may. A whole sentence of six words or more that
+    makes no sense as written is more often one that was heard wrong, and cutting it would take what was said out of the
+    video: it goes only if its longer words are all said near it, so nothing new is lost."""
+    whole = (cut["from"] == 0 or re.search(r"[.!?…]$", words[cut["from"] - 1]["text"])) and re.search(r"[.!?…]$", words[cut["to"]]["text"])
+    if not whole or cut["to"] - cut["from"] < 5: return True
+    inside = {bare(w)[:4] for w in words[cut["from"]:cut["to"] + 1] if len(bare(w)) >= 4}
+    near = {bare(w)[:4] for i, w in enumerate(words) if (cut["from"] - 25 <= i < cut["from"] or cut["to"] < i <= cut["to"] + 25)}
+    return len(inside - near) <= 1
+
+
+def merged(first, second):
+    """Two lists of cuts as one: a cut that touches one already there is left out."""
+    out = list(first) + [c for c in second if not any(c["from"] <= k["to"] and k["from"] <= c["to"] for k in first)]
+    return [{**c, "id": f"c{n}"} for n, c in enumerate(sorted(out, key=lambda c: c["from"]), 1)]
 
 
 def vote(answers):

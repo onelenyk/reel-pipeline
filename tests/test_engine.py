@@ -214,6 +214,20 @@ class Vote(unittest.TestCase):
         self.assertEqual(vote([[cut(5, 9)], [], []]), [])
 
 
+class Restarts(unittest.TestCase):
+    words = staticmethod(lambda text: [{"text": t} for t in text.split()])
+
+    def test_a_phrase_begun_and_at_once_begun_again_loses_its_first_telling(self):
+        from engine.suggest import restarts
+        words = self.words("Це будинок. Санвузол уже з. Санвузол уже з ремонтом. Пальня на другому поверсі. Спальня на другому поверсі. Дуже дуже гарно, і це і те.")
+        self.assertEqual([" ".join(w["text"] for w in words[c["from"]:c["to"] + 1]) for c in restarts(words)], ["Санвузол уже з.", "Пальня на другому поверсі."])
+
+    def test_a_senseless_phrase_is_cut_only_when_it_says_nothing_new(self):
+        from engine.suggest import empty
+        words = self.words("Далі гардеробна кімната з вікном. Це і весь гардеробна кімната. Біля кухні, якому роди запасів і техніки. Далі тераса.")
+        self.assertTrue(empty(words, {"from": 5, "to": 9})); self.assertFalse(empty(words, {"from": 10, "to": 16}))
+
+
 class Spelling(unittest.TestCase):
     def test_the_vocabulary_spells_what_was_heard(self):
         from engine.speech import spelled
