@@ -13,8 +13,20 @@ MIN_BEAT = {"title": 2.6, "cutaway": 2.5, "backdrop": 2.5, "full": 2.5, "zoom": 
 
 
 # ---------- style: how the graphics and the sound of a video are finished; saved styles are reused across videos ----------
-STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "sounds": "quiet", "navigator": "arrow", "level": -15}
-CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge", "polaroid", "circle", "mix"), "sounds": ("off", "quiet", "normal"), "navigator": ("arrow", "steps", "off")}
+STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "sounds": "quiet", "navigator": "arrow", "subtitle": "outline", "sticker": "paper", "number": "big", "breaks": "slide", "level": -15}
+CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge", "polaroid", "circle", "mix"), "sounds": ("off", "quiet", "normal"), "navigator": ("arrow", "steps", "off"),
+           "subtitle": ("outline", "plate", "shadow"), "sticker": ("paper", "pill", "tag", "outline"), "number": ("big", "badge", "card"), "breaks": ("slide", "flash", "bar")}
+# Ready-made looks: each is a whole style, put on with one touch and changed further by hand
+PRESETS = [
+    {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle": "outline", "sticker": "paper", "number": "big", "breaks": "slide", "picture": "card", "navigator": "arrow", "title_glow": True},
+    {"name": "Журнал", "accent": "#ff5a36", "font": "Playfair Display", "caps": False, "subtitle": "plate", "sticker": "outline", "number": "card", "breaks": "bar", "picture": "polaroid", "navigator": "steps", "title_glow": False},
+    {"name": "Мінімал", "accent": "#7dd3fc", "font": "Manrope", "caps": False, "subtitle": "shadow", "sticker": "pill", "number": "card", "breaks": "bar", "picture": "edge", "navigator": "arrow", "title_glow": False},
+    {"name": "Преміум", "accent": "#d4af37", "font": "PT Serif", "caps": True, "subtitle": "shadow", "sticker": "outline", "number": "big", "breaks": "slide", "picture": "card", "navigator": "arrow", "title_glow": True},
+    {"name": "Яскравий", "accent": "#ff2d92", "font": "Rubik", "caps": False, "subtitle": "outline", "sticker": "tag", "number": "badge", "breaks": "flash", "picture": "mix", "navigator": "steps", "title_glow": True},
+    {"name": "Неон", "accent": "#39ff14", "font": "Unbounded", "caps": True, "subtitle": "plate", "sticker": "pill", "number": "badge", "breaks": "flash", "picture": "circle", "navigator": "arrow", "title_glow": True},
+    {"name": "Теплий", "accent": "#ff9f0a", "font": "Nunito", "caps": False, "subtitle": "outline", "sticker": "tag", "number": "card", "breaks": "slide", "picture": "polaroid", "navigator": "steps", "title_glow": False},
+    {"name": "Діловий", "accent": "#30d158", "font": "Golos Text", "caps": False, "subtitle": "plate", "sticker": "paper", "number": "badge", "breaks": "bar", "picture": "card", "navigator": "arrow", "title_glow": False},
+]
 
 
 def clean_style(raw):

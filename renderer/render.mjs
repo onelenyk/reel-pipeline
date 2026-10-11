@@ -259,11 +259,19 @@ function drawOverlay(o, t) {
   if (o.kind === "sticker") {
     // a paper sticker: white, a little askew, with a soft shadow
     const size = fitted(ctx, o.text, 66, W * 0.42), tw = ctx.measureText(o.text).width, icon = o.icon ? size * 1.25 : 0, w = tw + icon + 70, h = size * 1.9;
-    ctx.translate(left ? W * 0.07 + w / 2 : W * 0.93 - w / 2, H * 0.185); ctx.rotate((left ? -5 : 4) * Math.PI / 180 * (1 + 0.6 * (1 - Math.min(1, (t - o.start) / 0.5)))); ctx.scale(pop, pop);
-    ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10; plate(ctx, -w / 2, -h / 2, w, h, h * 0.32, "#fff"); ctx.shadowColor = "transparent";
-    ctx.lineWidth = 7; ctx.strokeStyle = ACCENT; ctx.beginPath(); ctx.roundRect(-w / 2 + 9, -h / 2 + 9, w - 18, h - 18, h * 0.25); ctx.stroke();
-    if (o.icon) { ctx.font = `${size * 1.02}px ${EMOJI}`; ctx.fillText(o.icon, -w / 2 + 30, 4); }
-    ctx.font = `${WEIGHT} ${size}px ${FONT}`; ctx.fillStyle = "#15171c"; ctx.fillText(o.text, -w / 2 + 35 + icon, 2);
+    ctx.translate(left ? W * 0.07 + w / 2 : W * 0.93 - w / 2, H * 0.185); ctx.rotate((["pill", "outline"].includes(STYLE.sticker) ? 0 : left ? -5 : 4) * Math.PI / 180 * (1 + 0.6 * (1 - Math.min(1, (t - o.start) / 0.5)))); ctx.scale(pop, pop);
+    const look = STYLE.sticker ?? "paper"; let ink = "#15171c";
+    ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10;
+    if (look === "pill") { plate(ctx, -w / 2, -h / 2, w, h, h / 2, "rgba(21,23,28,0.92)"); ink = ACCENT; }                       // a dark pill, the words in the accent colour
+    else if (look === "tag") { plate(ctx, -w / 2, -h / 2, w, h, h * 0.18, ACCENT); }                                                 // a price tag in the accent colour
+    else if (look === "outline") { ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; plate(ctx, -w / 2, -h / 2, w, h, h * 0.3, "rgba(0,0,0,0.28)"); ink = "#fff"; }   // glass with a white edge
+    else plate(ctx, -w / 2, -h / 2, w, h, h * 0.32, "#fff");                                                                        // a paper sticker
+    ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    if (look === "paper") { ctx.lineWidth = 7; ctx.strokeStyle = ACCENT; ctx.beginPath(); ctx.roundRect(-w / 2 + 9, -h / 2 + 9, w - 18, h - 18, h * 0.25); ctx.stroke(); }
+    if (look === "outline") { ctx.lineWidth = 7; ctx.strokeStyle = "#fff"; ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h * 0.3); ctx.stroke(); }
+    if (look === "tag") { ctx.beginPath(); ctx.arc(-w / 2 + 20, 0, 7, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fill(); }
+    if (o.icon) { ctx.font = `${size * 1.02}px ${EMOJI}`; ctx.fillStyle = "#000"; ctx.fillText(o.icon, -w / 2 + 30, 4); }
+    ctx.font = `${WEIGHT} ${size}px ${FONT}`; ctx.fillStyle = ink; ctx.fillText(o.text, -w / 2 + 35 + icon, 2);
   } else if (o.kind === "number") {
     // the figure itself, large and in the accent colour, counting up to what was said
     const goal = /\d-\d/.test(String(o.value)) ? NaN : parseFloat(String(o.value).replace(",", ".")), k = ease((t - o.start) / 0.75), whole = Number.isInteger(goal) && !/[.,]/.test(String(o.value));
@@ -271,9 +279,16 @@ function drawOverlay(o, t) {
     const size = 190; ctx.font = `${WEIGHT} ${size}px ${FONT}`; const full = ctx.measureText(isFinite(goal) ? (whole ? String(goal) : goal.toFixed(1)) : shown).width;
     ctx.font = `${WEIGHT} ${size * 0.4}px ${FONT}`; const uw = o.unit ? ctx.measureText(o.unit).width + 18 : 0, w = full + uw;
     ctx.translate(left ? W * 0.08 + w / 2 : W * 0.92 - w / 2, H * 0.175); ctx.scale(pop, pop);
-    ctx.font = `${WEIGHT} ${size}px ${FONT}`; ctx.lineJoin = "round"; ctx.lineWidth = 22; ctx.strokeStyle = "rgba(0,0,0,0.78)"; ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
-    ctx.strokeText(shown, -w / 2, 0); ctx.shadowColor = "transparent"; ctx.fillStyle = ACCENT; ctx.fillText(shown, -w / 2, 0);
-    if (o.unit) { ctx.font = `${WEIGHT} ${size * 0.4}px ${FONT}`; ctx.lineWidth = 14; ctx.strokeText(o.unit, -w / 2 + full + 18, size * 0.2); ctx.fillStyle = "#fff"; ctx.fillText(o.unit, -w / 2 + full + 18, size * 0.2); }
+    const look = STYLE.number ?? "big", boxed = look !== "big", inkN = look === "badge" ? "#15171c" : look === "card" ? "#15171c" : ACCENT, inkU = boxed ? "#15171c" : "#fff";
+    if (boxed) {
+      // the figure in a box: filled with the accent colour ("badge"), or white with an accent line under it ("card")
+      ctx.shadowColor = "rgba(0,0,0,0.4)"; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10; plate(ctx, -w / 2 - 34, -size * 0.6, w + 68, size * 1.16, look === "badge" ? 40 : 26, look === "badge" ? ACCENT : "#fff"); ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      if (look === "card") plate(ctx, -w / 2 - 10, size * 0.4, (w + 20) * k, 12, 6, ACCENT);
+    }
+    ctx.font = `${WEIGHT} ${size}px ${FONT}`; ctx.lineJoin = "round"; ctx.lineWidth = 22; ctx.strokeStyle = "rgba(0,0,0,0.78)";
+    if (!boxed) { ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8; ctx.strokeText(shown, -w / 2, 0); ctx.shadowColor = "transparent"; }
+    ctx.fillStyle = inkN; ctx.fillText(shown, -w / 2, 0);
+    if (o.unit) { ctx.font = `${WEIGHT} ${size * 0.4}px ${FONT}`; ctx.lineWidth = 14; if (!boxed) ctx.strokeText(o.unit, -w / 2 + full + 18, size * 0.2); ctx.fillStyle = inkU; ctx.fillText(o.unit, -w / 2 + full + 18, size * 0.2); }
     if (o.caption) {
       const cs = fitted(ctx, o.caption, 40, W * 0.42), cw = ctx.measureText(o.caption).width + 44, shownC = presence(t, o.start + 0.25, o.end, 0.3, 0.2);
       ctx.globalAlpha = a * shownC; plate(ctx, left ? -w / 2 : w / 2 - cw, size * 0.62, cw, cs * 1.8, cs * 0.9, "rgba(17,17,17,0.86)");
@@ -302,6 +317,17 @@ function drawOverlay(o, t) {
 
 // ---------- break: a dark card with the name of the next part slides across the frame and away ----------
 function drawBreak(b, t) {
+  const look = STYLE.breaks ?? "slide";
+  if (look !== "slide") {
+    // "flash": the accent colour fills the frame and gives way to the dark card; "bar": a band across the middle, the speaker seen above and below
+    const inK = ease((t - b.start) / 0.22), outK = ease((b.end - t) / 0.22), shown = Math.min(inK, outK), text = b.text.toUpperCase();
+    ctx.save();
+    if (look === "flash") { ctx.globalAlpha = shown; ctx.fillStyle = "#101216"; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = Math.max(0, 1 - (t - b.start) / 0.3); ctx.fillStyle = ACCENT; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = shown; }
+    else { const h = H * 0.2 * shown; ctx.fillStyle = "rgba(16,18,22,0.94)"; ctx.fillRect(0, H * 0.42 - h / 2, W, h); ctx.fillStyle = ACCENT; ctx.fillRect(0, H * 0.42 - h / 2, W, 10); ctx.fillRect(0, H * 0.42 + h / 2 - 10, W, 10); ctx.globalAlpha = clamp((shown - 0.5) * 2); }
+    const size = fitted(ctx, text, look === "flash" ? 190 : 140, W * 0.84), grow = look === "flash" ? 1.25 - 0.25 * ease((t - b.start) / 0.35) : 1;
+    ctx.translate(W / 2, H * 0.42); ctx.scale(grow, grow); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `${WEIGHT} ${size}px ${FONT}`; ctx.fillStyle = look === "flash" ? "#fff" : ACCENT; ctx.fillText(text, 0, 4);
+    ctx.restore(); return;
+  }
   const coming = t < (b.start + b.end) / 2, k = coming ? ease((t - b.start) / 0.26) : ease((b.end - t) / 0.26);
   const panel = (inset, colour) => { ctx.fillStyle = colour; ctx.beginPath(); ctx.moveTo(-W * 0.18 + inset, 0); ctx.lineTo(W * 1.34 - inset, 0); ctx.lineTo(W * 1.18 - inset, H); ctx.lineTo(-W * 0.34 + inset, H); ctx.closePath(); ctx.fill(); };
   ctx.save(); ctx.translate((coming ? -1 : 1) * (1 - k) * W * 1.4, 0);
@@ -351,9 +377,10 @@ function drawTitle(beat, t) {
 }
 
 // ---------- subtitles: a short phrase at a time; each word turns solid as it is spoken, key words in the accent colour ----------
-const SUB_SIZE = Math.round(W * ({ s: 0.072, m: 0.088, l: 0.104 }[STYLE.subtitle_size] ?? 0.088)), SUB_GAP = SUB_SIZE * 0.26, SUB_MAX = W * 0.86;
+const SUB_SIZE = Math.round(W * ({ s: 0.072, m: 0.088, l: 0.104 }[STYLE.subtitle_size] ?? 0.088)), SUB_GAP = SUB_SIZE * 0.32, SUB_MAX = W * 0.86;
 const SUB_Y = STYLE.subtitle_place === "middle" ? 0.56 : 0.715;
 const KARAOKE = STYLE.karaoke !== false;
+const SUB_LOOK = STYLE.subtitle ?? "outline";
 const HOT = 1.16; // key words are this much larger
 function layout(words) {
   const rows = [[]]; let used = 0;
@@ -379,11 +406,12 @@ function drawSubtitle(line, t, onLight = false) {
   ctx.textAlign = "left"; ctx.textBaseline = "middle";
   rows.forEach((row, index) => {
     const left = W / 2 - row.width / 2, y = top + rowHeight * (index + 0.5);
+    if (SUB_LOOK === "plate") { ctx.save(); ctx.globalAlpha = a * 0.86; plate(ctx, left - 26, y - rowHeight / 2 + 3, row.width + 52, rowHeight - 6, 20, "#111317"); ctx.restore(); }
     for (const { word, w, x } of row) {
       const said = !KARAOKE || t >= word.start - 0.04;
       // A small pop as the word is spoken
       const pop = KARAOKE && said ? 1 + 0.07 * (1 - ease((t - word.start) / 0.22)) : 1;
-      const hot = word.hot && said, dark = onLight && !hot;
+      const hot = word.hot && said, dark = onLight && !hot && SUB_LOOK !== "plate";
       // A word with its outline and shadow is painted once for each look it has and laid down from then on:
       // the outline and the blurred shadow are what make drawing text slow
       const look = `${word.text}|${word.hot ? 1 : 0}|${hot ? 1 : 0}|${dark ? 1 : 0}|${onLight ? 1 : 0}`;
@@ -395,7 +423,9 @@ function drawSubtitle(line, t, onLight = false) {
         g.font = `${WEIGHT} ${size}px ${FONT}`; g.textAlign = "left"; g.textBaseline = "middle";
         g.lineJoin = "round"; g.lineWidth = SUB_SIZE * 0.14; g.strokeStyle = dark ? "rgba(255,255,255,0.85)" : onLight ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.5)";
         g.shadowColor = dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)"; g.shadowBlur = 16; g.shadowOffsetY = dark ? 0 : 5;
-        g.strokeText(word.text, pad, sprite.height / 2);
+        // "outline": a dark edge and a shadow; "shadow": the shadow alone, softer and deeper; "plate": neither, the words lie on a dark plate
+        if (SUB_LOOK === "outline") g.strokeText(word.text, pad, sprite.height / 2);
+        else if (SUB_LOOK === "shadow") { g.shadowBlur = 22; g.shadowColor = dark ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.85)"; g.fillStyle = dark ? "#16181d" : "#fff"; g.fillText(word.text, pad, sprite.height / 2); g.fillText(word.text, pad, sprite.height / 2); }
         g.shadowColor = "transparent";
         g.fillStyle = hot ? ACCENT : dark ? "#16181d" : "#ffffff";
         g.fillText(word.text, pad, sprite.height / 2);

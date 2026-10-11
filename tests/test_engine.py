@@ -233,6 +233,15 @@ class Takes(unittest.TestCase):
         self.assertNotIn("⟦", asked[0]); self.assertIn("[2]запис. ⟦запис 2⟧ [3]А", asked[-1])
 
 
+class Presets(unittest.TestCase):
+    def test_every_ready_made_style_is_a_whole_valid_style_with_a_font_on_offer(self):
+        from engine import fonts
+        names = [p["name"] for p in project.PRESETS]; self.assertEqual(len(names), len(set(names)))
+        for preset in project.PRESETS:
+            made = project.clean_style(preset)
+            self.assertEqual({k: made[k] for k in preset}, preset); self.assertIn(preset["font"], fonts.OFFERED)
+
+
 class Walk(unittest.TestCase):
     def test_the_way_between_two_rooms_goes_through_the_doors(self):
         square = lambda x, y: [[x, y], [x + 0.2, y], [x + 0.2, y + 0.2], [x, y + 0.2]]

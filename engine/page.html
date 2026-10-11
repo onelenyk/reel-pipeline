@@ -508,12 +508,17 @@ function draw(force) {
 
   const st = state.style, seg = (key, options) => `<div class="seg">${options.map(([value, label]) => `<button data-style='${JSON.stringify({ [key]: value })}' class="${st[key] === value ? "on" : ""}">${label}</button>`).join("")}</div>`;
   $("style").innerHTML = `
+    <div class="row" style="align-items:flex-start"><span>Готові стилі</span><div style="display:flex;flex-wrap:wrap;gap:6px">${(state.presets || []).map((p) => `<button data-style='${JSON.stringify(p).replace(/'/g, "&#39;")}' class="${p.name === st.name ? "on" : ""}" style="border-left:6px solid ${p.accent}">${esc(p.name)}</button>`).join("")}</div></div>
     <div class="row"><span>Акцент</span>${ACCENTS.map((c) => `<button class="sw${st.accent === c ? " on" : ""}" style="background:${c}" data-style='${JSON.stringify({ accent: c })}' aria-label="Колір ${c}"></button>`).join("")}<input type="color" id="accent" value="${st.accent}" aria-label="Власний колір"></div>
     <div class="row"><span>Шрифт</span><select id="fontPick" aria-label="Шрифт" style="font-family:'${esc(st.font)}',system-ui;font-weight:800">${[...new Set([...(state.fonts || ["Inter"]), st.font])].map((f) => `<option value="${esc(f)}" style="font-family:'${esc(f)}',system-ui" ${f === st.font ? "selected" : ""}>${esc(f)}</option>`).join("")}</select>
       <input type="text" id="fontOther" maxlength="40" placeholder="або назва з Google Fonts" style="flex:1 1 150px" aria-label="Інший шрифт"><button id="fontSet">Взяти</button>${seg("caps", [[false, "Як сказано"], [true, "ВЕЛИКИМИ"]])}</div>
     <div class="row"><span></span><span class="hint" style="margin:0;width:auto;flex:1">Шрифт завантажується з Google Fonts один раз і лишається на цьому комп'ютері. Не кожен шрифт має українські літери: чого бракує, домальовується звичайним.</span></div>
     <div class="row"><span>Субтитри</span>${seg("subtitle_size", [["s", "Малі"], ["m", "Середні"], ["l", "Великі"]])}${seg("subtitle_place", [["low", "Внизу"], ["middle", "Посередині"]])}</div>
     <div class="row"><span>Ритм кадру</span>${seg("rhythm", [[true, "Міняти крупність"], [false, "Один план"]])}</div>
+    <div class="row"><span>Субтитри</span>${seg("subtitle", [["outline", "З обведенням"], ["plate", "На плашці"], ["shadow", "З тінню"]])}</div>
+    <div class="row"><span>Наліпка</span>${seg("sticker", [["paper", "Папірець"], ["pill", "Пігулка"], ["tag", "Бирка"], ["outline", "Скло"]])}</div>
+    <div class="row"><span>Число</span>${seg("number", [["big", "Велике"], ["badge", "Значок"], ["card", "Картка"]])}</div>
+    <div class="row"><span>Перебивка</span>${seg("breaks", [["slide", "Шторка"], ["flash", "Спалах"], ["bar", "Смуга"]])}</div>
     <div class="row"><span>Маршрут на плані</span>${seg("navigator", [["arrow", "Стрілка"], ["steps", "Сліди"], ["off", "Без маршруту"]])}</div>
     <div class="row"><span>Звуки появи</span>${seg("sounds", [["off", "Без звуків"], ["quiet", "Тихо"], ["normal", "Чутно"]])}</div>
     <div class="row"><span>Слова</span>${seg("karaoke", [[true, "Загоряються по черзі"], [false, "Усі одразу"]])}</div>

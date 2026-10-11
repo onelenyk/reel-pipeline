@@ -78,7 +78,7 @@ def summary(name):
                    assets=[{"id": a["id"], "file": Path(a["file"]).name, "credit": a.get("credit")} for a in doc["assets"]],
                    needs=[{**n, "file": Path(assets[n["asset"]]["file"]).name if n.get("asset") in assets else None, "credit": assets.get(n.get("asset"), {}).get("credit")} for n in doc["needs"]],
                    credits=[a["credit"] for a in doc["assets"] if a.get("credit") and a["id"] in used],
-                   fonts=fonts.OFFERED, overlays=doc["overlays"], shown_overlays=[o["id"] for o in plan["overlays"] + plan["breaks"]], marks=doc["marks"], plans=[{"asset": a, "file": Path(assets[a]["file"]).name, "read": plans.stored(assets[a]["file"], lenient=True) is not None,
+                   fonts=fonts.OFFERED, presets=project.PRESETS, overlays=doc["overlays"], shown_overlays=[o["id"] for o in plan["overlays"] + plan["breaks"]], marks=doc["marks"], plans=[{"asset": a, "file": Path(assets[a]["file"]).name, "read": plans.stored(assets[a]["file"], lenient=True) is not None,
                                                "rooms": [{"id": r["id"], "shape": r["shape"], "at": r["at"], "name": r.get("name"), "number": r.get("number"), "guess": bool(r.get("guess")), "outdoors": bool(r.get("outdoors")), "by": r.get("by")} for r in project.rooms_of(assets[a]["file"])]} for a in assets if len(project.rooms_of(assets[a]["file"])) >= 3 or (a in project.plan_assets(doc) and plans.stored(assets[a]["file"], lenient=True) is None)])
     return out
 
