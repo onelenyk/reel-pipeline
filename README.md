@@ -30,7 +30,7 @@ The web page (in Ukrainian) shows the pipeline step by step as it runs and plays
 - **correct the text**: highlight words, fix a misheard word in place (the AI's own suggestions stay as offers), cut a stretch of words or put it back;
 - **choose pictures**: every request for material and every picture beat opens a chooser with the project's own pictures, upload from the device, and a search of openly licensed pictures on the internet (labelled as illustrations, with credits to copy into the post);
 - **add your own beats** over a range of words: a picture on top, a picture behind the speaker, a title, a zoom;
-- **set the style** (accent colour, subtitle size and place, word-by-word or all at once, title glow, picture layout, loudness), **save it under a name**, apply it to another video, or make it the default for new ones;
+- **set the style** (font: a dozen families with Cyrillic or any Google font by name, fetched once and kept in `fonts/`; capitals; accent colour, subtitle size and place, word-by-word or all at once, title glow, picture layout, loudness), **save it under a name**, apply it to another video, or make it the default for new ones;
 - **light up rooms on a floor plan**: the plan is read and each room gets a guessed name to correct once; the AI lists the moments a room is spoken of and each takes its room by name (see `docs/plans.md`);
 - **see a change at once**: after any change the paused player shows that moment as it would be built (one frame, drawn in half a second), so the video is built only when everything looks right;
 - upload a new take, and render.
@@ -62,14 +62,14 @@ The AI key goes in `.env` (see `.env.example`); `.env`, media, projects and mode
 | `tests/` | `test_engine.py` (`./reel test`, seconds, no video or network) and `page/` (browser scenarios, `./reel page NAME`) |
 | `e2e/` | the end-to-end run on generated takes (`./reel e2e`) |
 | `lab/` | experiments, each with its question and its finding; the index is `lab/README.md` |
-| `tools/` | helpers: `flow.py` (the author's path, step by step), `sheet.py` (a contact sheet of a finished video), `stills.py` (single frames of a design), `run-originals.sh`, `fill-from-internet.py` |
+| `tools/` | helpers: `flow.py` (the author's path, step by step), `sheet.py` (a contact sheet of a finished video), `stills.py` (single frames of a design), `fonts_sheet.py` (one frame in several fonts), `proof.py` (the proofreading alone), `originals.py` (the three takes from nothing), `run-originals.sh`, `fill-from-internet.py` |
 | `docs/` | `plan.md` (the product plan), `findings.md` (first experiments), `plans.md` (rooms on a floor plan), `overlays.md` (a design, not built) |
 
-Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output, safe to delete), `models/` (weights), `plans/` (test plans), `rooms/` (what is known of each plan), `answers/` (the AI's answers, kept so that the same take gives the same video; delete the folder to have everything asked again), `styles/`, `vocabulary.txt`, `.env`.
+Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output, safe to delete), `models/` (weights), `plans/` (test plans), `rooms/` (what is known of each plan), `fonts/` (fonts fetched by name), `answers/` (the AI's answers, kept so that the same take gives the same video; delete the folder to have everything asked again), `styles/`, `vocabulary.txt`, `.env`.
 
 ## Three kinds of check
 
-- `./reel test` after any change to `engine/`: 34 tests, under a second.
-- `./reel page player|timeline|ask|rooms|zones|draw-zone|reshape-zone|peek [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
+- `./reel test` after any change to `engine/`: 35 tests, under a second.
+- `./reel page player|timeline|ask|rooms|zones|draw-zone|reshape-zone|peek|font [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
 - `./reel e2e` before trusting the whole: about eight minutes.
 

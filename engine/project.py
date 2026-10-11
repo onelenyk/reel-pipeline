@@ -1,6 +1,7 @@
 """The project document: one JSON file that fully describes a video. Rendering is a pure function of it."""
 import json, os, re, shutil, tempfile, time
 from pathlib import Path
+from . import fonts
 
 FORMAT = 1
 PAD = 0.12     # a breath kept on each side of every stretch of speech
@@ -12,7 +13,7 @@ MIN_BEAT = {"title": 2.6, "cutaway": 2.5, "backdrop": 2.5, "full": 2.5, "zoom": 
 
 
 # ---------- style: how the graphics and the sound of a video are finished; saved styles are reused across videos ----------
-STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "level": -15}
+STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "level": -15}
 CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge")}
 
 
@@ -23,7 +24,8 @@ def clean_style(raw):
     if isinstance(raw.get("accent"), str) and re.fullmatch(r"#[0-9a-fA-F]{6}", raw["accent"]): out["accent"] = raw["accent"].lower()
     for key, allowed in CHOICES.items():
         if raw.get(key) in allowed: out[key] = raw[key]
-    for key in ("karaoke", "title_glow", "rhythm"):
+    if isinstance(raw.get("font"), str): out["font"] = fonts.clean(raw["font"])
+    for key in ("karaoke", "title_glow", "rhythm", "caps"):
         if isinstance(raw.get(key), bool): out[key] = raw[key]
     if isinstance(raw.get("level"), (int, float)) and not isinstance(raw.get("level"), bool): out["level"] = max(-24, min(-10, round(raw["level"])))
     return out

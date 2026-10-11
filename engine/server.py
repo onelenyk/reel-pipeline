@@ -7,7 +7,7 @@ import json, re, tempfile, threading, traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
-from . import HOME, find, plan as plans, project, render, speech, styles, suggest
+from . import HOME, find, fonts, plan as plans, project, render, speech, styles, suggest
 from .__main__ import ROOT, create, find_rooms
 
 PAGE = Path(__file__).resolve().parent / "page.html"
@@ -47,7 +47,7 @@ def summary(name):
                    assets=[{"id": a["id"], "file": Path(a["file"]).name, "credit": a.get("credit")} for a in doc["assets"]],
                    needs=[{**n, "file": Path(assets[n["asset"]]["file"]).name if n.get("asset") in assets else None, "credit": assets.get(n.get("asset"), {}).get("credit")} for n in doc["needs"]],
                    credits=[a["credit"] for a in doc["assets"] if a.get("credit") and a["id"] in used],
-                   marks=doc["marks"], plans=[{"asset": a, "file": Path(assets[a]["file"]).name, "read": plans.stored(assets[a]["file"], lenient=True) is not None,
+                   fonts=fonts.OFFERED, marks=doc["marks"], plans=[{"asset": a, "file": Path(assets[a]["file"]).name, "read": plans.stored(assets[a]["file"], lenient=True) is not None,
                                                "rooms": [{"id": r["id"], "shape": r["shape"], "at": r["at"], "name": r.get("name"), "number": r.get("number"), "guess": bool(r.get("guess")), "outdoors": bool(r.get("outdoors")), "by": r.get("by")} for r in project.rooms_of(assets[a]["file"])]} for a in assets if len(project.rooms_of(assets[a]["file"])) >= 3 or (a in project.plan_assets(doc) and plans.stored(assets[a]["file"], lenient=True) is None)])
     return out
 

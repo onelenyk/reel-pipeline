@@ -8,13 +8,17 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire("/opt/renderer/");
-const { createCanvas, loadImage } = require("@napi-rs/canvas");
+const { createCanvas, loadImage, GlobalFonts } = require("@napi-rs/canvas");
 
 const timeline = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const { width: W, height: H, fps } = timeline;
 const STYLE = timeline.style ?? {};
 const ACCENT = STYLE.accent ?? "#ffd60a";
-const FONT = "Inter, 'Noto Sans', sans-serif";
+// The style's own font, if it names one, is a file the engine has fetched; Inter stands behind it for any sign it lacks
+if (STYLE.font_file) GlobalFonts.registerFromPath(STYLE.font_file, "ReelFont");
+const FONT = (STYLE.font_file ? "ReelFont, " : "") + "Inter, 'Noto Sans', sans-serif";
+const WEIGHT = STYLE.font_file ? STYLE.font_weight ?? 800 : 800;
+if (STYLE.caps) for (const line of timeline.lines) for (const word of line.words) word.text = word.text.toUpperCase();
 
 const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
 const ease = (k) => 1 - Math.pow(1 - clamp(k), 3);
@@ -24,7 +28,7 @@ const presence = (t, start, end, enter = 0.3, leave = 0.25) => Math.min(ease((t 
 
 const canvas = createCanvas(W, H);
 const ctx = canvas.getContext("2d");
-const font = (size, weight = 800) => { ctx.font = `${weight} ${size}px ${FONT}`; };
+const font = (size, weight = WEIGHT) => { ctx.font = `${weight} ${size}px ${FONT}`; };
 
 const pictures = new Map();
 for (const beat of timeline.beats) {
@@ -122,7 +126,7 @@ function drawPlan(beat, t) {
   ctx.drawImage(planLayer, 0, 0);
 }
 function paintPlan(ctx, beat, t, image, a) {
-  const font = (size, weight = 800) => { ctx.font = `${weight} ${size}px ${FONT}`; };
+  const font = (size, weight = WEIGHT) => { ctx.font = `${weight} ${size}px ${FONT}`; };
   ctx.save();
   ctx.globalAlpha = a;
   const paper = ctx.createLinearGradient(0, 0, 0, H); paper.addColorStop(0, "#f6f3ec"); paper.addColorStop(1, "#e6e0d4");
@@ -171,7 +175,7 @@ function paintPlan(ctx, beat, t, image, a) {
   if (now && now.name) {
     const shown = presence(t, now.start + 0.15, now.end, 0.35, 0.2);
     if (shown > 0) {
-      ctx.save(); ctx.globalAlpha = a * shown; font(46, 800);
+      ctx.save(); ctx.globalAlpha = a * shown; font(46);
       const text = titled(now.name), tw = ctx.measureText(text).width, bx = card.x + 34, by = card.y + card.h - 34 - 84 + (1 - shown) * 24;
       ctx.shadowColor = "rgba(0,0,0,0.25)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
       ctx.fillStyle = "#111"; ctx.beginPath(); ctx.roundRect(bx, by, tw + 64, 84, 42); ctx.fill();
@@ -190,7 +194,7 @@ function drawTitle(beat, t) {
   const size = Math.min(W * 0.1, (W * 0.86) / (beat.text.length * 0.6));
   const tw = titleLayer.width, th = titleLayer.height;
   titleCtx.clearRect(0, 0, tw, th);
-  titleCtx.font = `800 ${size}px ${FONT}`;
+  titleCtx.font = `${WEIGHT} ${size}px ${FONT}`;
   titleCtx.textAlign = "center"; titleCtx.textBaseline = "middle";
   titleCtx.fillStyle = ACCENT;
   titleCtx.fillText(beat.text, tw / 2, th / 2);
@@ -260,7 +264,7 @@ function drawSubtitle(line, t, onLight = false) {
         const size = SUB_SIZE * (word.hot ? HOT : 1), pad = Math.ceil(SUB_SIZE * 0.5);
         sprite = createCanvas(Math.ceil(w) + 2 * pad, Math.ceil(size * 1.3) + 2 * pad); sprite.pad = pad;
         const g = sprite.getContext("2d");
-        g.font = `800 ${size}px ${FONT}`; g.textAlign = "left"; g.textBaseline = "middle";
+        g.font = `${WEIGHT} ${size}px ${FONT}`; g.textAlign = "left"; g.textBaseline = "middle";
         g.lineJoin = "round"; g.lineWidth = SUB_SIZE * 0.14; g.strokeStyle = dark ? "rgba(255,255,255,0.85)" : onLight ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.5)";
         g.shadowColor = dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)"; g.shadowBlur = 16; g.shadowOffsetY = dark ? 0 : 5;
         g.strokeText(word.text, pad, sprite.height / 2);

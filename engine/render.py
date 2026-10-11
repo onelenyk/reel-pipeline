@@ -1,7 +1,7 @@
 """Builds the finished video from a project document: ffmpeg cuts, colours, frames and mixes; the Node renderer draws."""
 import hashlib, json, subprocess, tempfile, time
 from pathlib import Path
-from . import matte, media, project
+from . import fonts, matte, media, project
 
 RENDERER = Path(__file__).resolve().parent.parent / "renderer" / "render.mjs"
 ZOOM = 0.12   # how much closer a zoom beat comes
@@ -34,6 +34,7 @@ def still(folder, t, out):
     """One frame of the video as it would be built now, at second `t` of it: for seeing a change without building.
     The speaker is shown as shot (no cut-out behind a backdrop, no zoom); everything drawn over the picture is as it will be."""
     folder = Path(folder); doc = project.load(folder); timeline = project.resolve(doc); source = doc["sources"][0]
+    timeline["style"] = {**timeline["style"], **fonts.face(timeline["style"].get("font"))}
     width, height = timeline["width"], timeline["height"]; t = max(0.0, min(float(t), max(0.0, timeline["seconds"] - 0.05)))
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp); (tmp / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
@@ -56,6 +57,7 @@ def still(folder, t, out):
 def build(folder):
     folder = Path(folder); doc = project.load(folder); timeline = project.resolve(doc); source = doc["sources"][0]
     width, height, fps = timeline["width"], timeline["height"], timeline["fps"]
+    timeline["style"] = {**timeline["style"], **fonts.face(timeline["style"].get("font"))}
     (folder / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
     keep = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in timeline["spans"])
     # Even frames first: a phone's frames do not arrive evenly, and cutting by counting them would let the picture run ahead of the sound

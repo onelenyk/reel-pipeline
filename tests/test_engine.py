@@ -308,3 +308,11 @@ class Tour(unittest.TestCase):
         self.assertFalse(next(b for b in doc["beats"] if b["id"] == "b1")["accepted"])   # the AI's insert of the same plan gives way
         project.lay_plans(folder); self.assertEqual(len([b for b in project.load(folder)["beats"] if b.get("by") == "plan"]), 2)   # remade, not added twice
 
+
+
+class Fonts(unittest.TestCase):
+    def test_a_style_keeps_a_font_name_and_refuses_anything_else(self):
+        self.assertEqual(project.clean_style({"font": " Russo  One ", "caps": True})["font"], "Russo One")
+        self.assertTrue(project.clean_style({"caps": True})["caps"])
+        self.assertEqual(project.clean_style({"font": "../../etc/passwd"})["font"], "Inter")
+        self.assertEqual(project.clean_style({})["font"], "Inter")
