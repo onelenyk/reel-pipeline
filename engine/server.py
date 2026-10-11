@@ -126,6 +126,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as error:
                 traceback.print_exc(); return self.send({"error": str(error)[-200:]}, 502)
         if len(parts) == 3 and parts[0] == "video": return self.file(ROOT / parts[1] / "render.mp4", "video/mp4")
+        if len(parts) == 3 and parts[0] == "frame":
+            # One frame of the video as it would be built now: the page shows it after a change, instead of a build
+            folder = ROOT / parts[1]
+            if not (folder / "project.json").exists(): return self.send({"error": "there is no such project"}, 404)
+            with tempfile.TemporaryDirectory() as tmp:
+                return self.send(render.still(folder, float(query.get("t") or 0), Path(tmp) / "frame.jpg").read_bytes(), kind="image/jpeg")
         if len(parts) == 3 and parts[0] == "strip":
             folder = ROOT / parts[1]
             picture = folder / f"strip{render.STRIP}.jpg"

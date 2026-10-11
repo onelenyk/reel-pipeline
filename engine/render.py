@@ -1,5 +1,5 @@
 """Builds the finished video from a project document: ffmpeg cuts, colours, frames and mixes; the Node renderer draws."""
-import json, subprocess, time
+import tempfile, json, subprocess, time
 from pathlib import Path
 from . import matte, media, project
 
@@ -28,6 +28,29 @@ def strip(folder):
     folder = Path(folder); video = folder / "render.mp4"; seconds = media.probe(video)["seconds"]
     media.ffmpeg("-i", str(video), "-vf", f"fps={STRIP}/{max(seconds, 1):.3f},scale=54:96,tile={STRIP}x1", "-frames:v", "1", "-q:v", "5", str(folder / "strip.part.jpg"))
     (folder / "strip.part.jpg").replace(folder / f"strip{STRIP}.jpg")
+
+
+def still(folder, t, out):
+    """One frame of the video as it would be built now, at second `t` of it: for seeing a change without building.
+    The speaker is shown as shot (no cut-out behind a backdrop, no zoom); everything drawn over the picture is as it will be."""
+    folder = Path(folder); doc = project.load(folder); timeline = project.resolve(doc); source = doc["sources"][0]
+    width, height = timeline["width"], timeline["height"]; t = max(0.0, min(float(t), max(0.0, timeline["seconds"] - 0.05)))
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp); (tmp / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
+        drawn = subprocess.run(["node", str(RENDERER), str(tmp / "timeline.json"), "--stills", f"{t:.3f}", str(tmp / "layer")], capture_output=True, text=True)
+        if drawn.returncode: raise RuntimeError("the graphics could not be drawn: " + drawn.stderr[-300:])
+        layer = tmp / f"layer-{t:.1f}.png"
+        # where this moment is in the take: the stretches that stay, laid end to end
+        at, passed = 0.0, 0.0
+        for a, b in timeline["spans"]:
+            if t <= passed + (b - a): at = a + (t - passed); break
+            passed += b - a; at = b
+        covered = any(b["kind"] == "full" and b["start"] + 0.3 <= t <= b["end"] - 0.3 for b in timeline["beats"])
+        if covered: media.ffmpeg("-f", "lavfi", "-i", f"color=c=black:s={width}x{height}", "-i", str(layer), "-filter_complex", "[0][1]overlay,scale=540:-2", "-frames:v", "1", "-q:v", "4", str(out))
+        else:
+            media.ffmpeg("-ss", f"{at:.3f}", "-i", source["file"], "-i", str(layer), "-filter_complex",
+                         f"[0:v]{media.tone_filter(source['hdr'])},scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}[v];[v][1]overlay,scale=540:-2", "-frames:v", "1", "-q:v", "4", str(out))
+    return out
 
 
 def build(folder):

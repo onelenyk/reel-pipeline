@@ -77,6 +77,12 @@
   .w.now { background: var(--brand); color: #000; }
   .w.picked { background: var(--bad); color: #fff; }
   .words input { height: 32px; font-size: 16px; width: 11em; }
+  #player { position: relative; }
+  #peek { position: absolute; inset: 0; display: none; cursor: pointer; }
+  #peek.on { display: block; }
+  #peek img { width: 100%; height: 100%; object-fit: contain; background: #000; border-radius: 12px; }
+  #peek span { position: absolute; left: 10px; top: 10px; padding: 3px 9px; border-radius: 9px; background: var(--brand); color: #000; font-size: 12px; font-weight: 700; }
+  #peek small { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; color: #fff; font-size: 12px; text-shadow: 0 1px 4px #000; }
   .tabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--ink); z-index: 5; overflow-x: auto; }
   .tabs button { background: none; border-radius: 0; height: 44px; padding: 0 14px; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
   .tabs button:hover { background: none; color: var(--fg); }
@@ -246,7 +252,7 @@ const api = async (path, options) => {
 };
 const fail = (error) => { $("error").innerHTML = `<div class="error"></div>`; $("error").firstChild.textContent = String(error.message || error); };
 const act = async (path, options) => {
-  try { $("error").innerHTML = ""; const fresh = await api(path, options); state = fresh; edited = true; draw(true); return fresh; } catch (error) { fail(error); return null; }
+  try { $("error").innerHTML = ""; const fresh = await api(path, options); state = fresh; edited = true; draw(true); peek(); return fresh; } catch (error) { fail(error); return null; }
 };
 const edit = (change) => act(`/api/projects/${name}/edit`, { method: "POST", body: JSON.stringify(change) });
 const esc = (text) => String(text ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -254,6 +260,22 @@ const safeName = (file) => file.name.replace(/[^\w.-]/g, "_").slice(-50) || "fil
 const pic = (file) => `/asset/${name}/${file}`;
 
 const video = () => $("player").querySelector("video");
+// After a change, the player shows this moment as it would be built now: one frame drawn in half a second, instead of a build
+let peekTimer = null, peekCount = 0;
+function peek(at) {
+  const v = video(), layer = $("peek");
+  if (!v || !layer) return;
+  if (at != null && isFinite(at)) { v.pause(); v.currentTime = Math.max(0, Math.min(at, (state.seconds || v.duration || 0) - 0.1)); }
+  if (!edited || !v.paused || state.busy) { layer.classList.remove("on"); return; }
+  clearTimeout(peekTimer);
+  peekTimer = setTimeout(() => {
+    const image = layer.querySelector("img"), mine = ++peekCount;
+    image.onload = () => { if (mine === peekCount && edited && v.paused) layer.classList.add("on"); };
+    image.src = `/frame/${name}/frame.jpg?t=${Math.min(v.currentTime, Math.max(0, (state.seconds || 0) - 0.1)).toFixed(2)}&n=${mine}`;
+  }, 120);
+}
+/** Where in the video a room of a plan is lit: the place to look at after that room has been changed. */
+const litAt = (room) => { const m = (state.marks || []).filter((x) => x.room === room).sort((a, b) => a.from - b.from)[0], w = m && state.words.slice(m.from, m.to + 1).find((x) => x.at != null); return w ? w.at + 1 : null; };
 function seek(seconds, play = true) {
   const v = video(); if (!v || seconds == null) return;
   v.currentTime = Math.max(0, seconds); if (play) v.play().catch(() => {});
@@ -399,11 +421,13 @@ function drawSteps() {
   document.title = kind === "running" ? `⏳ ${running ? STEP[running.step] : "Працюю"} · Reel` : kind === "failed" ? "⚠ Помилка · Reel" : "Reel";
   $("steps").innerHTML = state.steps.map((s) => `<li class="${s.state}"><span class="dot"></span>${STEP[s.step] || s.step}<span class="note">${
     s.state === "done" ? s.seconds + " с" : s.state === "failed" ? esc(s.error) : s.state === "running" ? esc(NOTE[s.note] || (s.note ? "вирізаю мовця з фону" : "триває")) + ` · ${Math.max(0, Math.round(Date.now() / 1000 - s.at))} с` : ""}</span></li>`).join("");
-  $("stale").textContent = edited && state.has_render && !busy ? "Є зміни, яких ще немає у відео. Натисніть «Зібрати відео»." : "";
+  $("stale").textContent = edited && state.has_render && !busy ? "Є зміни, яких ще немає у відео. У плеєрі на паузі видно, як вони виглядатимуть; щоб отримати відео, натисніть «Зібрати відео»." : "";
   if (state.has_render && shown !== state.render_version) {
     const old = video(), place = old ? old.currentTime : 0;
     shown = state.render_version; edited = false;
-    $("player").innerHTML = `<video controls playsinline src="/video/${name}/render.mp4?v=${shown}"></video>`;
+    $("player").innerHTML = `<video controls playsinline src="/video/${name}/render.mp4?v=${shown}"></video><div id="peek" title="Так цей момент виглядатиме після збирання. Дотик повертає відео."><img alt="Перегляд правок"><span>перегляд правок</span><small>ще не у відео · дотик показує відео</small></div>`;
+    for (const what of ["seeked", "pause"]) video().addEventListener(what, () => peek());
+    video().addEventListener("play", () => $("peek") && $("peek").classList.remove("on"));
     if (place) video().addEventListener("loadedmetadata", () => { video().currentTime = Math.min(place, video().duration || place); }, { once: true });
   } else if (!state.has_render && !$("player").firstChild) $("player").innerHTML = `<div class="empty">Відео ще не зібране</div>`;
 }
@@ -617,16 +641,17 @@ async function saveWord(input) {
 
 document.addEventListener("change", async (e) => {
   const input = e.target.closest && e.target.closest("input[data-zone]");
-  if (input) await edit({ zone: { asset: input.dataset.plan, room: input.dataset.zone, name: input.value } });
+  if (input && await edit({ zone: { asset: input.dataset.plan, room: input.dataset.zone, name: input.value } })) peek(litAt(input.dataset.zone));
 });
 document.addEventListener("focusin", (e) => { const input = e.target.closest && e.target.closest("input[data-zone]"); document.querySelectorAll(".plan polygon.hot").forEach((x) => x.classList.remove("hot")); if (input) { const shape = document.querySelector(`polygon[data-room="${input.dataset.zone}"][data-plan="${input.dataset.plan}"]`); if (shape) shape.classList.add("hot"); } });
 document.addEventListener("click", async (e) => {
+  if (e.target.closest("#peek")) { $("peek").classList.remove("on"); return; }
   if (e.target.closest("[data-reshape]")) {
     const b = e.target.closest("[data-reshape]"), room = ((state.plans.find((p) => p.asset === b.dataset.plan) || {}).rooms || []).find((r) => r.id === b.dataset.reshape);
     if (room) { reshape = { asset: b.dataset.plan, room: room.id, points: room.shape.map((q) => [...q]), drag: null, last: null }; sketch = null; marked = null; draw(true); frame(reshape.points); drawReshape(); } return;
   }
   if (e.target.closest("[data-reshape-no]")) { reshape = null; setView(1, 0, 0); draw(true); return; }
-  if (e.target.closest("[data-reshape-done]")) { const done = reshape; reshape = null; setView(1, 0, 0); await edit({ zone_shape: { asset: done.asset, room: done.room, shape: done.points } }); return; }
+  if (e.target.closest("[data-reshape-done]")) { const done = reshape; reshape = null; setView(1, 0, 0); if (await edit({ zone_shape: { asset: done.asset, room: done.room, shape: done.points } })) peek(litAt(done.room)); return; }
   if (e.target.closest("[data-zoom]")) { const how = e.target.closest("[data-zoom]").dataset.zoom; if (how === "fit") setView(1, 0, 0); else zoomAt(how === "in" ? 1.6 : 1 / 1.6, view.x + 0.5 / view.k, view.y + 0.5 / view.k); return; }
   if (pan && pan.moved) return;   // the plan was being moved, not tapped
   if (reshape && e.target.closest(".plan.reshaping")) return;
