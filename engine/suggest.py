@@ -122,7 +122,13 @@ def review(words, fresh=False, starts=()):
     # Three answers at once, and a word is cut when most of them cut it: one answer alone sometimes strays
     opens = {i: n for n, i in enumerate(starts, 2)}   # a video of one take is asked about exactly as before
     prompt = REVIEW + (TAKES if opens else "") + " ".join((f"⟦запис {opens[i]}⟧ " if i in opens else "") + f"[{i}]{w['text']}" for i, w in enumerate(words))
-    with ThreadPoolExecutor(VOTERS) as pool: answers = list(pool.map(lambda n: clean_cuts(ask(prompt, think=True, sample=n, fresh=fresh), len(words)), range(VOTERS)))
+    def answer(n):
+        # one answer that fails (the model thought until its allowance ran out) does not stop the review: the others vote
+        try: return clean_cuts(ask(prompt, think=True, sample=n, fresh=fresh), len(words))
+        except RuntimeError as error: return error
+    with ThreadPoolExecutor(VOTERS) as pool: answers = list(pool.map(answer, range(VOTERS)))
+    failed = [a for a in answers if isinstance(a, Exception)]; answers = [a for a in answers if not isinstance(a, Exception)]
+    if len(answers) < 2: raise failed[0]
     return merged([c for c in vote(answers) if c["why"] != "garble" or empty(words, c)], restarts(words))
 
 
