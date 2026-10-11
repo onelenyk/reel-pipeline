@@ -18,6 +18,8 @@ question, the command that runs it and what was found; this page is the index. R
 | `plans/cubicasa_raw.py` | What does the CubiCasa5k network see on her plans? | Walls, doors and windows well; room kinds badly. The engine uses the former |
 | `plans/numbers_on_plan.py` | How many room numbers can be found on a plan? | All on clean plans, 7 of 16 on a blurred frame from a video |
 | `plans/read_numbers.py` | Can room numbers be read locally, with no paid model? | Yes on clean plans (11 of 13, none wrong), no on a blurred frame |
+| (no script) | Can the order of the tour name a nameless room: the one room behind a door of the room just spoken of? | Tried in `engine/project.py` on 2026-10-11 and removed: on the first real take it gave a wardrobe the name of a room the speaker only imagined. A wrong name costs more than an empty one |
+| `build_time.py` | Where does the time of a build go? | Drawing the graphics, 85 of 110 s: the plan screen repainted every frame, and outlined text. Painting an unchanged frame once halved the build |
 | `plans/which_room.py` | Can the AI tell which room the speaker means? | No: one or two of four, in two to three minutes. A person clicks instead |
 | `plans/score.py` | How well are rooms outlined, in numbers? | Scores a finder against 232 plans marked by people (`plans/cubicasa`) |
 

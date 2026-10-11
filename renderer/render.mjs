@@ -106,11 +106,23 @@ function drawFull(beat, t) {
 // ---------- a floor plan: on a card, with the camera moving to the room being spoken of ----------
 const lerp = (a, b, k) => a + (b - a) * k;
 const titled = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+const planLayer = createCanvas(W, H), planCtx = planLayer.getContext("2d");
+let planKey = "";
 function drawPlan(beat, t) {
   const image = pictures.get(beat.file);
   if (!image) return;
   const a = presence(t, beat.start, beat.end, 0.25, 0.22);
   if (a <= 0) return;
+  // Most of the time nothing on the plan moves: the camera has arrived and the room is lit. Such a frame is painted once
+  // and laid down again for as long as it stays the same, which is most of the plan's time on screen.
+  const marks0 = beat.marks ?? [], index0 = marks0.reduce((last, m, i) => (t >= m.start ? i : last), -1), now0 = marks0[index0];
+  const moving = now0 ? Math.min(1, (t - now0.start) / 0.7) : 1;
+  const key = [beat.id, a.toFixed(3), index0, moving.toFixed(4), now0 ? presence(t, now0.start, now0.end, 0.35, 0.2).toFixed(3) : "", now0 ? presence(t, now0.start + 0.15, now0.end, 0.35, 0.2).toFixed(3) : ""].join("|");
+  if (key !== planKey) { planCtx.clearRect(0, 0, W, H); paintPlan(planCtx, beat, t, image, a); planKey = key; }
+  ctx.drawImage(planLayer, 0, 0);
+}
+function paintPlan(ctx, beat, t, image, a) {
+  const font = (size, weight = 800) => { ctx.font = `${weight} ${size}px ${FONT}`; };
   ctx.save();
   ctx.globalAlpha = a;
   const paper = ctx.createLinearGradient(0, 0, 0, H); paper.addColorStop(0, "#f6f3ec"); paper.addColorStop(1, "#e6e0d4");
@@ -225,6 +237,7 @@ function layout(words) {
 }
 const laidOut = new Map(timeline.lines.map((line) => [line, layout(line.words)]));
 
+const sprites = new Map();
 function drawSubtitle(line, t, onLight = false) {
   const a = Math.min(ease((t - line.start + 0.06) / 0.14), ease((line.end - t) / 0.12));
   if (a <= 0) return;
@@ -238,23 +251,36 @@ function drawSubtitle(line, t, onLight = false) {
       const said = !KARAOKE || t >= word.start - 0.04;
       // A small pop as the word is spoken
       const pop = KARAOKE && said ? 1 + 0.07 * (1 - ease((t - word.start) / 0.22)) : 1;
-      ctx.save();
-      font(SUB_SIZE * (word.hot ? HOT : 1));
-      ctx.translate(left + x + w / 2, y); ctx.scale(pop, pop);
-      ctx.globalAlpha = a * (said ? 1 : 0.5);
       const hot = word.hot && said, dark = onLight && !hot;
-      ctx.lineJoin = "round"; ctx.lineWidth = SUB_SIZE * 0.14; ctx.strokeStyle = dark ? "rgba(255,255,255,0.85)" : onLight ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.5)";
-      ctx.shadowColor = dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)"; ctx.shadowBlur = 16; ctx.shadowOffsetY = dark ? 0 : 5;
-      ctx.strokeText(word.text, -w / 2, 0);
-      ctx.shadowColor = "transparent";
-      ctx.fillStyle = hot ? ACCENT : dark ? "#16181d" : "#ffffff";
-      ctx.fillText(word.text, -w / 2, 0);
+      // A word with its outline and shadow is painted once for each look it has and laid down from then on:
+      // the outline and the blurred shadow are what make drawing text slow
+      const look = `${word.text}|${word.hot ? 1 : 0}|${hot ? 1 : 0}|${dark ? 1 : 0}|${onLight ? 1 : 0}`;
+      let sprite = sprites.get(look);
+      if (!sprite) {
+        const size = SUB_SIZE * (word.hot ? HOT : 1), pad = Math.ceil(SUB_SIZE * 0.5);
+        sprite = createCanvas(Math.ceil(w) + 2 * pad, Math.ceil(size * 1.3) + 2 * pad); sprite.pad = pad;
+        const g = sprite.getContext("2d");
+        g.font = `800 ${size}px ${FONT}`; g.textAlign = "left"; g.textBaseline = "middle";
+        g.lineJoin = "round"; g.lineWidth = SUB_SIZE * 0.14; g.strokeStyle = dark ? "rgba(255,255,255,0.85)" : onLight ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.5)";
+        g.shadowColor = dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)"; g.shadowBlur = 16; g.shadowOffsetY = dark ? 0 : 5;
+        g.strokeText(word.text, pad, sprite.height / 2);
+        g.shadowColor = "transparent";
+        g.fillStyle = hot ? ACCENT : dark ? "#16181d" : "#ffffff";
+        g.fillText(word.text, pad, sprite.height / 2);
+        sprites.set(look, sprite);
+      }
+      ctx.save();
+      // on whole pixels, so that the painted word is laid down as sharp as it was painted
+      ctx.translate(Math.round(left + x + w / 2), Math.round(y)); ctx.scale(pop, pop);
+      ctx.globalAlpha = a * (said ? 1 : 0.5);
+      ctx.drawImage(sprite, -Math.round(w / 2) - sprite.pad, -Math.round(sprite.height / 2));
       ctx.restore();
     }
   });
 }
 
 // ---------- one frame ----------
+const parts = {};
 function drawFrame(t) {
   // Backdrops are composited by ffmpeg behind the speaker; here only pictures that sit on top are drawn
   const pictureNow = timeline.beats.filter((b) => b.kind === "cutaway" && t >= b.start - 0.05 && t <= b.end + 0.05);
@@ -263,10 +289,10 @@ function drawFrame(t) {
   const line = timeline.lines.find((l) => t >= l.start - 0.06 && t < l.end);
   if (!pictureNow.length && !fullNow.length && !titles.length && !line) return false;
   ctx.clearRect(0, 0, W, H);
-  fullNow.forEach((beat) => (beat.plan ? drawPlan(beat, t) : drawFull(beat, t)));
-  pictureNow.forEach((beat) => drawPicture(beat, t));
-  titles.forEach((beat) => drawTitle(beat, t));
-  if (line) drawSubtitle(line, t, fullNow.some((b) => t >= b.start + 0.1 && t <= b.end - 0.1 && (b.plan || lightPictures.has(b.file))));
+  const clock = (what, work) => { if (!process.env.REEL_PROFILE) return work(); const a = performance.now(); work(); parts[what] = (parts[what] ?? 0) + performance.now() - a; };
+  clock("pictures", () => { fullNow.forEach((beat) => (beat.plan ? drawPlan(beat, t) : drawFull(beat, t))); pictureNow.forEach((beat) => drawPicture(beat, t)); });
+  clock("titles", () => titles.forEach((beat) => drawTitle(beat, t)));
+  clock("subtitles", () => { if (line) drawSubtitle(line, t, fullNow.some((b) => t >= b.start + 0.1 && t <= b.end - 0.1 && (b.plan || lightPictures.has(b.file)))); });
   return true;
 }
 
@@ -281,14 +307,21 @@ if (process.argv[3] === "--stills") {
 }
 
 // ---------- frames ----------
+const PROFILE = !!process.env.REEL_PROFILE, spent = { draw: 0, read: 0, write: 0 };   // REEL_PROFILE=1 says where the time went
 const frames = Math.ceil(timeline.seconds * fps);
 const blank = Buffer.alloc(W * H * 4);
 const write = (buffer) => new Promise((resolve) => (process.stdout.write(buffer) ? resolve() : process.stdout.once("drain", resolve)));
 process.stdout.on("error", () => process.exit(0)); // ffmpeg has all it needs
 
 for (let frame = 0; frame < frames; frame++) {
-  const t = frame / fps;
+  const t = frame / fps, t0 = PROFILE ? performance.now() : 0;
   if (!drawFrame(t)) { await write(blank); continue; }
+  if (PROFILE) spent.draw += performance.now() - t0;
+  const t1 = PROFILE ? performance.now() : 0;
   const pixels = ctx.getImageData(0, 0, W, H).data;
+  if (PROFILE) spent.read += performance.now() - t1;
+  const t2 = PROFILE ? performance.now() : 0;
   await write(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength));
+  if (PROFILE) spent.write += performance.now() - t2;
 }
+if (PROFILE) console.error(`frames ${frames}: drawing ${(spent.draw / 1000).toFixed(1)} s, reading pixels ${(spent.read / 1000).toFixed(1)} s, writing ${(spent.write / 1000).toFixed(1)} s; of the drawing: ${Object.entries(parts).map(([k, v]) => `${k} ${(v / 1000).toFixed(1)} s`).join(", ")}`);

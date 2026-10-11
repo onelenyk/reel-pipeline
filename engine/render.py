@@ -1,5 +1,5 @@
 """Builds the finished video from a project document: ffmpeg cuts, colours, frames and mixes; the Node renderer draws."""
-import tempfile, json, subprocess, time
+import hashlib, json, subprocess, tempfile, time
 from pathlib import Path
 from . import matte, media, project
 
@@ -62,11 +62,16 @@ def build(folder):
     chain = [f"fps={fps}", f"select='{keep}'", "setpts=N/FRAME_RATE/TB", f"fps={fps}", media.tone_filter(source["hdr"]),
              f"scale={width}:{height}:force_original_aspect_ratio=increase", f"crop={width}:{height}"]
     # Backdrops: the speaker, cut out, over a picture. Each needs a matte of that stretch of the take.
-    inputs, graph, last, mattes = ["-i", source["file"]], [f"[0:v]{','.join(chain)}[v0]"], "v0", {}
+    inputs, graph, last, mattes, wanted = ["-i", source["file"]], [f"[0:v]{','.join(chain)}[v0]"], "v0", {}, set()
     for index, b in enumerate(x for x in timeline["beats"] if x["kind"] == "backdrop"):
-        seconds = b["end"] - b["start"]; file = folder / f"matte-{b['id']}.mkv"
-        project.progress(folder, "render", "running", note=f"cutting the speaker out for an insert ({index + 1})")
-        mattes[b["id"]] = matte.matte(source["file"], source["hdr"], b["source_start"], seconds, fps, (width, height), file)
+        seconds = b["end"] - b["start"]
+        # Cutting the speaker out is slow and depends only on which stretch of the take it is: a cut-out made before is used again
+        mark = hashlib.sha1(json.dumps([source["file"], Path(source["file"]).stat().st_mtime_ns, round(b["source_start"], 3), round(seconds, 3), fps, width, height]).encode()).hexdigest()[:16]
+        file = folder / f"matte-{mark}.mkv"; wanted.add(file.name)
+        if file.exists(): mattes[b["id"]] = {"reused": True}
+        else:
+            project.progress(folder, "render", "running", note=f"cutting the speaker out for an insert ({index + 1})")
+            part = folder / f"matte-{mark}.part.mkv"; mattes[b["id"]] = matte.matte(source["file"], source["hdr"], b["source_start"], seconds, fps, (width, height), part); part.replace(file)
         n = inputs.count("-i")
         inputs += ["-loop", "1", "-t", f"{seconds:.3f}", "-i", b["file"], "-i", str(file)]
         fade = f"fade=in:st=0:d=0.3:alpha=1,fade=out:st={seconds - 0.3:.3f}:d=0.3:alpha=1"
@@ -105,6 +110,8 @@ def build(folder):
         drawer.stdout.close(); errors = drawer.stderr.read().decode(errors="replace"); drawer.wait()
     if drawer.returncode not in (0, None) and "EPIPE" not in errors: raise media.ToolError(f"renderer failed:\n{errors[-1500:]}")
     draft.replace(out)  # the previous render stays playable until the new one is whole
+    for old in folder.glob("matte-*.mkv"):
+        if old.name not in wanted: old.unlink()  # cut-outs of inserts that are no longer there
     project.progress(folder, "render", "running", note="strip"); strip(folder)
     return {"file": str(out), "seconds": timeline["seconds"], "took_seconds": round(time.time() - started, 1), "beats_drawn": [b["kind"] for b in timeline["beats"]], "mattes": mattes,
             "waiting_for_material": [n["what"] for n in doc.get("needs", []) if n["status"] == "open"], "sound": media.loudness(out)}

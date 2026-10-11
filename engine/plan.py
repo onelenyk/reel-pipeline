@@ -359,13 +359,13 @@ def match(picture, name, taken=(), near=None):
     return sorted(best)[0][-1] if best else None
 
 
-def name_room(picture, room, name=None, number=None):
+def name_room(picture, room, name=None, number=None, guess=False):
     """A person says what a room is. Their word stands until they change it."""
     known = stored(picture, lenient=True)
     if not known: raise ValueError("this plan has not been read")
     target = next((r for r in known["rooms"] if r["id"] == room), None)
     if not target: raise ValueError("there is no such room on this plan")
-    if name is not None: target["name"] = str(name).strip()[:40] or None; target["guess"] = False
+    if name is not None: target["name"] = str(name).strip()[:40] or None; target["guess"] = bool(guess) and target["name"] is not None
     if number is not None: target["number"] = re.sub(r"[^\w-]", "", str(number))[:4] or None
     place(picture).write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8"); return target
 
