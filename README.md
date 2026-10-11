@@ -59,7 +59,7 @@ The AI key goes in `.env` (see `.env.example`); `.env`, media, projects and mode
 
 | Folder | What it holds |
 |---|---|
-| `engine/` | the pipeline: `speech` (words), `suggest` (every question to the AI), `project` (the document and its timeline), `plan` (rooms of a floor plan), `render`, `server` and the page |
+| `engine/` | the pipeline: `speech` (words, and a second listening to speech that got none), `suggest` (every question to the AI, its log of use), `takes` (several files as one video), `project` (the document and its timeline), `plan` (rooms of a floor plan), `sounds` (the sounds of what appears), `render`, `server` (with workspaces) and the page |
 | `renderer/` | drawing over the video: pictures, plans with lit rooms, titles, subtitles |
 | `tests/` | `test_engine.py` (`./reel test`, seconds, no video or network) and `page/` (browser scenarios, `./reel page NAME`) |
 | `e2e/` | the end-to-end run on generated takes (`./reel e2e`) |
@@ -69,9 +69,17 @@ The AI key goes in `.env` (see `.env.example`); `.env`, media, projects and mode
 
 Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output, safe to delete), `models/` (weights), `plans/` (test plans), `rooms/` (what is known of each plan), `fonts/` (fonts fetched by name), `answers/` (the AI's answers, kept so that the same take gives the same video; delete the folder to have everything asked again), `styles/`, `vocabulary.txt`, `.env`.
 
-## Three kinds of check
+## What a project can be made of
 
-- `./reel test` after any change to `engine/`: 37 tests, under a second.
-- `./reel page player|timeline|ask|rooms|zones|draw-zone|reshape-zone|peek|font|overlays [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
+- One take, or several files that are one video (`./reel new A.mov B.mov`, or several files chosen at once on the page): each is recognised on its own, they are brought to one form and joined in the order they were shot; a take that says again what the one before said replaces it.
+- Projects are gathered in workspaces (the header of the page); a workspace is a name, kept in `workspaces.json`.
+- A pipeline that stopped (no connection, no money on the AI account) goes on from the step that failed: the button on the page, or `POST /api/projects/NAME/retry`.
+- `./reel usage` says what was asked of the AI by day and what is left on the account.
+
+## Four kinds of check
+
+- `./reel test` after any change to `engine/`: 46 tests, under a second.
+- `./reel page player|timeline|ask|rooms|zones|draw-zone|reshape-zone|peek|font|overlays|spaces [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
 - `./reel e2e` before trusting the whole: about eight minutes.
+- `lab/blind/`: forty takes whose right answer is known, spoken by local voices. `./reel run lab/blind/score.py` says what the review cut, what stays in the sound, which rooms and figures were found; `lab/blind/show.py` sends them through the running service with a floor plan each. About $0.40 of AI for a full run.
 
