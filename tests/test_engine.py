@@ -238,3 +238,48 @@ class Names(unittest.TestCase):
         self.assertFalse(stems("технічне приміщення") & stems("Пральня"))
         self.assertFalse(stems("дитячі кімнати") & stems("Ванна кімната"))
         self.assertTrue(stems("дитячі кімнати") <= stems("Спальня") and stems("блок господарів") <= stems("Спальня господарів"))
+
+
+class DrawnRoom(unittest.TestCase):
+    """A room a person draws on a plan that has been read."""
+
+    def setUp(self):
+        import cv2, numpy as np, tempfile
+        from engine import plan
+        self.plan = plan; self.was = plan.HOME; self.addCleanup(lambda: setattr(plan, "HOME", self.was))
+        self.home = Path(tempfile.mkdtemp()); plan.HOME = self.home; self.picture = self.home / "plan.png"
+        cv2.imwrite(str(self.picture), np.full((400, 600, 3), 255, np.uint8))
+        # one room found: a box from (60,60) to (540,340)
+        box = [[0.1, 0.15], [0.9, 0.15], [0.9, 0.85], [0.1, 0.85]]
+        kept = plan.place(self.picture); kept.parent.mkdir(parents=True); kept.write_text(json.dumps({"format": plan.FORMAT, "rooms": [{"id": "r1", "shape": box, "at": [0.5, 0.5], "name": "Кухня-вітальня", "guess": True}], "names": {}}))
+
+    def area(self, room):
+        import cv2, numpy as np
+        return cv2.contourArea((np.array(room["shape"]) * (600, 400)).astype(np.float32))
+
+    def test_a_room_drawn_over_another_takes_its_part_and_keeps_to_the_walls(self):
+        # drawn carelessly past the left and bottom walls: the hall is still only what lies inside the found room
+        made = self.plan.add_room(self.picture, [[0.02, 0.6], [0.4, 0.6], [0.4, 0.98], [0.02, 0.98]], "Передпокій")
+        rooms = {r["id"]: r for r in self.plan.stored(self.picture)["rooms"]}
+        self.assertEqual(made["name"], "Передпокій"); self.assertEqual(len(rooms), 2)
+        self.assertAlmostEqual(self.area(made), 180 * 100, delta=0.08 * 180 * 100)
+        self.assertAlmostEqual(self.area(rooms["r1"]), 480 * 280 - 180 * 100, delta=0.05 * 480 * 280)
+
+    def test_a_room_drawn_on_empty_paper_is_taken_as_drawn_and_can_be_removed(self):
+        made = self.plan.add_room(self.picture, [[0.92, 0.1], [0.99, 0.1], [0.99, 0.5], [0.92, 0.5]])
+        self.assertTrue(made.get("outdoors")); self.assertAlmostEqual(self.area(made), 42 * 160, delta=0.15 * 42 * 160)
+        self.plan.remove_room(self.picture, made["id"]); self.assertEqual([r["id"] for r in self.plan.stored(self.picture)["rooms"]], ["r1"])
+
+
+class Tour(unittest.TestCase):
+    def test_the_plan_is_laid_over_each_walk_through_its_rooms(self):
+        folder = Path(tempfile.mkdtemp()); words = [{"id": i, "source": "s1", "text": f"w{i}.", "start": i * 0.4, "end": i * 0.4 + 0.3, "confidence": 1} for i in range(120)]
+        doc = {"format": project.FORMAT, "sources": [{"id": "s1", "seconds": 60}], "language": "uk", "words": words, "edit": {"segments": [{"source": "s1", "from": 0, "to": 119}]},
+               "assets": [{"id": "a1", "file": "/nowhere/plan.jpg", "kind": "photo"}], "needs": [], "cuts": [], "emphasis": [], "corrections": [], "style": {},
+               "beats": [{"id": "b1", "kind": "cutaway", "from": 12, "to": 18, "need": None, "asset": "a1", "text": None, "why": "", "by": "ai", "accepted": True}],
+               "marks": [{"id": "m1", "asset": "a1", "room": "r1", "from": 10, "to": 14, "name": "хол", "by": "ai"}, {"id": "m2", "asset": "a1", "room": "r2", "from": 30, "to": 33, "name": "кухня", "by": "ai"},
+                         {"id": "m3", "asset": "a1", "room": None, "from": 50, "to": 52, "name": "?", "by": "ai"}, {"id": "m4", "asset": "a1", "room": "r3", "from": 100, "to": 105, "name": "спальня", "by": "ai"}]}
+        project.save(folder, doc); laid = project.lay_plans(folder); doc = project.load(folder)
+        self.assertEqual(laid, {"a1": [[10, 33], [100, 105]]})   # two walks; the moment with no room does not hold the plan on screen
+        self.assertFalse(next(b for b in doc["beats"] if b["id"] == "b1")["accepted"])   # the AI's insert of the same plan gives way
+        project.lay_plans(folder); self.assertEqual(len([b for b in project.load(folder)["beats"] if b.get("by") == "plan"]), 2)   # remade, not added twice

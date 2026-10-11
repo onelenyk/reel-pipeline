@@ -87,7 +87,7 @@
   .fold { margin-bottom: 24px; } .fold summary { cursor: pointer; color: var(--subtle); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; font-weight: 600; padding: 4px 0 8px; }
   #beats .card { padding: 8px 12px; } #beats .card .what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; }
   #beats .card button { height: 32px; padding: 0 10px; }
-  @media (min-width: 1100px) { .planGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; } .planGrid .plan { position: sticky; top: 60px; max-width: none; } }
+  @media (min-width: 1100px) { .planGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; } .planGrid > div:first-child { position: sticky; top: 60px; } .planGrid .plan { max-width: none; } }
   .plan { position: relative; background: #fff; border-radius: 12px; overflow: hidden; margin-bottom: 10px; max-width: 560px; }
   .plan img { display: block; width: 100%; }
   .plan svg { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -101,10 +101,13 @@
   .pin.none { background: var(--bad); }
   .pin.still { position: static; transform: none; flex: none; }
   .plan polygon.hot { fill: rgba(10,132,255,.35); stroke-width: 4; }
+  .plan.drawing { cursor: crosshair; outline: 2px solid var(--brand); } .plan.drawing polygon { pointer-events: none; }
+  .plan .sketch { fill: rgba(255,214,10,.35); stroke: #c79a00; stroke-width: 3; vector-effect: non-scaling-stroke; pointer-events: none; }
+  .plan .corner { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 5px; background: #c79a00; border: 2px solid #fff; pointer-events: none; }
   .zone { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
   .zone input { flex: 1; height: 34px; }
   .zone input.guess { color: var(--muted); font-style: italic; }
-  .zone small { flex: none; width: 92px; color: var(--subtle); font-size: 11px; }
+  .zone small { flex: none; width: 76px; color: var(--subtle); font-size: 11px; }
   .card.mark { cursor: pointer; }
   .card.mark.on { outline: 2px solid var(--brand); }
   .card.mark.wait .what small { color: var(--bad); }
@@ -212,6 +215,7 @@ const HINT = {
 const ACCENTS = ["#ffd60a", "#ffffff", "#30d158", "#0a84ff", "#ff453a", "#ff9f0a", "#bf5af2"];
 let name = new URLSearchParams(location.search).get("p"), state = null, styles = [], mode = "play", from = null, shown = 0, edited = false;
 let drawn = "", editing = null, range = null, picker = null, marked = null;
+let sketch = null;  // a room being drawn on a plan: { asset, points: [[x, y], ...], from, to }
 let tab = "text"; try { tab = localStorage.getItem("reel-tab") || "text"; } catch {}
 function drawTabs() {
   const needs = (state.needs || []).filter((n) => n.status === "open").length, plans = (state.plans || []).filter((p) => !p.read || p.rooms.length >= 3);
@@ -397,7 +401,7 @@ function draw(force) {
   if (!state) return;
   drawSteps(); drawTabs();
   // Everything below is rebuilt only when the project itself changed, so typing in a field is never interrupted
-  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.busy, marked]);
+  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.busy, marked, sketch && sketch.asset]);
   if (!force && signature === drawn) return;
   if (editing !== null && !force) return;
   drawn = signature; lit = null; drawLine();
@@ -466,17 +470,50 @@ function drawPlans() {
     if (!p.read) return `<div class="card"><img src="${pic(p.file)}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px"><div class="what">Якщо це планування, я знайду на ньому кімнати<small>а в тексті — моменти, коли про них ідеться</small></div><button data-rooms="1" ${state.busy ? "disabled" : ""}>${state.busy === "rooms" ? "Шукаю…" : "Знайти кімнати"}</button></div>`;
     if (p.rooms.length < 3) return "";
     const mine = marks.filter((m) => m.asset === p.asset).sort((a, b) => a.from - b.from), picked = mine.find((m) => m.id === marked), used = new Set(mine.map((m) => m.room));
-    return `<div class="planGrid"><div class="plan${picked ? " picking" : ""}"><img src="${pic(p.file)}" alt="План"><svg viewBox="0 0 1 1" preserveAspectRatio="none">${p.rooms.map((r) =>
+    const drawing = sketch && sketch.asset === p.asset;
+    return `<div class="planGrid"><div><div class="plan${picked ? " picking" : ""}${drawing ? " drawing" : ""}" data-plan-box="${p.asset}"><img src="${pic(p.file)}" alt="План"><svg viewBox="0 0 1 1" preserveAspectRatio="none">${p.rooms.map((r) =>
       `<polygon points="${r.shape.map((q) => q.join(",")).join(" ")}" data-room="${r.id}" data-plan="${p.asset}" class="${picked && picked.room === r.id ? "on" : used.has(r.id) ? "used" : ""}"><title>${esc(r.name || "без назви")}</title></polygon>`).join("")}</svg>${p.rooms.map((r) =>
-      `<span class="pin${r.name ? (r.guess ? " guess" : "") : " none"}" data-pin="${r.id}" style="left:${(100 * r.at[0]).toFixed(1)}%;top:${(100 * r.at[1]).toFixed(1)}%" title="${esc(r.name || "без назви")}">${p.rooms.indexOf(r) + 1}</span>`).join("")}</div>
+      `<span class="pin${r.name ? (r.guess ? " guess" : "") : " none"}" data-pin="${r.id}" style="left:${(100 * r.at[0]).toFixed(1)}%;top:${(100 * r.at[1]).toFixed(1)}%" title="${esc(r.name || "без назви")}">${p.rooms.indexOf(r) + 1}</span>`).join("")}<span id="sketchLayer"></span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">${drawing
+        ? `<button class="primary" data-sketch-done="1">Готово</button><button class="quiet" data-sketch-no="1">Скасувати</button><span class="hint" style="margin:0;flex:1 1 200px">Протягніть прямокутник або клацайте кути кімнати по черзі. Точність біля стін не потрібна: зона сама ляже по стінах.</span>`
+        : `<button data-sketch="${p.asset}">Додати зону</button><span class="hint" style="margin:0;flex:1 1 200px">Якщо кімнати бракує або вона злилася з сусідньою, намалюйте її поверх плану.</span>`}</div></div>
       <div><h2>Зони плану</h2><p class="hint" style="margin:0 0 10px">Що це за кімнати. Здогадки рушія написані курсивом: виправте хибні й допишіть порожні. Назви лишаються з цим планом назавжди, і моменти з відео прив'язуються до них самі.</p>
-      ${p.rooms.map((r) => `<div class="zone" data-zone-row="${r.id}"><span class="pin still${r.name ? (r.guess ? " guess" : "") : " none"}">${p.rooms.indexOf(r) + 1}</span><input type="text" maxlength="40" value="${esc(r.name || "")}" placeholder="що це за кімната?" class="${r.guess ? "guess" : ""}" data-zone="${r.id}" data-plan="${p.asset}" aria-label="Назва зони ${r.id}"><small>${r.name ? (r.guess ? "здогадка" : "ваша назва") : "не впізнано"}</small></div>`).join("")}
+      ${p.rooms.map((r) => `<div class="zone" data-zone-row="${r.id}"><span class="pin still${r.name ? (r.guess ? " guess" : "") : " none"}">${p.rooms.indexOf(r) + 1}</span><input type="text" maxlength="40" value="${esc(r.name || "")}" placeholder="що це за кімната?" class="${r.guess ? "guess" : ""}" data-zone="${r.id}" data-plan="${p.asset}" aria-label="Назва зони ${r.id}"><small>${r.by === "user" ? "ваша зона" : r.name ? (r.guess ? "здогадка" : "ваша назва") : "не впізнано"}</small><button class="quiet" data-zone-remove="${r.id}" data-plan="${p.asset}" aria-label="Видалити зону ${p.rooms.indexOf(r) + 1}">✕</button></div>`).join("")}
       <h2 style="margin-top:18px">Моменти у відео</h2><p class="hint" style="margin:0 0 10px">${picked ? `Клацніть на плані кімнату, про яку мовець каже «${esc(picked.name || "…")}».` : "Коли мовець називає кімнату, вона підсвічується. Якщо момент прив'язано не туди, оберіть його і клацніть потрібну кімнату на плані."}</p>
       ${mine.map((m) => { const piece = words.slice(m.from, m.to + 1).filter((w) => w.kept), text = piece.map((w) => w.text).join(" "), at = piece.length ? piece[0].at : null;
         return `<div class="card mark${m.id === marked ? " on" : ""}${m.room ? "" : " wait"}" data-mark="${m.id}"><div class="what"><b>${esc(m.name || "без назви")}</b> · ${esc(text.length > 70 ? text.slice(0, 70) + "…" : text)}<small>${m.room ? "→ " + esc((p.rooms.find((r) => r.id === m.room) || {}).name || "зона без назви") + (m.by === "user" ? "" : " · сама") : "немає зони з такою назвою — у відео не підсвітиться"}</small></div>${at != null ? `<button class="jump" data-seek="${at}">▶</button>` : ""}<button class="quiet" data-unmark="${m.id}" aria-label="Прибрати">✕</button></div>`; }).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 14px"><button data-rooms="1" ${state.busy ? "disabled" : ""}>${state.busy === "rooms" ? "Шукаю…" : mine.length ? "Знайти моменти заново" : "Знайти моменти в тексті"}</button><button data-mark-new="${p.asset}">Додати з виділеного на стрічці</button></div></div></div>`;
   }).join("");
 }
+
+// ---------- drawing a room on a plan ----------
+const planPoint = (e, box) => { const r = box.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
+function drawSketch() {
+  const layer = $("sketchLayer"), svg = document.querySelector(".plan.drawing svg");
+  document.querySelectorAll(".plan .sketch").forEach((x) => x.remove());
+  if (!sketch || !layer || !svg) return;
+  const points = sketch.to ? [sketch.from, [sketch.to[0], sketch.from[1]], sketch.to, [sketch.from[0], sketch.to[1]]] : sketch.points;
+  if (points.length >= 2) svg.insertAdjacentHTML("beforeend", `<${points.length >= 3 ? "polygon" : "polyline"} class="sketch" points="${points.map((q) => q.join(",")).join(" ")}"/>`);
+  layer.innerHTML = points.map((q) => `<span class="corner" style="left:${100 * q[0]}%;top:${100 * q[1]}%"></span>`).join("");
+}
+async function finishSketch(points) {
+  const asset = sketch.asset, before = new Set(((state.plans.find((p) => p.asset === asset) || {}).rooms || []).map((r) => r.id));
+  sketch = null;
+  if (points.length < 3) { draw(true); return; }
+  const fresh = await edit({ zone_add: { asset, shape: points } });
+  if (!fresh) { draw(true); return; }
+  const made = ((fresh.plans.find((p) => p.asset === asset) || {}).rooms || []).find((r) => !before.has(r.id));
+  const field = made && document.querySelector(`input[data-zone="${made.id}"]`); if (field) field.focus();   // the new room waits for its name
+}
+document.addEventListener("pointerdown", (e) => { const box = e.target.closest && e.target.closest(".plan.drawing"); if (box && sketch) { sketch.from = planPoint(e, box); sketch.to = null; sketch.box = box; e.preventDefault(); } });
+document.addEventListener("pointermove", (e) => { if (sketch && sketch.from && sketch.box) { const at = planPoint(e, sketch.box); if (Math.abs(at[0] - sketch.from[0]) > 0.02 || Math.abs(at[1] - sketch.from[1]) > 0.02) { sketch.to = at; drawSketch(); } } });
+document.addEventListener("pointerup", (e) => {
+  if (!sketch || !sketch.from) return;
+  const from = sketch.from, to = sketch.to; sketch.from = sketch.to = null;
+  if (to) finishSketch([from, [to[0], from[1]], to, [from[0], to[1]]]);   // dragged: a rectangle
+  else { sketch.points.push(from); drawSketch(); }                         // a tap: one more corner
+});
+document.addEventListener("keydown", (e) => { if (sketch && e.key === "Escape") { sketch = null; draw(true); } });
 
 function drawPicker() {
   if (!picker) { $("picker").innerHTML = ""; return; }
@@ -517,6 +554,11 @@ document.addEventListener("change", async (e) => {
 });
 document.addEventListener("focusin", (e) => { const input = e.target.closest && e.target.closest("input[data-zone]"); document.querySelectorAll(".plan polygon.hot").forEach((x) => x.classList.remove("hot")); if (input) { const shape = document.querySelector(`polygon[data-room="${input.dataset.zone}"][data-plan="${input.dataset.plan}"]`); if (shape) shape.classList.add("hot"); } });
 document.addEventListener("click", async (e) => {
+  if (e.target.closest("[data-sketch]")) { sketch = { asset: e.target.closest("[data-sketch]").dataset.sketch, points: [] }; marked = null; draw(true); return; }
+  if (e.target.closest("[data-sketch-no]")) { sketch = null; draw(true); return; }
+  if (e.target.closest("[data-sketch-done]")) { await finishSketch(sketch.points); return; }
+  if (e.target.closest("[data-zone-remove]")) { const b = e.target.closest("[data-zone-remove]"); await edit({ zone_remove: { asset: b.dataset.plan, room: b.dataset.zoneRemove } }); return; }
+  if (sketch && e.target.closest(".plan.drawing")) return;
   if (e.target.closest("[data-tab-go]")) { tab = e.target.closest("[data-tab-go]").dataset.tabGo; try { localStorage.setItem("reel-tab", tab); } catch {} drawTabs(); return; }
   const room = e.target.closest("polygon[data-room]"), markCard = e.target.closest("[data-mark]");
   if (e.target.closest("[data-rooms]")) { await act(`/api/projects/${name}/rooms`, { method: "POST" }); return; }

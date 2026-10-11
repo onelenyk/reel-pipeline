@@ -193,15 +193,74 @@ def place_marks(folder, asset_id, moments):
     tie(doc); save(folder, doc); return doc
 
 
+TOUR_GAP = 30   # words: moments closer than this are one walk through the plan, and it stays on screen between them
+TOUR_TAIL = 6   # words the plan stays after the last room of a walk is named
+TOUR_HOLD = 45  # words the plan stays on one room (about eighteen seconds) before the speaker returns
+TOUR_LEAST = 6  # a showing of the plan shorter than this many words is not worth making
+
+
+def lay_plans(folder):
+    """The plan is on screen wherever the speaker walks through it: one insert over each run of moments tied to its rooms.
+    These inserts are made here and remade whenever the moments change; an insert a person made is never touched, and an
+    AI's picture that would show at the same time is switched off."""
+    doc = load(folder); kept = {i for s in doc["edit"]["segments"] for i in range(s["from"], s["to"] + 1)}; count = len(doc["words"])
+    doc["beats"] = [b for b in doc["beats"] if b.get("by") != "plan"]; laid = {}
+    for asset_id in sorted({m["asset"] for m in doc["marks"]}):
+        runs = []
+        for m in sorted((m for m in doc["marks"] if m["asset"] == asset_id and m.get("room")), key=lambda m: m["from"]):
+            # the plan holds for a while after a room is named, not for as long as the speaker then talks of other things
+            said = [i for i in range(m["from"], m["to"] + 1) if i in kept][:TOUR_HOLD]
+            if not said: continue
+            between = sum(1 for i in range(runs[-1][1] + 1, said[0]) if i in kept) if runs else None
+            if runs and between <= TOUR_GAP: runs[-1][1] = max(runs[-1][1], said[-1])
+            else: runs.append([said[0], said[-1]])
+        filled = {n["id"]: n.get("asset") for n in doc["needs"] if n.get("status") == "filled"}
+        for first, last in runs:
+            extra = 0
+            while extra < TOUR_TAIL and last + 1 < count and (last + 1) in kept and not re.search(r"[.!?]$", doc["words"][last]["text"]): last += 1; extra += 1
+            # A picture of something else shown during the walk keeps its place and the plan steps aside for it;
+            # an AI's insert that has no picture, or would show this same plan, gives way
+            stays = []
+            for b in doc["beats"]:
+                if b["kind"] not in PICTURED or not (b["from"] <= last and first <= b["to"]): continue
+                shows = b.get("asset") or filled.get(b.get("need"))
+                if b.get("by") == "user" or (b.get("accepted") and shows and shows != asset_id): stays.append((b["from"], b["to"]))
+                elif b.get("by") == "ai": b["accepted"] = False
+            at = first
+            for a, b in sorted(stays) + [(last + 1, last + 1)]:
+                if a - at >= TOUR_LEAST:
+                    doc["beats"].append({"id": f"b{max([int(x['id'][1:]) for x in doc['beats']] + [0]) + 1}", "kind": "full", "from": at, "to": a - 1, "need": None, "asset": asset_id, "text": None,
+                                         "why": "план: прогулянка кімнатами", "by": "plan", "accepted": True})
+                    laid.setdefault(asset_id, []).append([at, a - 1])
+                at = max(at, b + 1)
+    save(folder, doc); return laid
+
+
 def tie(doc):
     """Moments nobody tied take the room whose name says what was spoken. A person's own ties are not touched."""
     from . import plan
     files = {a["id"]: a["file"] for a in doc["assets"]}
     for asset_id in {m["asset"] for m in doc["marks"]}:
         taken = [m["room"] for m in doc["marks"] if m["asset"] == asset_id and m.get("by") == "user" and m["room"]]
-        for m in sorted((m for m in doc["marks"] if m["asset"] == asset_id and m.get("by") != "user"), key=lambda m: m["from"]):
-            m["room"] = plan.match(files[asset_id], m["name"], taken) if asset_id in files and m.get("name") else None
-            if m["room"]: taken.append(m["room"])
+        where = {r["id"]: r["at"] for r in rooms_of(files[asset_id])} if asset_id in files else {}; near = None
+        for m in sorted((m for m in doc["marks"] if m["asset"] == asset_id), key=lambda m: m["from"]):
+            if m.get("by") != "user":
+                m["room"] = plan.match(files[asset_id], m["name"], taken, near) if asset_id in files and m.get("name") else None
+                if m["room"]: taken.append(m["room"])
+            near = where.get(m["room"], near)
+
+
+def change_zones(folder, asset_id, add=None, name=None, remove=None):
+    """A person draws a room on a plan or removes one; the moments are tied again to what is there now."""
+    from . import plan
+    doc = load(folder); asset = next((a for a in doc["assets"] if a["id"] == asset_id), None)
+    if not asset: raise ValueError("there is no such picture")
+    made = plan.add_room(asset["file"], add, name) if add else None
+    if remove: plan.remove_room(asset["file"], remove)
+    there = {r["id"] for r in rooms_of(asset["file"])}
+    for m in doc["marks"]:
+        if m["asset"] == asset_id and m["room"] not in there: m["room"] = None; m["by"] = "ai"   # its room is gone: it looks for one again
+    tie(doc); save(folder, doc); lay_plans(folder); return made
 
 
 def name_zone(folder, asset_id, room, name=None, number=None):
@@ -209,7 +268,7 @@ def name_zone(folder, asset_id, room, name=None, number=None):
     from . import plan
     doc = load(folder); asset = next((a for a in doc["assets"] if a["id"] == asset_id), None)
     if not asset: raise ValueError("there is no such picture")
-    plan.name_room(asset["file"], room, name, number); tie(doc); save(folder, doc)
+    plan.name_room(asset["file"], room, name, number); tie(doc); save(folder, doc); lay_plans(folder)
 
 
 def set_mark(folder, mark_id=None, asset=None, room=None, first=None, last=None, name=None):
@@ -229,11 +288,11 @@ def set_mark(folder, mark_id=None, asset=None, room=None, first=None, last=None,
     if name is not None: mark["name"] = str(name).strip()[:40] or None
     mark["room"] = room; mark["by"] = "user"
     if room and mark.get("name"): plan.remember(file, mark["name"], room)
-    save(folder, doc); return mark
+    save(folder, doc); lay_plans(folder); return mark
 
 
 def remove_mark(folder, mark_id):
-    doc = load(folder); doc["marks"] = [m for m in doc["marks"] if m["id"] != mark_id]; save(folder, doc)
+    doc = load(folder); doc["marks"] = [m for m in doc["marks"] if m["id"] != mark_id]; save(folder, doc); lay_plans(folder)
 
 
 def keep_asset(folder, doc, file, kind="photo", name=None, credit=None):

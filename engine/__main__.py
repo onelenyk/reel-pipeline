@@ -65,15 +65,24 @@ def mark(folder):
 
 
 def find_rooms(folder):
+    """Reads every picture of the project that may be a plan, finds the moments rooms are spoken of anywhere in the text,
+    ties them to the rooms by name, and lays the plan over the stretches where the speaker walks through it."""
     from . import plan
     doc = project.load(folder); kept = {w["id"] for s in doc["edit"]["segments"] for w in doc["words"][s["from"]:s["to"] + 1]}; report = []
-    for asset_id, spans in project.plan_assets(doc).items():
-        asset = next(a for a in doc["assets"] if a["id"] == asset_id); found = plan.outline(asset["file"])["rooms"]
-        if len(found) < 3: report.append({"picture": asset_id, "rooms": len(found), "note": "not a plan"}); continue
-        words = [w if w["id"] in kept else {**w, "text": "…"} for w in doc["words"]]
-        moments = [m for m in suggest.moments(words, spans) if m["from"] in kept]
-        marks = [m for m in project.place_marks(folder, asset_id, moments)["marks"] if m["asset"] == asset_id]
-        report.append({"picture": asset_id, "rooms": len(found), "marks": [f"{m['room'] or '?'} {m['name']}" for m in marks]})
+    plans = [a for a in doc["assets"] if len(plan.outline(a["file"])["rooms"]) >= 3]
+    if not plans: return [{"note": "none of the pictures is a plan"}]
+    words = [w if w["id"] in kept else {**w, "text": "…"} for w in doc["words"]]
+    moments = [m for m in suggest.moments(words, [(0, len(words) - 1)]) if m["from"] in kept]
+    # a moment belongs to the plan that has a room of its name; one that fits none waits on the plan last spoken of
+    last = plans[0]["id"]; shared = {a["id"]: [] for a in plans}
+    for m in moments:
+        home = next((a["id"] for a in plans if plan.match(a["file"], m["name"])), None)
+        last = home or last; shared[last].append(m)
+    for asset in plans: project.place_marks(folder, asset["id"], shared[asset["id"]])
+    laid = project.lay_plans(folder); doc = project.load(folder)
+    for asset in plans:
+        marks = sorted((m for m in doc["marks"] if m["asset"] == asset["id"]), key=lambda m: m["from"])
+        report.append({"picture": asset["id"], "rooms": len(plan.outline(asset["file"])["rooms"]), "shown over": laid.get(asset["id"], []), "marks": [f"{m['room'] or '?'} {m['name']}" for m in marks]})
     return report
 
 

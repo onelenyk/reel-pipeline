@@ -296,11 +296,11 @@ NAMES = {"carport": "Навіс", "terrace": "Тераса", "bathroom": "Ван
          "bedroom": "Спальня", "master": "Спальня господарів"}
 # Words that mean one room in a tour of a house: a zone named by one answers to the others
 SAME = [("навіс", "паркінг", "гараж", "паркомісце"), ("тераса", "дворик", "патіо"), ("ванна", "санвузол", "туалет", "вбиральня", "душова"), ("кухня", "вітальня", "зал", "їдальня", "кухня-вітальня"),
-        ("гардеробна", "гардероб"), ("передпокій", "прихожа", "покій", "тамбур"), ("спальня", "спальний", "дитяча"), ("пральня", "постірочна"),
+        ("гардеробна", "гардероб"), ("передпокій", "прихожа", "покій", "тамбур"), ("спальня", "спальний", "дитяча", "блок"), ("пральня", "постірочна"),
         ("технічне", "котельня", "бойлерна", "техприміщення"), ("комора", "кладова", "інвентарна")]
 
 
-GENERIC = {"кімна", "примі", "зона", "блок", "власн", "велик", "малий", "наша", "окрем"}  # words that say nothing of which room it is
+GENERIC = {"кімна", "примі", "зона", "власн", "велик", "малий", "наша", "окрем"}  # words that say nothing of which room it is
 
 
 def stems(name):
@@ -313,9 +313,9 @@ def stems(name):
     return out - GENERIC if out - GENERIC else out
 
 
-def match(picture, name, taken=()):
+def match(picture, name, taken=(), near=None):
     """The room of a plan that a spoken name means: what a person tied before, else the room whose name says the same.
-    Among several rooms of one name, the first not yet `taken` (two children's rooms are named one after the other)."""
+    Among several rooms of one name: one not yet `taken`, and of those the nearest to `near`, where the walk has just been."""
     remembered = recall(picture, name)
     if remembered: return remembered
     known = stored(picture, lenient=True) or {}; said = stems(name); best = []
@@ -324,8 +324,11 @@ def match(picture, name, taken=()):
         if not common: continue
         # a guessed name is trusted less than a person's: it must say the whole of what was spoken
         if room.get("guess") and not said <= own and not own <= said: continue
-        best.append((-len(common), room["id"] in taken, known["rooms"].index(room), room["id"]))
-    return sorted(best)[0][3] if best else None
+        # the name that says exactly what was spoken first; then a room not yet spoken of; then the one closest to where
+        # the walk has just been (`near`), since a tour goes from a room to its neighbour
+        away = ((room["at"][0] - near[0]) ** 2 + (room["at"][1] - near[1]) ** 2) ** 0.5 if near else 0
+        best.append((-len(common), own != said, room["id"] in taken, round(away, 3), known["rooms"].index(room), room["id"]))
+    return sorted(best)[0][-1] if best else None
 
 
 def name_room(picture, room, name=None, number=None):
@@ -337,6 +340,51 @@ def name_room(picture, room, name=None, number=None):
     if name is not None: target["name"] = str(name).strip()[:40] or None; target["guess"] = False
     if number is not None: target["number"] = re.sub(r"[^\w-]", "", str(number))[:4] or None
     place(picture).write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8"); return target
+
+
+def add_room(picture, shape, name=None):
+    """A person draws a room the finder did not see as one: a hall that shares its space with the living room, say.
+    Where the drawing lies on rooms already found, the new room is the part of them it covers, so its sides along the walls
+    are the walls themselves and only the open side is where the person drew it; those rooms give that part up.
+    Drawn where no room was found, it is taken as drawn."""
+    import cv2, numpy as np
+    known = stored(picture, lenient=True)
+    if not known: raise ValueError("this plan has not been read")
+    colour = cv2.imread(str(picture)); h, w = colour.shape[:2]
+    points = [(min(1.0, max(0.0, float(x))), min(1.0, max(0.0, float(y)))) for x, y in shape][:60]
+    if len(points) < 3: raise ValueError("a room needs at least three corners")
+    def mask(outline): m = np.zeros((h, w), np.uint8); cv2.fillPoly(m, [(np.array(outline) * (w, h)).astype(np.int32)], 1); return m
+    def trace(m):
+        outlines, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not outlines: return None
+        best = max(outlines, key=cv2.contourArea); corners = cv2.approxPolyDP(best, 0.004 * max(h, w), True).reshape(-1, 2)
+        if len(corners) < 3 or cv2.contourArea(best) < 0.0008 * h * w: return None
+        only = np.zeros((h, w), np.uint8); cv2.drawContours(only, [best], -1, 1, -1); deep = cv2.distanceTransform(only, cv2.DIST_L2, 3); y, x = np.unravel_index(deep.argmax(), deep.shape)
+        return {"shape": [[round(px / w, 4), round(py / h, 4)] for px, py in corners], "at": [round(x / w, 4), round(y / h, 4)]}
+    drawn = mask(points)
+    if drawn.sum() < 0.0008 * h * w: raise ValueError("the room drawn is too small")
+    under = [(r, mask(r["shape"])) for r in known["rooms"]]; under = [(r, m) for r, m in under if (m & drawn).sum() >= 0.03 * drawn.sum()]
+    covered = np.zeros((h, w), np.uint8)
+    for _, m in under: covered |= m
+    new = (drawn & covered) if (drawn & covered).sum() >= 0.4 * drawn.sum() else drawn
+    new = cv2.morphologyEx(new, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8)); made = trace(new)
+    if not made: raise ValueError("the room drawn is too small")
+    for room, m in under:
+        rest = cv2.morphologyEx(m & (1 - new), cv2.MORPH_OPEN, np.ones((7, 7), np.uint8)); left = trace(rest)
+        if left is None or rest.sum() < 0.12 * m.sum(): known["rooms"].remove(room)   # the new room took all of it
+        else: room.update(left)
+    number = max([int(r["id"][1:]) for r in known["rooms"]] + [0]) + 1
+    while any(room == f"r{number}" for room in known.get("names", {}).values()): number += 1
+    room = {"id": f"r{number}", **made, "share": 0, "doors": [], "windows": 0, "things": [], "kind": None, "name": (str(name).strip()[:40] or None) if name else None, "guess": False, "by": "user",
+            **({"outdoors": True} if not under else {})}
+    known["rooms"].append(room); place(picture).write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8"); return room
+
+
+def remove_room(picture, room):
+    known = stored(picture, lenient=True)
+    if not known: raise ValueError("this plan has not been read")
+    known["rooms"] = [r for r in known["rooms"] if r["id"] != room]; known["names"] = {k: v for k, v in known.get("names", {}).items() if v != room}
+    place(picture).write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8")
 
 
 def plain(name):

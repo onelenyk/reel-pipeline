@@ -175,7 +175,8 @@ MOMENTS = """A speaker walks a viewer through a house, room by room, while its f
 Every word has its number in square brackets. Find each stretch in which the speaker talks about one particular room or part
 of the house (a hall, a kitchen, a bedroom, a bathroom, a wardrobe, a terrace, a carport and so on).
 Reply with JSON only: {"moments":[{"from":<number of the first word of the stretch>,"to":<number of its last word>,"name":"<the room's name, in the speaker's language, in the nominative>"}]}
-A stretch starts where the speaker turns to the room and ends before the next room is named. Stretches do not overlap.
+A stretch starts where the speaker turns to the room and ends where they stop talking about it: before the next room is named,
+or before they turn to something that is not a room (the settlement, the plot, the landscape, prices, an appeal to the viewer). Give no stretch for those. Stretches do not overlap.
 If the same room is spoken of again later, give it again with the same name.
 The speaker's words:
 """
