@@ -17,6 +17,7 @@ question, the command that runs it and what was found; this page is the index. R
 | `plans/drawing_only.py` | Can rooms be found from the drawing alone? | On her plans' style partly; on scanned plans a third of the rooms |
 | `plans/cubicasa_raw.py` | What does the CubiCasa5k network see on her plans? | Walls, doors and windows well; room kinds badly. The engine uses the former |
 | `plans/numbers_on_plan.py` | How many room numbers can be found on a plan? | All on clean plans, 7 of 16 on a blurred frame from a video |
+| `plans/read_numbers.py` | Can room numbers be read locally, with no paid model? | Yes on clean plans (11 of 13, none wrong), no on a blurred frame |
 | `plans/which_room.py` | Can the AI tell which room the speaker means? | No: one or two of four, in two to three minutes. A person clicks instead |
 | `plans/score.py` | How well are rooms outlined, in numbers? | Scores a finder against 232 plans marked by people (`plans/cubicasa`) |
 
