@@ -133,6 +133,30 @@ def mark(picture, rooms, words, spans):
     return marks
 
 
+MOMENTS = """A speaker walks a viewer through a house, room by room, while its floor plan is on screen.
+Every word has its number in square brackets. Find each stretch in which the speaker talks about one particular room or part
+of the house (a hall, a kitchen, a bedroom, a bathroom, a wardrobe, a terrace, a carport and so on).
+Reply with JSON only: {"moments":[{"from":<number of the first word of the stretch>,"to":<number of its last word>,"name":"<the room's name, in the speaker's language, in the nominative>"}]}
+A stretch starts where the speaker turns to the room and ends before the next room is named. Stretches do not overlap.
+If the same room is spoken of again later, give it again with the same name.
+The speaker's words:
+"""
+
+
+def moments(words, spans):
+    """When the speaker names a room, and what they call it. `spans` are the word ranges during which a plan is shown."""
+    shown = sorted({i for a, b in spans for i in range(a, b + 1) if 0 <= i < len(words)})
+    if not enabled() or not shown: return []
+    raw = ask(MOMENTS + " ".join(f"[{i}]{words[i]['text']}" for i in shown)); found = []
+    for m in raw.get("moments", []) if isinstance(raw, dict) and isinstance(raw.get("moments"), list) else []:
+        if not isinstance(m, dict) or not isinstance(m.get("name"), str) or not m["name"].strip(): continue
+        first, last = m.get("from"), m.get("to")
+        if not all(isinstance(i, int) and not isinstance(i, bool) and i in shown for i in (first, last)) or last < first: continue
+        if any(first <= f["to"] and f["from"] <= last for f in found): continue
+        found.append({"from": first, "to": last, "name": m["name"].strip()[:40]})
+    return sorted(found, key=lambda m: m["from"])
+
+
 def enabled():
     return bool(os.environ.get("DEEPSEEK_API_KEY")) and os.environ.get("REEL_AI", "on") != "off"
 

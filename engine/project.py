@@ -146,7 +146,7 @@ def lit(doc, asset, kept_ids, at, start, end):
     rooms = {r["id"]: r for r in rooms_of(asset["file"])}; marks = []
     for m in sorted(doc.get("marks", []), key=lambda m: m["from"]):
         said = [w for w in doc["words"][m["from"]:m["to"] + 1] if w["id"] in kept_ids]
-        if m.get("asset") != asset["id"] or m["room"] not in rooms or not said: continue
+        if m.get("asset") != asset["id"] or m.get("room") not in rooms or not said: continue
         begin = at(said[0]["start"])
         if not start - 0.05 <= begin < end - 0.4: continue
         if marks: marks[-1]["end"] = min(marks[-1]["end"], begin)
@@ -155,9 +155,54 @@ def lit(doc, asset, kept_ids, at, start, end):
 
 
 def rooms_of(file):
-    """The rooms found on a picture, if it is a plan that has been read (engine/plan.py keeps them beside the picture)."""
-    kept = Path(file).with_suffix(".rooms.json")
-    return json.loads(kept.read_text())["rooms"] if kept.exists() else []
+    """The rooms found on a picture, if it is a plan that has been read."""
+    from . import plan
+    return (plan.stored(file) or {}).get("rooms", []) if Path(file).exists() else []
+
+
+def plan_assets(doc):
+    """The pictures shown over the whole frame, with the word ranges during which each is shown."""
+    filled = {n["id"]: n["asset"] for n in doc["needs"] if n.get("status") == "filled" and n.get("asset")}; shown = {}
+    for b in doc["beats"]:
+        asset = b.get("asset") or filled.get(b.get("need"))
+        if b["kind"] == "full" and b.get("accepted") and asset: shown.setdefault(asset, []).append((b["from"], b["to"]))
+    return shown
+
+
+def place_marks(folder, asset_id, moments):
+    """The moments the AI found become marks. A name a person has already tied to a room on this plan is tied again;
+    the rest wait for a click. Marks a person made or tied are kept as they are."""
+    from . import plan
+    doc = load(folder); asset = next(a for a in doc["assets"] if a["id"] == asset_id)
+    doc["marks"] = [m for m in doc["marks"] if m["asset"] != asset_id or m.get("by") == "user"]
+    for m in moments:
+        if any(m["from"] <= k["to"] and k["from"] <= m["to"] for k in doc["marks"] if k["asset"] == asset_id): continue
+        doc["marks"].append({"id": f"m{max([int(x['id'][1:]) for x in doc['marks']] + [0]) + 1}", "asset": asset_id, "room": plan.recall(asset["file"], m["name"]), "from": m["from"], "to": m["to"], "name": m["name"], "by": "ai"})
+    save(folder, doc); return doc
+
+
+def set_mark(folder, mark_id=None, asset=None, room=None, first=None, last=None, name=None):
+    """A person ties a stretch of words to a room of a plan, or makes a new mark over the words they chose."""
+    from . import plan
+    doc = load(folder)
+    if mark_id:
+        mark = next((m for m in doc["marks"] if m["id"] == mark_id), None)
+        if not mark: raise ValueError("there is no such mark")
+    else:
+        if not any(a["id"] == asset for a in doc["assets"]): raise ValueError("there is no such picture")
+        if not (isinstance(first, int) and isinstance(last, int) and 0 <= first <= last < len(doc["words"])): raise ValueError("a mark needs a stretch of words")
+        doc["marks"] = [m for m in doc["marks"] if m["asset"] != asset or m["to"] < first or m["from"] > last]  # the new mark replaces what it covers
+        mark = {"id": f"m{max([int(x['id'][1:]) for x in doc['marks']] + [0]) + 1}", "asset": asset, "room": None, "from": first, "to": last, "name": None, "by": "user"}; doc["marks"].append(mark)
+    file = next(a["file"] for a in doc["assets"] if a["id"] == mark["asset"])
+    if room is not None and not any(r["id"] == room for r in rooms_of(file)): raise ValueError("there is no such room on this plan")
+    if name is not None: mark["name"] = str(name).strip()[:40] or None
+    mark["room"] = room; mark["by"] = "user"
+    if room and mark.get("name"): plan.remember(file, mark["name"], room)
+    save(folder, doc); return mark
+
+
+def remove_mark(folder, mark_id):
+    doc = load(folder); doc["marks"] = [m for m in doc["marks"] if m["id"] != mark_id]; save(folder, doc)
 
 
 def keep_asset(folder, doc, file, kind="photo", name=None, credit=None):

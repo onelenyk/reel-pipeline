@@ -7,8 +7,8 @@ import json, re, tempfile, threading, traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
-from . import HOME, find, project, render, speech, styles, suggest
-from .__main__ import ROOT, create
+from . import HOME, find, plan as plans, project, render, speech, styles, suggest
+from .__main__ import ROOT, create, find_rooms
 
 PAGE = Path(__file__).resolve().parent / "page.html"
 INBOX = HOME / "media"
@@ -46,7 +46,9 @@ def summary(name):
                    beats=[{**b, "file": Path(assets[b["asset"]]["file"]).name if b.get("asset") in assets else None} for b in doc["beats"]],
                    assets=[{"id": a["id"], "file": Path(a["file"]).name, "credit": a.get("credit")} for a in doc["assets"]],
                    needs=[{**n, "file": Path(assets[n["asset"]]["file"]).name if n.get("asset") in assets else None, "credit": assets.get(n.get("asset"), {}).get("credit")} for n in doc["needs"]],
-                   credits=[a["credit"] for a in doc["assets"] if a.get("credit") and a["id"] in used])
+                   credits=[a["credit"] for a in doc["assets"] if a.get("credit") and a["id"] in used],
+                   marks=doc["marks"], plans=[{"asset": a, "file": Path(assets[a]["file"]).name, "read": plans.stored(assets[a]["file"]) is not None,
+                                               "rooms": [{"id": r["id"], "shape": r["shape"], "at": r["at"]} for r in project.rooms_of(assets[a]["file"])]} for a in project.plan_assets(doc) if a in assets])
     return out
 
 
@@ -159,6 +161,7 @@ class Handler(BaseHTTPRequestHandler):
             if not (folder / "project.json").exists(): return self.send({"error": "there is no such project"}, 404)
             if busy.get(name) and action != "state": return self.send({"error": f"{busy[name]} is still running"}, 409)
             if action == "render": background(name, "render", lambda: render.render(folder)); return self.send(summary(name))
+            if action == "rooms": background(name, "rooms", lambda: find_rooms(folder)); return self.send(summary(name))
             if action == "ask":
                 # The author marked a stretch and said what is wrong with it; the AI answers with changes, which are applied
                 asked = json.loads(self.body() or b"{}"); doc = project.load(folder); count = len(doc["words"])
@@ -194,6 +197,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif "add_beat" in change:
                     b = change["add_beat"]; project.add_beat(folder, b.get("kind"), b.get("from"), b.get("to"), text=b.get("text"), asset=b.get("asset"))
                 elif "beat_picture" in change: project.change_beat(folder, change["beat_picture"]["beat"], asset=change["beat_picture"].get("asset"))
+                elif "mark" in change:
+                    m = change["mark"]; project.set_mark(folder, m.get("id"), m.get("asset"), m.get("room"), m.get("from"), m.get("to"), m.get("name"))
+                elif "remove_mark" in change: project.remove_mark(folder, change["remove_mark"])
                 elif "remove_beat" in change: project.change_beat(folder, change["remove_beat"], remove=True)
                 elif "drop" in change: project.drop(folder, int(change["drop"][0]), int(change["drop"][1]), restore=bool(change.get("restore")))
                 elif "emphasis" in change:

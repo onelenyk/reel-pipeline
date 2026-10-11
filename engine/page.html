@@ -77,6 +77,17 @@
   .w.now { background: var(--brand); color: #000; }
   .w.picked { background: var(--bad); color: #fff; }
   .words input { height: 32px; font-size: 16px; width: 11em; }
+  .plan { position: relative; background: #fff; border-radius: 12px; overflow: hidden; margin-bottom: 10px; max-width: 560px; }
+  .plan img { display: block; width: 100%; }
+  .plan svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .plan polygon { fill: transparent; stroke: rgba(10,132,255,.55); stroke-width: 2; vector-effect: non-scaling-stroke; cursor: pointer; }
+  .plan polygon:hover { fill: rgba(10,132,255,.22); }
+  .plan polygon.used { fill: rgba(255,214,10,.16); stroke: rgba(200,150,0,.8); }
+  .plan polygon.on { fill: rgba(255,214,10,.5); stroke: #c79a00; stroke-width: 4; }
+  .plan.picking polygon { stroke: #0a84ff; stroke-width: 3; }
+  .card.mark { cursor: pointer; }
+  .card.mark.on { outline: 2px solid var(--brand); }
+  .card.mark.wait .what small { color: var(--bad); }
   .card { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .card .what { flex: 1 1 220px; min-width: 0; }
   .card small { display: block; color: var(--subtle); font-size: 12px; }
@@ -145,6 +156,7 @@
       <div id="beatMenu"></div>
     </section>
     <section><h2>Монтаж</h2><div id="beats"></div></section>
+    <section id="planBox"><h2>Кімнати на плані</h2><div id="plans"></div></section>
     <section id="cutBox"><h2>AI прибрав із відео</h2><div id="cuts"></div></section>
     <section id="fixBox"><h2>Пропозиції AI щодо слів</h2><div id="fixes"></div></section>
     <section><h2>Стиль</h2><div id="style"></div></section>
@@ -170,7 +182,7 @@ const HINT = {
 };
 const ACCENTS = ["#ffd60a", "#ffffff", "#30d158", "#0a84ff", "#ff453a", "#ff9f0a", "#bf5af2"];
 let name = new URLSearchParams(location.search).get("p"), state = null, styles = [], mode = "play", from = null, shown = 0, edited = false;
-let drawn = "", editing = null, range = null, picker = null;
+let drawn = "", editing = null, range = null, picker = null, marked = null;
 
 const api = async (path, options) => {
   const response = await fetch(path, options); const data = await response.json().catch(() => ({}));
@@ -325,7 +337,7 @@ function drawSteps() {
   const number = running ? state.steps.filter((s) => order.indexOf(s.step) <= order.indexOf(running.step)).length : 0;
   $("status").innerHTML = `<div class="status ${kind}"><span class="spin"></span><div style="flex:1;min-width:0"><div class="big">${
     kind === "running" ? (running ? `Крок ${number} з ${total}: ${STEP[running.step] || running.step}` : "Починаю…") : kind === "failed" ? `Зупинилось: ${STEP[failed.step] || failed.step}` : kind === "done" ? "Відео готове" : "Очікую відео"}</div><div class="sub">${
-    kind === "running" ? esc(running && running.note ? NOTE[running.note] || "вирізаю мовця з фону" : state.busy === "render" ? "перезбираю з вашими змінами" : "обробка нового відео") : kind === "failed" ? esc(failed.error) : kind === "done" ? (edited ? "є зміни, яких ще немає у відео" : "усі кроки пройдені") : ""}</div>${
+    kind === "running" ? esc(running && running.note ? NOTE[running.note] || "вирізаю мовця з фону" : state.busy === "rooms" ? "шукаю кімнати на плані й у тексті" : state.busy === "render" ? "перезбираю з вашими змінами" : "обробка нового відео") : kind === "failed" ? esc(failed.error) : kind === "done" ? (edited ? "є зміни, яких ще немає у відео" : "усі кроки пройдені") : ""}</div>${
     kind === "running" && total > 1 ? `<div class="bar"><i style="width:${Math.round(100 * (done + 0.5) / total)}%"></i></div>` : ""}</div>${
     kind === "running" && running ? `<span class="clock">${clock(Math.max(0, Date.now() / 1000 - running.at))}</span>` : ""}</div>`;
   document.title = kind === "running" ? `⏳ ${running ? STEP[running.step] : "Працюю"} · Reel` : kind === "failed" ? "⚠ Помилка · Reel" : "Reel";
@@ -344,7 +356,7 @@ function draw(force) {
   if (!state) return;
   drawSteps();
   // Everything below is rebuilt only when the project itself changed, so typing in a field is never interrupted
-  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds]);
+  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.busy, marked]);
   if (!force && signature === drawn) return;
   if (editing !== null && !force) return;
   drawn = signature; lit = null; drawLine();
@@ -384,6 +396,7 @@ function draw(force) {
     const piece = words.slice(c.from, c.to + 1), out = piece.every((w) => !w.kept), text = piece.map((w) => w.text).join(" ");
     return `<div class="card"><div class="what">${esc(text.length > 110 ? text.slice(0, 110) + "…" : text)}<small>${WHY[c.why] || ""}${c.note ? ": " + esc(c.note) : ""} · ${out ? "вирізано" : "повернуто"}</small></div>${(() => { const before = words.slice(0, c.from).reverse().find((w) => w.at != null), at = out ? (before ? Math.max(0, before.at - 1.2) : 0) : when(c.from, c.to); return at != null ? `<button class="jump" data-seek="${at}" aria-label="Послухати це місце">▶ ${out ? "стик" : "послухати"}</button>` : ""; })()}<button data-cut="${c.from}-${c.to}" data-back="${out ? 1 : ""}">${out ? "Повернути" : "Вирізати"}</button></div>`;
   }).join("");
+  drawPlans();
   const offers = state.corrections.filter((c) => c.by === "ai");
   $("fixBox").style.display = offers.length ? "" : "none";
   $("fixes").innerHTML = offers.map((c) => `<div class="card"><div class="what">${esc(words[c.word].heard)} → <b>${esc(c.text)}</b><small>${c.accepted ? "прийнято" : "не застосовано"}</small></div><button data-fix="${c.word}">${c.accepted ? "Скасувати" : "Прийняти"}</button></div>`).join("");
@@ -403,6 +416,24 @@ function draw(force) {
 }
 
 // ---------- choosing a picture: from the project's own, from the device, or from the internet ----------
+// ---------- rooms on a plan: the AI finds when a room is spoken of, a click on the plan says which room it is ----------
+function drawPlans() {
+  const plans = state.plans || [], marks = state.marks || [], words = state.words;
+  $("planBox").style.display = plans.length ? "" : "none";
+  if (marked && !marks.some((m) => m.id === marked)) marked = null;
+  $("plans").innerHTML = plans.map((p) => {
+    if (!p.read) return `<div class="card"><img src="${pic(p.file)}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px"><div class="what">Якщо це планування, я знайду на ньому кімнати<small>а в тексті — моменти, коли про них ідеться</small></div><button data-rooms="1" ${state.busy ? "disabled" : ""}>${state.busy === "rooms" ? "Шукаю…" : "Знайти кімнати"}</button></div>`;
+    if (p.rooms.length < 3) return "";
+    const mine = marks.filter((m) => m.asset === p.asset).sort((a, b) => a.from - b.from), picked = mine.find((m) => m.id === marked), used = new Set(mine.map((m) => m.room));
+    return `<div class="plan${picked ? " picking" : ""}"><img src="${pic(p.file)}" alt="План"><svg viewBox="0 0 1 1" preserveAspectRatio="none">${p.rooms.map((r) =>
+      `<polygon points="${r.shape.map((q) => q.join(",")).join(" ")}" data-room="${r.id}" data-plan="${p.asset}" class="${picked && picked.room === r.id ? "on" : used.has(r.id) ? "used" : ""}"><title>${picked ? "Це вона" : "Спершу оберіть момент зі списку"}</title></polygon>`).join("")}</svg></div>
+      <p class="hint" style="margin:0 0 10px">${picked ? `Клацніть на плані кімнату, про яку мовець каже «${esc(picked.name || "…")}».` : "Оберіть момент у списку, потім клацніть його кімнату на плані. Назву я запам'ятаю для наступних відео з цим планом."}</p>
+      ${mine.map((m) => { const piece = words.slice(m.from, m.to + 1).filter((w) => w.kept), text = piece.map((w) => w.text).join(" "), at = piece.length ? piece[0].at : null;
+        return `<div class="card mark${m.id === marked ? " on" : ""}${m.room ? "" : " wait"}" data-mark="${m.id}"><div class="what"><b>${esc(m.name || "без назви")}</b> · ${esc(text.length > 70 ? text.slice(0, 70) + "…" : text)}<small>${m.room ? "кімнату обрано" : "кімнату ще не обрано — у відео не підсвітиться"}</small></div>${at != null ? `<button class="jump" data-seek="${at}">▶</button>` : ""}<button class="quiet" data-unmark="${m.id}" aria-label="Прибрати">✕</button></div>`; }).join("")}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 14px"><button data-rooms="1" ${state.busy ? "disabled" : ""}>${state.busy === "rooms" ? "Шукаю…" : mine.length ? "Знайти моменти заново" : "Знайти моменти в тексті"}</button><button data-mark-new="${p.asset}">Додати з виділеного на стрічці</button></div>`;
+  }).join("");
+}
+
 function drawPicker() {
   if (!picker) { $("picker").innerHTML = ""; return; }
   const found = picker.found;
@@ -437,6 +468,16 @@ async function saveWord(input) {
 }
 
 document.addEventListener("click", async (e) => {
+  const room = e.target.closest("polygon[data-room]"), markCard = e.target.closest("[data-mark]");
+  if (e.target.closest("[data-rooms]")) { await act(`/api/projects/${name}/rooms`, { method: "POST" }); return; }
+  if (e.target.closest("[data-unmark]")) { await edit({ remove_mark: e.target.closest("[data-unmark]").dataset.unmark }); return; }
+  if (e.target.closest("[data-mark-new]")) {
+    const picked = selWords(); if (!picked) { fail("Спершу виділіть на стрічці відрізок, де йдеться про кімнату."); return; }
+    const before = new Set((state.marks || []).map((m) => m.id)), fresh = await edit({ mark: { asset: e.target.closest("[data-mark-new]").dataset.markNew, from: picked[0], to: picked[1] } });
+    if (fresh) { marked = (fresh.marks.find((m) => !before.has(m.id)) || {}).id || null; draw(true); } return;
+  }
+  if (room) { if (!marked) { fail("Спершу оберіть момент у списку під планом."); return; } const id = marked; marked = null; await edit({ mark: { id, room: room.dataset.room } }); return; }
+  if (markCard && !e.target.closest("button")) { marked = marked === markCard.dataset.mark ? null : markCard.dataset.mark; draw(true); return; }
   const t = e.target, d = t.dataset || {};
   if (d.mode) { mode = d.mode; from = null; range = null; editing = null; document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b === t)); draw(true); }
   else if (d.w !== undefined) {

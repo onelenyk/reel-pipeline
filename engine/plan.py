@@ -8,7 +8,7 @@ they meet where the passage between them is narrowest.
 The reader today is the CubiCasa5k network (models/cubicasa, fetched by `./reel plans-setup`). Its licence allows
 non-commercial use only: to move to another reader, write a function like `cubicasa` below and name it in READERS.
 """
-import heapq, json, sys
+import hashlib, heapq, json, re, sys
 from pathlib import Path
 from . import HOME
 
@@ -149,15 +149,45 @@ def rooms(colour, reader="cubicasa", points=None):
     return found
 
 
+def place(picture):
+    """Where what is known of a picture is kept: by its content, so that the same plan in another video is known at once."""
+    return HOME / "rooms" / (hashlib.sha1(Path(picture).read_bytes()).hexdigest()[:20] + ".json")
+
+
+def stored(picture):
+    """What is already known of a picture, without reading it again; None if it has not been read."""
+    kept = place(picture)
+    if not kept.exists(): return None
+    known = json.loads(kept.read_text(encoding="utf-8"))
+    return known if known.get("format") == 2 else None
+
+
 def outline(picture, reader="cubicasa"):
-    """The rooms of a picture, worked out once and kept beside it."""
+    """The rooms of a picture, worked out once and remembered."""
     import cv2
-    picture = Path(picture); kept = picture.with_suffix(".rooms.json")
-    if kept.exists() and kept.stat().st_mtime >= picture.stat().st_mtime and json.loads(kept.read_text()).get("format") == 2: return json.loads(kept.read_text())
+    known = stored(picture)
+    if known: return known
     colour = cv2.imread(str(picture))
     if colour is None: raise RuntimeError("this file is not a picture the pipeline can read")
-    result = {"format": 2, "reader": reader, "rooms": [{"id": f"r{i}", "name": None, **r} for i, r in enumerate(rooms(colour, reader), 1)]}
-    kept.write_text(json.dumps(result, ensure_ascii=False)); return result
+    result = {"format": 2, "reader": reader, "rooms": [{"id": f"r{i}", **r} for i, r in enumerate(rooms(colour, reader), 1)], "names": {}}
+    kept = place(picture); kept.parent.mkdir(parents=True, exist_ok=True); kept.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8"); return result
+
+
+def plain(name):
+    """A room's name as it is compared: "гардеробну кімнату" and "Гардеробна кімната" are one name."""
+    return " ".join(w[:5] for w in re.findall(r"\w+", (name or "").lower()))
+
+
+def remember(picture, name, room):
+    """A person said which room a name means on this plan; the next video with the plan starts from that."""
+    known = stored(picture)
+    if not known or not plain(name): return
+    known.setdefault("names", {})[plain(name)] = room; place(picture).write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8")
+
+
+def recall(picture, name):
+    known = stored(picture) or {}; room = known.get("names", {}).get(plain(name))
+    return room if any(r["id"] == room for r in known.get("rooms", [])) else None
 
 
 def draw(picture, result, out):
