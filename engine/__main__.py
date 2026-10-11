@@ -11,6 +11,7 @@
   decorate PROJECT            ask the AI to liven the video with overlays: numbers counting up, stickers, lists
   rooms PICTURE               find the rooms of a floor plan; writes PICTURE.rooms.json and a picture to look at in out/
   show PROJECT                what the project holds: the text, the beats and the open requests
+  usage                       what was asked of the AI by day, and the money left on the account
   serve [PORT]                the web page: watch the pipeline, edit the text, answer requests, render
 """
 import json, sys, time
@@ -154,6 +155,6 @@ def serve(port="8787"):
 
 
 if __name__ == "__main__":
-    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "replan": replan, "rooms": rooms, "mark": mark, "decorate": decorate, "serve": serve}
-    if len(sys.argv) < 2 or sys.argv[1] not in commands or (len(sys.argv) < 3 and sys.argv[1] != "serve"): sys.exit(__doc__)
+    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "replan": replan, "rooms": rooms, "mark": mark, "decorate": decorate, "serve": serve, "usage": lambda: say(suggest.usage())}
+    if len(sys.argv) < 2 or sys.argv[1] not in commands or (len(sys.argv) < 3 and sys.argv[1] not in ("serve", "usage")): sys.exit(__doc__)
     commands[sys.argv[1]](*sys.argv[2:])

@@ -73,11 +73,36 @@ def ask(prompt, think=False, picture=None, sample=0, fresh=False):
         time.sleep(3 * (attempt + 1))
     if response.status_code == 402: raise RuntimeError("the AI account has no money left: top it up at platform.deepseek.com, then run this step again")
     response.raise_for_status()
+    spent(response.json().get("usage") or {}, think, bool(picture))
     answer = response.json()["choices"][0]["message"]["content"]
     if not answer.strip(): raise RuntimeError("the AI thought until its allowance ran out and gave no answer")
     answer = json.loads(answer)
     ANSWERS.mkdir(parents=True, exist_ok=True); kept.write_text(json.dumps(answer, ensure_ascii=False), encoding="utf-8")
     return answer
+
+
+USAGE = HOME / "usage.jsonl"
+
+
+def spent(usage, think, picture):
+    """One line per paid answer: when, what kind of question, how many tokens. Answers taken from the kept ones cost nothing and are not written."""
+    try:
+        with USAGE.open("a", encoding="utf-8") as file:
+            file.write(json.dumps({"at": time.strftime("%Y-%m-%d %H:%M:%S"), "kind": "picture" if picture else "thinking" if think else "quick", "in": usage.get("prompt_tokens", 0),
+                                   "cached": usage.get("prompt_cache_hit_tokens", 0), "out": usage.get("completion_tokens", 0)}) + "\n")
+    except OSError: pass   # a full disk must not lose the answer
+
+
+def usage():
+    """What was asked of the AI, by day, and the money left on the account as the service reports it."""
+    days = {}
+    for line in USAGE.read_text(encoding="utf-8").splitlines() if USAGE.exists() else []:
+        one = json.loads(line); day = days.setdefault(one["at"][:10], {"requests": 0, "in": 0, "out": 0}); day["requests"] += 1; day["in"] += one["in"]; day["out"] += one["out"]
+    try: left = requests.get("https://api.deepseek.com/user/balance", timeout=30, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"}).json()["balance_infos"]
+    except Exception as error: left = f"unknown: {error}"
+    stamp = {"at": time.strftime("%Y-%m-%d %H:%M:%S"), "balance": left}
+    with (HOME / "balance.jsonl").open("a", encoding="utf-8") as file: file.write(json.dumps(stamp) + "\n")   # two readings give what was spent between them
+    return {"by day": days, "balance now": left, "readings kept in": "balance.jsonl"}
 
 
 VOTERS = 3
