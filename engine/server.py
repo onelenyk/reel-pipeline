@@ -204,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
                     b = change["add_beat"]; project.add_beat(folder, b.get("kind"), b.get("from"), b.get("to"), text=b.get("text"), asset=b.get("asset"))
                 elif "beat_picture" in change: project.change_beat(folder, change["beat_picture"]["beat"], asset=change["beat_picture"].get("asset"))
                 elif "mark" in change:
-                    m = change["mark"]; project.set_mark(folder, m.get("id"), m.get("asset"), m.get("room"), m.get("from"), m.get("to"), m.get("name"))
+                    m = change["mark"]; project.set_mark(folder, m.get("id"), m.get("asset"), m.get("room"), m.get("from"), m.get("to"), m.get("name"), add=bool(m.get("add")))
                 elif "zone_add" in change:
                     z = change["zone_add"]; project.change_zones(folder, z.get("asset"), add=z.get("shape"), name=z.get("name"))
                 elif "zone_shape" in change:

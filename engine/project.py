@@ -162,7 +162,8 @@ def lit(doc, asset, kept_ids, at, start, end):
         begin = at(said[0]["start"])
         if not start - 0.05 <= begin < end - 0.4: continue
         if marks: marks[-1]["end"] = min(marks[-1]["end"], begin)
-        marks.append({"id": m["id"], "start": max(start, begin), "end": end, "shape": rooms[m["room"]]["shape"], "name": m.get("name")})
+        marks.append({"id": m["id"], "start": max(start, begin), "end": end, "shape": rooms[m["room"]]["shape"], "name": m.get("name"),
+                      "more": [rooms[r]["shape"] for r in m.get("also", []) if r in rooms]})
     return marks
 
 
@@ -246,7 +247,17 @@ def tie(doc):
         for m in sorted((m for m in doc["marks"] if m["asset"] == asset_id), key=lambda m: m["from"]):
             if m.get("by") != "user":
                 m["room"] = plan.match(files[asset_id], m["name"], taken, near) if asset_id in files and m.get("name") else None
-                if m["room"]: taken.append(m["room"])
+                m["also"] = []
+                if m["room"]:
+                    taken.append(m["room"])
+                    # "дві дитячі кімнати": as many rooms of that name as are spoken of, each next one the nearest left
+                    # the count is often said just before the name: "є дві | дитячі кімнати"
+                    spoken = " ".join(w["text"] for w in doc["words"][max(0, m["from"] - 3):m["to"] + 1])
+                    for _ in range(plan.several(m["name"] + " " + spoken) - 1):
+                        # another room of that name, whether or not an earlier moment has spoken of it
+                        more = plan.match(files[asset_id], m["name"], [m["room"]] + m["also"], where.get(m["room"]))
+                        if not more or more == m["room"] or more in m["also"]: break
+                        m["also"].append(more); taken.append(more)
             near = where.get(m["room"], near)
 
 
@@ -260,6 +271,7 @@ def change_zones(folder, asset_id, add=None, name=None, remove=None, reshape=Non
     if reshape: plan.reshape_room(asset["file"], reshape["room"], reshape["shape"])
     there = {r["id"] for r in rooms_of(asset["file"])}
     for m in doc["marks"]:
+        if m["asset"] == asset_id: m["also"] = [r for r in m.get("also", []) if r in there]
         if m["asset"] == asset_id and m["room"] not in there: m["room"] = None; m["by"] = "ai"   # its room is gone: it looks for one again
     tie(doc); save(folder, doc); lay_plans(folder); return made
 
@@ -272,7 +284,7 @@ def name_zone(folder, asset_id, room, name=None, number=None):
     plan.name_room(asset["file"], room, name, number); tie(doc); save(folder, doc); lay_plans(folder)
 
 
-def set_mark(folder, mark_id=None, asset=None, room=None, first=None, last=None, name=None):
+def set_mark(folder, mark_id=None, asset=None, room=None, first=None, last=None, name=None, add=False):
     """A person ties a stretch of words to a room of a plan, or makes a new mark over the words they chose."""
     from . import plan
     doc = load(folder)
@@ -287,7 +299,11 @@ def set_mark(folder, mark_id=None, asset=None, room=None, first=None, last=None,
     file = next(a["file"] for a in doc["assets"] if a["id"] == mark["asset"])
     if room is not None and not any(r["id"] == room for r in rooms_of(file)): raise ValueError("there is no such room on this plan")
     if name is not None: mark["name"] = str(name).strip()[:40] or None
-    mark["room"] = room; mark["by"] = "user"
+    if add and room and mark.get("room") and room != mark["room"]:
+        # one more room for the same moment, or one fewer if it was already there
+        mark["also"] = [r for r in mark.get("also", []) if r != room] if room in mark.get("also", []) else mark.get("also", []) + [room]
+    else: mark["room"] = room; mark["also"] = [r for r in mark.get("also", []) if r != room] if room else []
+    mark["by"] = "user"
     if room and mark.get("name"): plan.remember(file, mark["name"], room)
     save(folder, doc); lay_plans(folder); return mark
 

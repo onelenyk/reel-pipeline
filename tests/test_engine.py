@@ -277,6 +277,24 @@ class DrawnRoom(unittest.TestCase):
         self.assertRaises(ValueError, self.plan.reshape_room, self.picture, "r1", [[0.1, 0.1], [0.2, 0.2]])
 
 
+    def test_a_removed_room_gives_its_area_back(self):
+        made = self.plan.add_room(self.picture, [[0.1, 0.6], [0.4, 0.6], [0.4, 0.85], [0.1, 0.85]], "Передпокій")
+        self.assertLess(self.area(self.plan.stored(self.picture)["rooms"][0]), 0.9 * 480 * 280)
+        self.plan.remove_room(self.picture, made["id"]); rooms = self.plan.stored(self.picture)["rooms"]
+        self.assertEqual(len(rooms), 1); self.assertAlmostEqual(self.area(rooms[0]), 480 * 280, delta=0.03 * 480 * 280)
+
+    def test_a_persons_work_is_carried_to_rooms_found_anew(self):
+        import cv2
+        old = [{"id": "r1", "shape": [[0.1, 0.15], [0.9, 0.15], [0.9, 0.85], [0.1, 0.85]], "at": [0.5, 0.5], "name": "Зала", "guess": False},
+               {"id": "r7", "shape": [[0.92, 0.1], [0.99, 0.1], [0.99, 0.5], [0.92, 0.5]], "at": [0.95, 0.3], "name": "Ґанок", "guess": False, "by": "user"}]
+        new = [{"id": "r1", "shape": [[0.11, 0.16], [0.89, 0.16], [0.89, 0.84], [0.11, 0.84]], "at": [0.5, 0.5], "name": "Кухня-вітальня", "guess": True}]
+        self.plan.carry(cv2.imread(str(self.picture)), old, new)
+        self.assertEqual([(r["name"], r.get("guess"), r.get("by")) for r in new], [("Зала", False, None), ("Ґанок", False, "user")])
+
+    def test_a_phrase_may_speak_of_several_rooms(self):
+        self.assertEqual(self.plan.several("В нас є дві дитячі кімнати"), 2); self.assertEqual(self.plan.several("дитяча кімната"), 1)
+
+
 class Tour(unittest.TestCase):
     def test_the_plan_is_laid_over_each_walk_through_its_rooms(self):
         folder = Path(tempfile.mkdtemp()); words = [{"id": i, "source": "s1", "text": f"w{i}.", "start": i * 0.4, "end": i * 0.4 + 0.3, "confidence": 1} for i in range(120)]

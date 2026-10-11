@@ -238,8 +238,28 @@ def outline(picture, reader="cubicasa"):
     if colour is None: raise RuntimeError("this file is not a picture the pipeline can read")
     found = [{"id": f"r{i}", **r} for i, r in enumerate(rooms(colour, reader), 1)]
     describe(colour, found)
+    earlier = stored(picture, lenient=True)
+    if earlier: carry(colour, earlier["rooms"], found)   # the plan was read before, by an older way: what a person did to it then is kept
     result = {"format": FORMAT, "reader": reader, "rooms": found, "names": {}}
     kept = place(picture); kept.parent.mkdir(parents=True, exist_ok=True); kept.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8"); return result
+
+
+def carry(colour, old, new):
+    """What a person did to a plan, brought over to the rooms as they are found now: a room they drew is kept as drawn,
+    a name or an outline they gave goes to the new room that lies where the old one did."""
+    import cv2, numpy as np
+    h, w = colour.shape[:2]
+    def mask(room): m = np.zeros((h, w), np.uint8); cv2.fillPoly(m, [(np.array(room["shape"]) * (w, h)).astype(np.int32)], 1); return m.astype(bool)
+    masks = [mask(r) for r in new]
+    for room in old:
+        mine = room.get("by") == "user" or room.get("shaped") == "user" or (room.get("name") and not room.get("guess"))
+        if not mine: continue
+        if room.get("by") == "user": new.append({**room, "id": f"r{max([int(r['id'][1:]) for r in new] + [0]) + 1}"}); continue
+        was = mask(room); alike = [(float((was & m).sum()) / max(1, (was | m).sum()), i) for i, m in enumerate(masks)]
+        share, i = max(alike, default=(0, None))
+        if i is None or share < 0.5: continue   # nothing lies there now: the name has no room to go to
+        if room.get("name") and not room.get("guess"): new[i]["name"] = room["name"]; new[i]["guess"] = False
+        if room.get("shaped") == "user": new[i].update(shape=room["shape"], at=room["at"], shaped="user")
 
 
 def read_numbers(grey):
@@ -313,6 +333,14 @@ def stems(name):
     return out - GENERIC if out - GENERIC else out
 
 
+def several(text):
+    """How many rooms a phrase speaks of at once: "дві дитячі кімнати" is two."""
+    words = re.findall(r"\w+", (text or "").lower())
+    for count, forms in ((2, ("дві", "два", "двох", "обидві", "обидва", "пара")), (3, ("три", "трьох")), (4, ("чотири",))):
+        if any(w in forms for w in words): return count
+    return 1
+
+
 def match(picture, name, taken=(), near=None):
     """The room of a plan that a spoken name means: what a person tied before, else the room whose name says the same.
     Among several rooms of one name: one not yet `taken`, and of those the nearest to `near`, where the walk has just been."""
@@ -369,14 +397,15 @@ def add_room(picture, shape, name=None):
     new = (drawn & covered) if (drawn & covered).sum() >= 0.4 * drawn.sum() else drawn
     new = cv2.morphologyEx(new, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8)); made = trace(new)
     if not made: raise ValueError("the room drawn is too small")
+    carved = []   # the rooms this one is cut from: if it is removed, its area goes back to one of them
     for room, m in under:
         rest = cv2.morphologyEx(m & (1 - new), cv2.MORPH_OPEN, np.ones((7, 7), np.uint8)); left = trace(rest)
         if left is None or rest.sum() < 0.12 * m.sum(): known["rooms"].remove(room)   # the new room took all of it
-        else: room.update(left)
+        else: room.update(left); carved.append(room["id"])
     number = max([int(r["id"][1:]) for r in known["rooms"]] + [0]) + 1
     while any(room == f"r{number}" for room in known.get("names", {}).values()): number += 1
     room = {"id": f"r{number}", **made, "share": 0, "doors": [], "windows": 0, "things": [], "kind": None, "name": (str(name).strip()[:40] or None) if name else None, "guess": False, "by": "user",
-            **({"outdoors": True} if not under else {})}
+            **({"outdoors": True} if not under else {}), **({"carved": carved} if carved else {})}
     known["rooms"].append(room); place(picture).write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8"); return room
 
 
@@ -397,9 +426,22 @@ def reshape_room(picture, room, shape):
 
 
 def remove_room(picture, room):
+    """Takes a room off the plan. A room a person drew over another gives its area back to the one it was cut from."""
     known = stored(picture, lenient=True)
     if not known: raise ValueError("this plan has not been read")
+    gone = next((r for r in known["rooms"] if r["id"] == room), None)
     known["rooms"] = [r for r in known["rooms"] if r["id"] != room]; known["names"] = {k: v for k, v in known.get("names", {}).items() if v != room}
+    homes = [r for r in known["rooms"] if gone and r["id"] in gone.get("carved", [])]
+    if homes:
+        import cv2, numpy as np
+        h, w = cv2.imread(str(picture)).shape[:2]
+        def mask(r): m = np.zeros((h, w), np.uint8); cv2.fillPoly(m, [(np.array(r["shape"]) * (w, h)).astype(np.int32)], 1); return m
+        was = cv2.dilate(mask(gone), np.ones((9, 9), np.uint8))
+        home = max(homes, key=lambda r: int((mask(r) & was).sum()))   # the one it shares the longest border with
+        whole = cv2.morphologyEx(mask(home) | mask(gone), cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+        outlines, _ = cv2.findContours(whole, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE); best = max(outlines, key=cv2.contourArea)
+        deep = cv2.distanceTransform(whole, cv2.DIST_L2, 3); y, x = np.unravel_index(deep.argmax(), deep.shape)
+        home.update(shape=[[round(px / w, 4), round(py / h, 4)] for px, py in cv2.approxPolyDP(best, 0.004 * max(h, w), True).reshape(-1, 2)], at=[round(x / w, 4), round(y / h, 4)])
     place(picture).write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8")
 
 

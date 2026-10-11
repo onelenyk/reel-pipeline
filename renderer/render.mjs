@@ -129,7 +129,7 @@ function drawPlan(beat, t) {
       const [x0, y0, x1, y1] = beat.extent ?? [0, 0, 1, 1];
       return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, zoom: clamp(Math.min((card.w - 90) / ((x1 - x0) * image.width * fit), (card.h - 90) / ((y1 - y0) * image.height * fit)), 1, 1.6) };
     }
-    const xs = mark.shape.map((p) => p[0]), ys = mark.shape.map((p) => p[1]);
+    const every = [mark.shape, ...(mark.more ?? [])].flat(), xs = every.map((p) => p[0]), ys = every.map((p) => p[1]);   // one room, or the several spoken of together
     const bw = (Math.max(...xs) - Math.min(...xs)) * image.width * fit, bh = (Math.max(...ys) - Math.min(...ys)) * image.height * fit;
     const zoom = clamp(Math.min((card.w * 0.5) / bw, (card.h * 0.5) / bh), home.zoom * 1.1, Math.max(1.9, home.zoom * 1.3));
     // halfway between the room and the middle of the plan: the room comes closer without the rest being lost
@@ -144,11 +144,12 @@ function drawPlan(beat, t) {
   const left = clamp(card.x + card.w / 2 - cam.x * pw, card.x + card.w - 30 - pw, card.x + 30) , top = clamp(card.y + card.h / 2 - cam.y * ph, card.y + card.h - 30 - ph, card.y + 30);
   const px = pw <= card.w - 60 ? card.x + (card.w - pw) / 2 : left, py = ph <= card.h - 60 ? card.y + (card.h - ph) / 2 : top;
   ctx.drawImage(image, px, py, pw, ph);
-  const trace = (mark) => { ctx.beginPath(); mark.shape.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](px + x * pw, py + y * ph)); ctx.closePath(); };
+  const outline = (shape) => { shape.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](px + x * pw, py + y * ph)); ctx.closePath(); };
+  const trace = (mark) => { ctx.beginPath(); [mark.shape, ...(mark.more ?? [])].forEach(outline); };
   if (now) {
     const lit = presence(t, now.start, now.end, 0.35, 0.2);
     // The rest of the plan steps back, the room keeps its ink and takes the accent colour
-    ctx.save(); ctx.beginPath(); ctx.rect(card.x, card.y, card.w, card.h); now.shape.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](px + x * pw, py + y * ph)); ctx.closePath();
+    ctx.save(); ctx.beginPath(); ctx.rect(card.x, card.y, card.w, card.h); [now.shape, ...(now.more ?? [])].forEach(outline);
     ctx.globalAlpha = a * lit * 0.55; ctx.fillStyle = "#fff"; ctx.fill("evenodd"); ctx.restore();
     trace(now); ctx.globalAlpha = a * lit * 0.3; ctx.fillStyle = ACCENT; ctx.fill();
     trace(now); ctx.globalAlpha = a * lit; ctx.strokeStyle = ACCENT; ctx.lineWidth = 9; ctx.lineJoin = "round"; ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 14; ctx.stroke(); ctx.shadowBlur = 0;

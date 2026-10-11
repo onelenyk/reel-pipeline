@@ -66,9 +66,17 @@ On the page's Plan tab (`engine/plan.py` `add_room`, `reshape_room`, `remove_roo
 - **Move its corners**: the pencil beside a room. Corners drag, the smaller point on a side becomes a new corner, a double tap
   removes one, arrow keys move the last corner by one pixel of the picture (ten with Shift). The outline is kept exactly as given.
 - **Look closer**: entering the pencil frames that room; a pinch or the buttons zoom, empty space drags the plan.
-- **Remove a room**. Its area does not go back to the room it was carved from: move that room's corners if it should.
+- **Fewer corners**: a button while moving corners drops those that hardly bend the outline (the notch of a window), a little more with every press.
+- **Remove a room**. A room that was drawn over another gives its area back to it.
 
 After any of these the moments are tied again by name and the plan inserts are remade.
+
+A moment may light several rooms: "дві дитячі кімнати" takes two rooms of that name (`several` reads the count from the
+phrase and the three words before it), and on the page "+ ще кімната" adds one by hand. A mark keeps the first in `room` and
+the rest in `also`.
+
+When the way rooms are found changes (`FORMAT`), the plan is read again and what a person did to it is carried over by
+`carry`: a room they drew stays as drawn, a name or an outline they gave goes to the new room that lies where the old one did.
 
 ## The plan follows the walk
 
