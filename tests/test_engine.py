@@ -212,3 +212,18 @@ class Vote(unittest.TestCase):
         agreed = vote([[cut(5, 9), cut(20, 22, "aside")], [cut(5, 9)], [cut(5, 10), cut(20, 22, "aside")]])
         self.assertEqual([(c["from"], c["to"], c["why"]) for c in agreed], [(5, 9, "retake"), (20, 22, "aside")])
         self.assertEqual(vote([[cut(5, 9)], [], []]), [])
+
+
+class Spelling(unittest.TestCase):
+    def test_the_vocabulary_spells_what_was_heard(self):
+        from engine.speech import spelled
+        heard = [{"text": t, "start": i, "end": i + 0.5, "confidence": 0.9} for i, t in enumerate("в G Village, біля села Горанич. Заходимо перед покій, а там Перемога".split())]
+        words = spelled(heard, ["G-Village", "Гореничі", "передпокій", "тераса"])
+        self.assertEqual(" ".join(w["text"] for w in words), "в G-Village, біля села Гореничі. Заходимо передпокій, а там Перемога")
+        self.assertEqual(words[1]["heard"], "G Village,"); self.assertEqual((words[1]["start"], words[1]["end"]), (1, 2.5))
+
+    def test_a_name_heard_quite_differently_is_respelled_once_someone_has_said_how(self):
+        from engine.speech import letters, spelled
+        heard = [{"text": t, "start": i, "end": i + 0.5, "confidence": 0.9} for i, t in enumerate("будинку в Джівілич, ми попадаємо вперед покій.".split())]
+        words = spelled(heard, ["G-Village", "передпокій"], known={letters("Джівілич"): "G-Village"})
+        self.assertEqual(" ".join(w["text"] for w in words), "будинку в G-Village, ми попадаємо в передпокій.")

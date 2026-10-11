@@ -7,7 +7,8 @@ question, the command that runs it and what was found; this page is the index. R
 |---|---|---|
 | `lab.py` | The first hypotheses: HDR footage, levelling, recognition, pauses, matting | `docs/findings.md` |
 | `speech/two_languages.py` | Does a second, English pass hear English names better? | No: it translates the speech and is up to three times slower |
-| `speech/vocabulary.py` | Does a vocabulary given to the recogniser fix names? | Yes, as an opening sentence; `hotwords` drop punctuation |
+| `speech/verbatim.py` | Why are stumbles heard in the video but absent from the text? | Any vocabulary given to the recogniser makes it leave out repeated speech and stretch a word over it (18 words instead of 36 on one minute). The vocabulary is now applied after recognition |
+| `speech/vocabulary.py` | Does a vocabulary given to the recogniser fix names? | Yes, but at the price found by `verbatim.py`; superseded |
 | `review/retakes.py` | What does the AI review cut? | Failed attempts and asides, with thinking on; not the same on every run |
 | `review/stability.py` | Does the review differ from run to run? | Hardly, on one transcript: 0 and 2 words of 225 and 510 over five runs; a vote of three removes the rest |
 | `review/plan_stability.py` | Does the montage plan differ from run to run? | Yes: four different plans in four runs at temperature 0.3, two or three at 0. So answers are kept |

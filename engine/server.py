@@ -110,7 +110,7 @@ class Handler(BaseHTTPRequestHandler):
             names = sorted((p.name for p in ROOT.iterdir() if p.is_dir()), key=lambda n: -(ROOT / n).stat().st_mtime) if ROOT.exists() else []
             return self.send([{"name": n, "busy": busy.get(n), "has_render": (ROOT / n / "render.mp4").exists()} for n in names])
         if parts == ["api", "styles"]: return self.send(styles.listing())
-        if parts == ["api", "vocabulary"]: return self.send({"terms": speech.vocabulary()})
+        if parts == ["api", "vocabulary"]: return self.send({"terms": speech.lines()})
         if len(parts) == 3 and parts[:2] == ["api", "projects"]:
             return self.send(summary(parts[2])) if (ROOT / parts[2]).is_dir() else self.send({"error": "there is no such project"}, 404)
         if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "search":
@@ -190,7 +190,7 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "edit":
                 change = json.loads(self.body() or b"{}"); doc = project.load(folder)
                 if "text" in change:
-                    project.set_text(folder, int(change["text"]["word"]), str(change["text"].get("to", ""))); speech.learn(str(change["text"].get("to", "")))
+                    heard = doc["words"][int(change["text"]["word"])]; project.set_text(folder, int(change["text"]["word"]), str(change["text"].get("to", ""))); speech.learn(str(change["text"].get("to", "")), heard.get("heard", heard["text"]))
                 elif "assign" in change: project.assign(folder, change["assign"]["need"], change["assign"].get("asset"))
                 elif "style" in change: project.set_style(folder, change["style"])
                 elif "apply_style" in change: project.set_style(folder, styles.get(change["apply_style"]))

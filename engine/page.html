@@ -180,7 +180,7 @@
     <div class="tab" data-tab="style">
     <section><h2>Стиль</h2><div id="style"></div></section>
     <section><h2>Словник</h2>
-      <p class="hint">Назви об'єктів, сіл і терміни, по одному в рядку. Розпізнавач чекає на ці слова в нових відео, тому пише їх правильно. Виправлені вами назви додаються сюди самі.</p>
+      <p class="hint">Назви об'єктів, сіл і терміни, по одному в рядку. Після розпізнавання нового відео схожі слова замінюються на ці. Якщо розпізнавач чує назву зовсім інакше, допишіть через «=», як саме: «G-Village = Джівілич». Виправлені вами назви додаються сюди самі, разом із тим, як їх було почуто.</p>
       <textarea id="vocab" aria-label="Словник"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button id="vocabSave">Зберегти словник</button><span class="hint" id="vocabSaid" style="margin:0"></span></div>
     </section>
@@ -422,7 +422,7 @@ function draw(force) {
       <button data-beat="${b.id}">${b.accepted ? "Вимкнути" : "Увімкнути"}</button><button class="quiet" data-remove="${b.id}" aria-label="Видалити вставку">Видалити</button></div>`; }).join("") || `<p class="hint">Вставок немає. У розділі «Текст» оберіть «Вставка» і позначте слова.</p>`;
 
   // What the review took out: each piece can be put back, and taken out again
-  const WHY = { retake: "повтор", aside: "не для глядача", rude: "лайка" }, cuts = state.cuts || [];
+  const WHY = { retake: "повтор", aside: "не для глядача", rude: "лайка", garble: "безглузда фраза" }, cuts = state.cuts || [];
   $("cutBox").style.display = cuts.length ? "" : "none";
   $("cuts").innerHTML = cuts.map((c) => {
     const piece = words.slice(c.from, c.to + 1), out = piece.every((w) => !w.kept), text = piece.map((w) => w.text).join(" ");

@@ -32,12 +32,14 @@ needs: проси лише матеріал, який справді є в ав�
 
 REVIEW = """Ти редактор відео про нерухомість. Нижче розшифровка одного дубля; слова пронумеровані. Людина говорить у камеру, не зупиняючи запис:
 коли збивається, вона починає фразу або цілий шматок заново; іноді каже щось не для глядача. Знайди все, що не має потрапити в готове відео.
-Поверни один JSON: {"cuts": [{"from": номер_слова, "to": номер_слова, "why": "retake" | "aside" | "rude", "note": "коротко, що це"}]}
+Поверни один JSON: {"cuts": [{"from": номер_слова, "to": номер_слова, "why": "retake" | "aside" | "rude" | "garble", "note": "коротко, що це"}]}
 
 - retake: невдала спроба, яку далі сказано заново. Вирізай ПЕРШУ спробу цілком, від її початку до слова перед початком вдалого повтору; лишається остання повна версія.
   Якщо заново сказано кілька речень поспіль, вирізай увесь перший варіант. Обірване речення без продовження теж сюди.
 - aside: слова не для глядача: коментарі про власну обмовку, пошук слова вголос, звертання до того, хто знімає, питання "я погано сказав?".
 - rude: лайка.
+- garble: фраза, яка не має змісту так, як сказана: слова не складаються в речення, мовець заплутався і сам її закрив («Це і весь гардеробна кімната»),
+  або слова-паразити між двома повними реченнями. Вирізай лише якщо сусідні речення без неї читаються цілісно і жодна інформація не зникає.
 - Після вирізання мова має лишатися зв'язною: межі вирізу ставай на межах фраз.
 - Не вирізай те, що просто незграбно сказано, і не скорочуй зміст. Якщо сумніваєшся, не вирізай. Якщо вирізати нічого, поверни {"cuts": []}.
 
@@ -104,7 +106,7 @@ def clean_cuts(raw, count):
         first, last = c.get("from"), c.get("to")
         if not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < count for i in (first, last)) or last < first: continue
         note = c.get("note").strip()[:120] if isinstance(c.get("note"), str) and c.get("note").strip() else None
-        cuts.append({"id": f"c{len(cuts) + 1}", "from": first, "to": last, "why": c.get("why") if c.get("why") in ("retake", "aside", "rude") else "retake", "note": note, "by": "ai"})
+        cuts.append({"id": f"c{len(cuts) + 1}", "from": first, "to": last, "why": c.get("why") if c.get("why") in ("retake", "aside", "rude", "garble") else "retake", "note": note, "by": "ai"})
     # Never the whole take: if the review would leave almost nothing, it has misunderstood
     gone = {i for c in cuts for i in range(c["from"], c["to"] + 1)}
     return cuts if len(gone) <= 0.7 * count else []
