@@ -103,6 +103,10 @@ def find_rooms(folder):
         home = next((a["id"] for a in plans if plan.match(a["file"], m["name"])), None)
         last = home or last; shared[last].append(m)
     for asset in plans: project.place_marks(folder, asset["id"], shared[asset["id"]])
+    # for the walk drawn on the plan: which rooms the speaker enters and which they only speak of
+    doc = project.load(folder); mine = sorted((m for m in doc["marks"] if m.get("by") != "user"), key=lambda m: m["from"]); how = suggest.walk(words, mine)
+    for m in mine: m["how"] = how.get(m["id"], "go")
+    project.save(folder, doc)
     laid = project.lay_plans(folder); doc = project.load(folder)
     for asset in plans:
         marks = sorted((m for m in doc["marks"] if m["asset"] == asset["id"]), key=lambda m: m["from"])

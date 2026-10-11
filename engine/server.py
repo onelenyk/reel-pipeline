@@ -270,6 +270,11 @@ class Handler(BaseHTTPRequestHandler):
                 elif "add_beat" in change:
                     b = change["add_beat"]; project.add_beat(folder, b.get("kind"), b.get("from"), b.get("to"), text=b.get("text"), asset=b.get("asset"))
                 elif "beat_picture" in change: project.change_beat(folder, change["beat_picture"]["beat"], asset=change["beat_picture"].get("asset"))
+                elif "mark_how" in change:
+                    # whether the speaker walks into the room or only speaks of it from where they stand
+                    found = next((x for x in doc["marks"] if x["id"] == change["mark_how"].get("id")), None)
+                    if not found: return self.send({"error": "there is no such moment"}, 404)
+                    found["how"] = "point" if change["mark_how"].get("how") == "point" else "go"; found["by"] = "user"; project.save(folder, doc)
                 elif "mark" in change:
                     m = change["mark"]; project.set_mark(folder, m.get("id"), m.get("asset"), m.get("room"), m.get("from"), m.get("to"), m.get("name"), add=bool(m.get("add")))
                 elif "zone_add" in change:

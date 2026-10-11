@@ -270,6 +270,28 @@ The speaker's words:
 """
 
 
+WALK = """Мовець веде глядача будинком за планом. Нижче моменти, де названо кімнату: назва і слова, сказані про неї.
+Для кожного скажи одне з двох:
+- "go": мовець розповідає про саму цю кімнату (що в ній є, яка вона, для чого). Так буває майже завжди.
+- "point": кімнату лише згадано як місце, куди звідси є вихід, двері чи вид, або яке розташоване поруч, а розповідь триває про іншу:
+  «з вітальні є вихід на терасу», «звідси видно сад», «поруч зі спальнею гардеробна».
+Якщо сумніваєшся, це "go". Перший момент завжди "go".
+Поверни один JSON: {"moves": [{"id": "m1", "how": "go" | "point"}]}
+
+"""
+
+
+def walk(words, marks):
+    """For each moment a room is named: does the speaker walk into it, or only speak of it from where they stand?
+    On the plan the first moves the marker along the way; the second sends an arrow to the room and the marker stays."""
+    if not enabled() or len(marks) < 2: return {}
+    said = lambda m: " ".join(w["text"] for w in words[m["from"]:m["to"] + 1] if w["text"] != "…")
+    raw = ask(WALK + "\n".join(f'{m["id"]}: «{m["name"]}» | {said(m)}' for m in marks)); known = {m["id"] for m in marks}
+    found = {x["id"]: x["how"] for x in raw.get("moves", []) if isinstance(x, dict) and x.get("id") in known and x.get("how") in ("go", "point")} if isinstance(raw, dict) and isinstance(raw.get("moves"), list) else {}
+    if marks and found.get(marks[0]["id"]) == "point": found[marks[0]["id"]] = "go"
+    return found
+
+
 def moments(words, spans):
     """When the speaker names a room, and what they call it. `spans` are the word ranges during which a plan is shown."""
     shown = sorted({i for a, b in spans for i in range(a, b + 1) if 0 <= i < len(words)})

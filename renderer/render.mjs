@@ -129,7 +129,7 @@ function drawPlan(beat, t) {
   // Most of the time nothing on the plan moves: the camera has arrived and the room is lit. Such a frame is painted once
   // and laid down again for as long as it stays the same, which is most of the plan's time on screen.
   const marks0 = beat.marks ?? [], index0 = marks0.reduce((last, m, i) => (t >= m.start ? i : last), -1), now0 = marks0[index0];
-  const moving = now0 ? Math.min(1, (t - now0.start) / 0.7) : 1;
+  const moving = now0 ? Math.min(1, (t - now0.start) / 1.7) : 1;   // the camera takes 0.7 s, the walk 0.9, the ring ends at 1.6
   const key = [beat.id, a.toFixed(3), index0, moving.toFixed(4), now0 ? presence(t, now0.start, now0.end, 0.35, 0.2).toFixed(3) : "", now0 ? presence(t, now0.start + 0.15, now0.end, 0.35, 0.2).toFixed(3) : ""].join("|");
   if (key !== planKey) { planCtx.clearRect(0, 0, W, H); paintPlan(planCtx, beat, t, image, a); planKey = key; }
   ctx.drawImage(planLayer, 0, 0);
@@ -179,7 +179,58 @@ function paintPlan(ctx, beat, t, image, a) {
     trace(now); ctx.globalAlpha = a * lit * 0.3; ctx.fillStyle = ACCENT; ctx.fill();
     trace(now); ctx.globalAlpha = a * lit; ctx.strokeStyle = ACCENT; ctx.lineWidth = 9; ctx.lineJoin = "round"; ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 14; ctx.stroke(); ctx.shadowBlur = 0;
   }
+  // The walk: a line from room to room through the doors, a marker that goes along it, a number left in every room visited
+  const NAV = STYLE.navigator ?? "arrow";
+  if (NAV !== "off" && now) {
+    const P = ([x, y]) => [px + x * pw, py + y * ph], INK = "#15171c";
+    const along = (pts, k) => {
+      const lens = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1])), total = lens.reduce((x, y) => x + y, 0); let left = clamp(k) * total; const out = [pts[0]];
+      for (let i = 0; i < lens.length; i++) { if (left >= lens[i]) { out.push(pts[i + 1]); left -= lens[i]; } else { const f = lens[i] ? left / lens[i] : 0; out.push([lerp(pts[i][0], pts[i + 1][0], f), lerp(pts[i][1], pts[i + 1][1], f)]); break; } }
+      return out;
+    };
+    const line = (pts, width, colour, dash = []) => { if (pts.length < 2) return; ctx.beginPath(); pts.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](x, y)); ctx.lineWidth = width; ctx.strokeStyle = colour; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.setLineDash(dash); ctx.stroke(); ctx.setLineDash([]); };
+    const head = (pts, size, colour) => {
+      if (pts.length < 2) return; const [x, y] = pts[pts.length - 1], [x0, y0] = pts[pts.length - 2], turn = Math.atan2(y - y0, x - x0);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(turn); ctx.beginPath(); ctx.moveTo(size * 0.55, 0); ctx.lineTo(-size * 0.55, -size * 0.6); ctx.lineTo(-size * 0.25, 0); ctx.lineTo(-size * 0.55, size * 0.6); ctx.closePath(); ctx.fillStyle = colour; ctx.fill(); ctx.restore();
+    };
+    const steps = (pts, alpha) => {
+      // footprints: left and right in turn, every 46 pixels of the way
+      let gone = 0, n = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], len = Math.hypot(x1 - x0, y1 - y0), turn = Math.atan2(y1 - y0, x1 - x0);
+        for (let d = (46 - (gone % 46)) % 46; d <= len; d += 46) { const side = n++ % 2 ? 9 : -9; ctx.save(); ctx.translate(x0 + Math.cos(turn) * d, y0 + Math.sin(turn) * d); ctx.rotate(turn); ctx.globalAlpha = a * alpha; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(0, side, 13, 6.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
+        gone += len;
+      }
+    };
+    const badge = (at, text, size, alpha) => { const [x, y] = P(at); ctx.save(); ctx.globalAlpha = a * alpha; ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fillStyle = INK; ctx.fill(); ctx.shadowColor = "transparent"; ctx.lineWidth = 5; ctx.strokeStyle = "#fff"; ctx.stroke(); font(size * 1.05); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = ACCENT; ctx.fillText(text, x, y + 2); ctx.restore(); };
+    const going = ease((t - now.start) / 0.9);
+    ctx.save(); ctx.globalAlpha = a;
+    // the way walked so far stays, fainter
+    marks.slice(0, index).forEach((m) => { if (!m.route) return; const pts = m.route.map(P); if (NAV === "steps") steps(pts, 0.28); else { ctx.globalAlpha = a * 0.4; line(pts, 7, INK, [1, 20]); ctx.globalAlpha = a; } });
+    if (now.route) {
+      const pts = along(now.route.map(P), going);
+      if (NAV === "steps") steps(pts, 0.85); else { line(pts, 15, "#fff"); line(pts, 8, INK); if (going < 1) head(pts, 34, INK); }
+    }
+    if (now.pointer) {
+      // a room only spoken of: an arrow from where the speaker stands, and they stay there
+      const pts = along(now.pointer.map(P), 0.12 + 0.76 * going); line(pts.slice(0, 1).concat(pts.slice(-1)), 15, "#fff", [22, 22]); line(pts.slice(0, 1).concat(pts.slice(-1)), 7, INK, [22, 22]); head(pts, 44, INK);
+    }
+    ctx.restore();
+    marks.slice(0, index).forEach((m) => { if (m.step) badge(m.at, String(m.step), 22, 0.7); });
+    if (now.pointer && now.stand) badge(now.stand, "●", 20, 1);
+    if (now.step) {
+      // the marker goes along the way and stops in the room, where a ring spreads from it
+      const pts = now.route ? along(now.route.map(P), going) : [P(now.at)], [mx, my] = pts[pts.length - 1], ring = clamp((t - now.start - 0.8) / 0.8);
+      if (ring > 0 && ring < 1) { ctx.save(); ctx.globalAlpha = a * (1 - ring) * 0.8; ctx.beginPath(); ctx.arc(mx, my, 30 + ring * 70, 0, Math.PI * 2); ctx.lineWidth = 8; ctx.strokeStyle = INK; ctx.stroke(); ctx.restore(); }
+      badge([(mx - px) / pw, (my - py) / ph], String(now.step), 30 + 5 * (1 - going), 1);
+    }
+  }
   ctx.restore();
+  if (NAV !== "off" && now && now.of > 1) {
+    // which room of the walk this is
+    const text = `${now.step ?? marks.slice(0, index + 1).reverse().find((m) => m.step)?.step ?? 1} / ${now.of ?? marks.find((m) => m.of)?.of}`;
+    ctx.save(); ctx.globalAlpha = a; font(38); const tw = ctx.measureText(text).width; plate(ctx, card.x + card.w - tw - 86, card.y + 30, tw + 56, 66, 33, "rgba(21,23,28,0.88)"); ctx.fillStyle = "#fff"; ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.fillText(text, card.x + card.w - tw - 58, card.y + 65); ctx.restore();
+  }
   // The room's name on a plate at the foot of the card
   if (now && now.name) {
     const shown = presence(t, now.start + 0.15, now.end, 0.35, 0.2);

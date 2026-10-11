@@ -13,8 +13,8 @@ MIN_BEAT = {"title": 2.6, "cutaway": 2.5, "backdrop": 2.5, "full": 2.5, "zoom": 
 
 
 # ---------- style: how the graphics and the sound of a video are finished; saved styles are reused across videos ----------
-STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "sounds": "quiet", "level": -15}
-CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge", "polaroid", "circle", "mix"), "sounds": ("off", "quiet", "normal")}
+STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "sounds": "quiet", "navigator": "arrow", "level": -15}
+CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge", "polaroid", "circle", "mix"), "sounds": ("off", "quiet", "normal"), "navigator": ("arrow", "steps", "off")}
 
 
 def clean_style(raw):
@@ -189,9 +189,36 @@ def resolve(doc):
 
 
 # ---------- changes to a project ----------
+def meeting(a, b):
+    """Where two rooms meet: midway between the nearest points of their outlines. A door between them is about there."""
+    edge = lambda shape: [(x1 + (x2 - x1) * k / 4, y1 + (y2 - y1) * k / 4) for (x1, y1), (x2, y2) in zip(shape, shape[1:] + shape[:1]) for k in range(4)]
+    p, q = min(((p, q) for p in edge(a) for q in edge(b)), key=lambda pq: (pq[0][0] - pq[1][0]) ** 2 + (pq[0][1] - pq[1][1]) ** 2)
+    return [round((p[0] + q[0]) / 2, 4), round((p[1] + q[1]) / 2, 4)]
+
+
+def middle(room):
+    return room.get("at") or [round(sum(p[0] for p in room["shape"]) / len(room["shape"]), 4), round(sum(p[1] for p in room["shape"]) / len(room["shape"]), 4)]
+
+
+def route(rooms, a, b):
+    """The walk from one room of a plan to another, as points: through the doors the plan's reader saw, room by room, when
+    there is such a way of no more than four doors; otherwise straight through the place where the two rooms are nearest."""
+    queue, seen, way = [[a]], {a}, None
+    while queue and not way:
+        path = queue.pop(0)
+        if path[-1] == b: way = path; break
+        if len(path) > 4: continue
+        for nxt in rooms[path[-1]].get("doors") or []:
+            if nxt in rooms and nxt not in seen: seen.add(nxt); queue.append(path + [nxt])
+    way = way or [a, b]   # from the middle of the first room, door to door, to the middle of the last
+    return [middle(rooms[a])] + [meeting(rooms[x]["shape"], rooms[y]["shape"]) for x, y in zip(way, way[1:])] + [middle(rooms[b])]
+
+
 def lit(doc, asset, kept_ids, at, start, end):
-    """The rooms of a plan lit while it is on screen: each from the first word about it until the next room, or until the plan leaves."""
-    rooms = {r["id"]: r for r in rooms_of(asset["file"])}; marks = []
+    """The rooms of a plan lit while it is on screen: each from the first word about it until the next room, or until the plan leaves.
+    With each comes the walk to it from the room before ("route"), or, for a room only spoken of from where the speaker
+    stands ("how": "point"), the line from that place to it ("pointer"): the walker does not move."""
+    rooms = {r["id"]: r for r in rooms_of(asset["file"])}; marks = []; here = None
     for m in sorted(doc.get("marks", []), key=lambda m: m["from"]):
         said = [w for w in doc["words"][m["from"]:m["to"] + 1] if w["id"] in kept_ids]
         if m.get("asset") != asset["id"] or m.get("room") not in rooms or not said: continue
@@ -199,7 +226,13 @@ def lit(doc, asset, kept_ids, at, start, end):
         if not start - 0.05 <= begin < end - 0.4: continue
         if marks: marks[-1]["end"] = min(marks[-1]["end"], begin)
         marks.append({"id": m["id"], "start": max(start, begin), "end": end, "shape": rooms[m["room"]]["shape"], "name": m.get("name"),
-                      "more": [rooms[r]["shape"] for r in m.get("also", []) if r in rooms]})
+                      "more": [rooms[r]["shape"] for r in m.get("also", []) if r in rooms], "at": middle(rooms[m["room"]])})
+        if m.get("how") == "point" and here: marks[-1]["pointer"] = [middle(rooms[here]), middle(rooms[m["room"]])]; marks[-1]["stand"] = middle(rooms[here])
+        else:
+            if here and here != m["room"]: marks[-1]["route"] = route(rooms, here, m["room"])
+            here = m["room"]
+    walked = [m for m in marks if "pointer" not in m]
+    for n, m in enumerate(walked, 1): m["step"] = n; m["of"] = len(walked)
     return marks
 
 

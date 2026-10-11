@@ -233,6 +233,16 @@ class Takes(unittest.TestCase):
         self.assertNotIn("⟦", asked[0]); self.assertIn("[2]запис. ⟦запис 2⟧ [3]А", asked[-1])
 
 
+class Walk(unittest.TestCase):
+    def test_the_way_between_two_rooms_goes_through_the_doors(self):
+        square = lambda x, y: [[x, y], [x + 0.2, y], [x + 0.2, y + 0.2], [x, y + 0.2]]
+        rooms = {"r1": {"shape": square(0, 0), "at": [0.1, 0.1], "doors": ["r2"]}, "r2": {"shape": square(0.2, 0), "at": [0.3, 0.1], "doors": ["r1", "r3"]},
+                 "r3": {"shape": square(0.4, 0), "at": [0.5, 0.1], "doors": ["r2"]}, "r4": {"shape": square(0, 0.6), "doors": []}}
+        way = project.route(rooms, "r1", "r3")
+        self.assertEqual((way[0], way[-1], len(way)), ([0.1, 0.1], [0.5, 0.1], 4)); self.assertEqual([p[0] for p in way[1:3]], [0.2, 0.4])   # through both walls, where the rooms meet
+        self.assertEqual(len(project.route(rooms, "r1", "r4")), 3); self.assertEqual(project.route(rooms, "r1", "r4")[-1], [0.1, 0.7])   # no doors lead there: straight, to the middle of its outline
+
+
 class Restarts(unittest.TestCase):
     words = staticmethod(lambda text: [{"text": t} for t in text.split()])
 
