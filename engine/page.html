@@ -420,14 +420,14 @@ function drawSteps() {
   const busy = !!state.busy;
   $("render").disabled = busy || !state.words;
   $("render").textContent = busy ? "Працюю…" : "Зібрати відео";
-  const order = ["probe", "transcribe", "review", "suggest", "render"], running = state.steps.find((s) => s.state === "running"), failed = state.steps.find((s) => s.state === "failed");
+  const order = ["probe", "transcribe", "review", "suggest", "decorate", "render"], running = state.steps.find((s) => s.state === "running"), failed = state.steps.find((s) => s.state === "failed");
   const done = state.steps.filter((s) => s.state === "done").length, total = Math.max(state.steps.length, 1), clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const kind = failed && !busy ? "failed" : busy ? "running" : state.has_render ? "done" : "idle";
   if (busy || failed) $("stepsFold").open = true;
   const number = running ? state.steps.filter((s) => order.indexOf(s.step) <= order.indexOf(running.step)).length : 0;
   $("status").innerHTML = `<div class="status ${kind}"><span class="spin"></span><div style="flex:1;min-width:0"><div class="big">${
     kind === "running" ? (running ? `Крок ${number} з ${total}: ${STEP[running.step] || running.step}` : "Починаю…") : kind === "failed" ? `Зупинилось: ${STEP[failed.step] || failed.step}` : kind === "done" ? "Відео готове" : "Очікую відео"}</div><div class="sub">${
-    kind === "running" ? esc(running && running.note ? NOTE[running.note] || "вирізаю мовця з фону" : state.busy === "decorate" ? "AI придумує накладки" : state.busy === "rooms" ? "шукаю кімнати на плані й у тексті" : state.busy === "render" ? "перезбираю з вашими змінами" : "обробка нового відео") : kind === "failed" ? esc(failed.error) : kind === "done" ? (edited ? "є зміни, яких ще немає у відео" : "усі кроки пройдені") : ""}</div>${
+    kind === "running" ? esc(running && running.note ? NOTE[running.note] || "вирізаю мовця з фону" : state.busy === "decorate" ? "AI придумує накладки" : state.busy === "rooms" ? "шукаю кімнати на плані й у тексті" : state.busy === "render" ? "перезбираю з вашими змінами" : "обробка нового відео") : kind === "failed" ? esc(failed.error) + (failed.step !== "render" ? ` <button id="retry" style="margin-left:8px">Спробувати ще раз</button>` : "") : kind === "done" ? (edited ? "є зміни, яких ще немає у відео" : "усі кроки пройдені") : ""}</div>${
     kind === "running" && total > 1 ? `<div class="bar"><i style="width:${Math.round(100 * (done + 0.5) / total)}%"></i></div>` : ""}</div>${
     kind === "running" && running ? `<span class="clock">${clock(Math.max(0, Date.now() / 1000 - running.at))}</span>` : ""}</div>`;
   document.title = kind === "running" ? `⏳ ${running ? STEP[running.step] : "Працюю"} · Reel` : kind === "failed" ? "⚠ Помилка · Reel" : "Reel";
@@ -777,6 +777,7 @@ document.addEventListener("click", async (e) => {
     if (await act(`/api/projects/${name}/style-save`, { method: "POST", body: JSON.stringify({ name: wanted }) })) { styles = await api("/api/styles"); draw(true); }
   }
   else if (t.id === "render") act(`/api/projects/${name}/render`, { method: "POST" });
+  else if (t.id === "retry") act(`/api/projects/${name}/retry`, { method: "POST" });
 });
 document.addEventListener("keydown", (e) => {
   if (e.target.id === "fixInput") { if (e.key === "Enter") saveWord(e.target); else if (e.key === "Escape") { editing = null; draw(true); } }

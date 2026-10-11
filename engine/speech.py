@@ -131,7 +131,13 @@ def spelled(words, terms, known=None):
     of the vocabulary becomes that name ("Горанич" for "Гореничі"). What was heard is kept in "heard"."""
     whole = {letters(t): t for t in terms if " " not in t.strip()}; names = [t for t in terms if t[:1].isupper() and " " not in t and len(t) >= 5]
     whole.update(known if known is not None else misheard())
-    out = []
+    stems = {letters(t)[:-2]: letters(t) for t in terms if " " not in t.strip() and "-" not in t and len(letters(t)) >= 8}   # a term without its ending: "передпок"
+    # the recogniser gives "обов" and "'язково" as two words: an apostrophe never starts a Ukrainian word
+    glued = []
+    for word in words:
+        if glued and word["text"][:1] in "'’ʼ" and len(word["text"]) > 1: glued[-1] = {**glued[-1], "text": glued[-1]["text"] + word["text"], "end": word["end"], "confidence": round(min(glued[-1]["confidence"], word["confidence"]), 2)}
+        else: glued.append(word)
+    words = glued; out = []
     for word in words:
         tail = re.search(r"[^\w]*$", word["text"]).group(0)
         # a short preposition heard as part of the word before a term: "вперед покій" is "в передпокій"
@@ -148,6 +154,15 @@ def spelled(words, terms, known=None):
             out[-1] = {**out[-1], "heard": out[-1].get("heard", first) + " " + word["text"], "text": (term[:1].upper() + term[1:] if first[:1].isupper() and not term[:1].isupper() else term) + tail,
                        "end": word["end"], "confidence": round(min(out[-1]["confidence"], word["confidence"]), 2)}
             continue
+        if out and not re.search(r"[,.;:!?…]$", out[-1]["text"]) and len(letters(word["text"])) >= 3:
+            # a term in another case heard as two words: "перед покою" is "передпокою", "вперед покою" is "в передпокою"
+            both = letters(out[-1]["text"]) + letters(word["text"]); first = out[-1]["text"]
+            fits = lambda text: any(text.startswith(stem) and len(text) <= len(term) + 2 for stem, term in stems.items())
+            if fits(both) and not fits(letters(first)):
+                out[-1] = {**out[-1], "heard": out[-1].get("heard", first) + " " + word["text"], "text": first + word["text"].lower(), "end": word["end"], "confidence": round(min(out[-1]["confidence"], word["confidence"]), 2)}; continue
+            if both[:1] in "вуз" and len(letters(first)) > 2 and fits(both[1:]):
+                out[-1] = {**out[-1], "heard": first, "text": first[:1], "end": round(min(out[-1]["end"], out[-1]["start"] + 0.2), 2)}
+                out.append({**word, "heard": word["text"], "text": first[1:].lower() + word["text"].lower()}); continue
         bare = word["text"][:len(word["text"]) - len(tail)] if tail else word["text"]
         # a long term heard with one letter missing, added or wrong: "перепокій" is "передпокій"
         near = next((t for key, t in whole.items() if len(key) >= 8 and key == letters(t) and slip(letters(bare), key)), None)

@@ -164,8 +164,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(styles.listing())
             if len(parts) < 4 or parts[:2] != ["api", "projects"]: return self.send({"error": "not found"}, 404)
             name, action = parts[2], parts[3]; folder = ROOT / name
-            if not (folder / "project.json").exists(): return self.send({"error": "there is no such project"}, 404)
+            if action == "retry" and not folder.is_dir(): return self.send({"error": "there is no such project"}, 404)
+            if action != "retry" and not (folder / "project.json").exists(): return self.send({"error": "there is no such project"}, 404)
             if busy.get(name) and action != "state": return self.send({"error": f"{busy[name]} is still running"}, 409)
+            if action == "retry":
+                # a pipeline that stopped goes on from the step that failed
+                video = next(iter(sorted(INBOX.glob(f"{name}.*"))), None)
+                if not video: return self.send({"error": "the take this project was made from is no longer in the inbox: send it again"}, 404)
+                background(name, "pipeline", lambda: (create(video, folder), render.render(folder))); return self.send(summary(name))
             if action == "render": background(name, "render", lambda: render.render(folder)); return self.send(summary(name))
             if action == "decorate": background(name, "decorate", lambda: overlays(folder, fresh=True)); return self.send(summary(name))
             if action == "rooms": background(name, "rooms", lambda: find_rooms(folder)); return self.send(summary(name))

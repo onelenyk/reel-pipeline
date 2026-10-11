@@ -229,6 +229,12 @@ class Spelling(unittest.TestCase):
         self.assertEqual(" ".join(w["text"] for w in words), "Заходимо в передпокій, далі гардеробну і терасу. Панорама.")
         self.assertEqual(words[2]["heard"], "перепокій,")
 
+    def test_a_word_heard_in_pieces_is_put_together(self):
+        from engine.speech import spelled
+        heard = [{"text": t, "start": i, "end": i + 0.5, "confidence": 0.9} for i, t in enumerate("Обов 'язково починаємо з перед покою, а Вперед покої дев 'ять шаф. Перед покоєм не стій, вперед іди.".split())]
+        words = spelled(heard, ["передпокій", "тераса"])
+        self.assertEqual(" ".join(w["text"] for w in words), "Обов'язково починаємо з передпокою, а В передпокої дев'ять шаф. Передпокоєм не стій, вперед іди.")
+
     def test_what_was_heard_right_is_left_alone(self):
         from engine.speech import spelled
         said = "Таунхаус у Гореничах, тут кухня, вітальня і тераса."

@@ -25,21 +25,29 @@ def say(data): print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
 def create(video, folder):
-    """A project from a raw take. Each step reports its progress, so the page can show it live."""
-    took = {}
+    """A project from a raw take. Each step reports its progress, so the page can show it live.
+    What a step made is kept until the project is whole, so a pipeline that stopped (no connection, no money on the AI
+    account) goes on from the step that failed and does not recognise the speech again."""
+    took = {}; folder = Path(folder); kept = folder / "pipeline.json"; had = json.loads(kept.read_text(encoding="utf-8")) if kept.exists() else {}
     def step(name, work):
+        if name in had: took[name] = had[name]["seconds"]; project.progress(folder, name, "done", seconds=took[name]); return had[name]["made"]
         project.progress(folder, name, "running"); started = time.time()
         try: result = work()
         except Exception as error: project.progress(folder, name, "failed", error=str(error)[-300:]); raise
-        took[name] = round(time.time() - started, 1); project.progress(folder, name, "done", seconds=took[name]); return result
+        took[name] = round(time.time() - started, 1); project.progress(folder, name, "done", seconds=took[name])
+        had[name] = {"seconds": took[name], "made": result}; kept.write_text(json.dumps(had, ensure_ascii=False), encoding="utf-8"); return result
     for name in ("probe", "transcribe", "review", "suggest", "decorate", "render"): project.progress(folder, name, "waiting")
+    if (folder / "project.json").exists():
+        # the project itself was made before it stopped: only the overlays are left to ask for
+        for name in ("probe", "transcribe", "review", "suggest"): project.progress(folder, name, "done")
+        step("decorate", lambda: bool(overlays(folder))); kept.unlink(missing_ok=True); return took
     facts = step("probe", lambda: usable(video))
     transcript = step("transcribe", lambda: heard(speech.transcribe(video)))
     cuts = step("review", lambda: suggest.review(transcript["words"]))
     ideas = step("suggest", lambda: suggest.suggest(transcript["words"], {i for c in cuts for i in range(c["from"], c["to"] + 1)}))
     project.save(folder, project.new(video, facts, transcript, ideas, styles.default(), cuts))
-    step("decorate", lambda: overlays(folder))
-    return took
+    step("decorate", lambda: bool(overlays(folder)))
+    kept.unlink(missing_ok=True); return took
 
 
 def usable(video):
