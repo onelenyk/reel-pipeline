@@ -1,5 +1,7 @@
 # Overlays: graphics the AI adds over the frame
 
+> Status, 2026-10-11: the room highlight on a plan is built, in a different way from the one sketched here (a network for walls, a person's click for which room). See `docs/plans.md`. The rest of this page is still a design.
+
 Status: design, nothing built. Goal: the things she draws by hand today (a highlighted room on the plan, a number that
 counts up, a label with a pointer) appear because the words call for them, placed by the AI and corrected by a sentence
 or a drag. No editor is imported from Plan Highlighter: overlays are drawn by the renderer that already draws subtitles.

@@ -5,6 +5,9 @@
 #   ./reel serve                           the web page at http://127.0.0.1:8787
 #   ./reel rooms media/kit/plan.jpg       find the rooms of a floor plan
 #   ./reel plans-setup                     fetch the plan reader (CubiCasa5k: non-commercial use only), once
+#   ./reel mark projects/IMG_7824        find the plan's rooms and the moments each is spoken of
+#   ./reel run lab/plans/score.py ...      run any script from lab/ or tools/ in the container
+#   ./reel page rooms IMG_7824             a browser scenario from tests/page against the running service (needs Chrome and Node)
 #   ./reel test                            the engine's tests
 #   ./reel e2e [WORDS] [--ai] [--fresh]    end to end: generated takes through the real service (see e2e/run.py)
 #   ./reel lab probe /in/IMG_7821.MOV      the experiments from lab/lab.py
@@ -16,6 +19,13 @@ if [ "$1" = "plans-setup" ]; then
   [ -d repo ] || git clone -q --depth 1 https://github.com/CubiCasa/CubiCasa5k.git repo || exit 1
   [ -s weights.pkl ] || curl -fL -o weights.pkl "https://drive.usercontent.google.com/download?id=1gRB7ez1e4H7a9Y09lLqRuna0luZO5VRK&export=download&confirm=t" || exit 1
   echo "the plan reader is in models/cubicasa"; exit 0
+fi
+if [ "$1" = "run" ]; then shift; exec docker run --rm --env-file .env -v "$PWD":/work --entrypoint python reel "$@"; fi
+if [ "$1" = "page" ]; then
+  # Headless Chrome on this machine opens the page, runs the scenario and leaves a screenshot in out/page
+  [ -f "tests/page/$2.js" ] || { echo "reel: scenarios: $(ls tests/page/*.js | xargs -n1 basename | sed 's/\.js$//' | tr '\n' ' ')"; exit 1; }
+  mkdir -p out/page; URL="http://127.0.0.1:${REEL_PORT:-8787}/?p=${3:-IMG_7824}" node tests/page/shot.mjs "${4:-900}" "${5:-1300}" "out/page/$2.png" "tests/page/$2.js"; code=$?
+  pkill -f "user-data-dir=.*/ph-" >/dev/null 2>&1; echo "screenshot: out/page/$2.png"; exit $code
 fi
 if [ "$1" = "test" ]; then exec docker run --rm -v "$PWD":/work --entrypoint python reel -m unittest discover -s tests -v; fi
 if [ "$1" = "e2e" ]; then

@@ -1,6 +1,11 @@
-"""Experiment: finding a plan's room numbers. Frames found for certain give the frame's size; every other frame of that
+"""Experiment: finding a plan's room numbers. usage: ./reel run lab/plans/numbers_on_plan.py
+Result (2026-10-11): frames found for certain are all of them on the two clean plans and 7 of 16 on the blurred one;
+matching their average picture across the plan adds as many wrong finds as right ones, so the engine uses the certain ones only.
+ Frames found for certain give the frame's size; every other frame of that
 size is then looked for by its outline alone, whatever it stands on. Truth is counted by eye."""
+import os
 import cv2, numpy as np
+os.makedirs("/work/out/rooms", exist_ok=True)
 TRUTH = {"154-plan": 16, "shelest-plan-1": 8, "shelest-plan-2": 7}
 
 def frames(grey, level):

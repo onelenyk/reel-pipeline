@@ -1,4 +1,8 @@
-"""The rooms of a floor plan, found from the drawing itself, with no model and no fee.
+"""Experiment: the rooms of a floor plan found from the drawing alone, with no network at all.
+
+Scored by lab/plans/score.py: on scanned plans with thin walls it outlines about a third of the rooms well. Kept as the
+starting point for a reader that could replace the CubiCasa5k network (whose licence is non-commercial).
+
 
 A point inside each room is given (the room's number on the plan, or a tap). The thick ink is the walls; a gap between two
 ends of one wall line is a door or a window and is bridged. Each point then takes the space its walls enclose. Space that

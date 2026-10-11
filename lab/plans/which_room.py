@@ -1,5 +1,8 @@
 """Experiment: which room is the speaker talking about? Three ways of asking, scored against a truth table made by eye.
-usage: plan_marks.py [runs]"""
+usage: ./reel run lab/plans/which_room.py [runs]
+Result (2026-10-11): one or two of four checked rooms right, whichever way it is asked, and two to three minutes an answer;
+asked with facts alone the model thinks until its allowance runs out. So the room is chosen by a click (engine/project.py set_mark).
+The truth table below was made for the room tags of that day; check it against out/rooms/which-room.jpg before trusting a score."""
 import json, sys, time
 from pathlib import Path
 sys.path.insert(0, "/work")
@@ -27,7 +30,7 @@ filled = {n["id"]: n["asset"] for n in doc["needs"] if n.get("asset")}
 shown = sorted({i for b in doc["beats"] if b["kind"] == "full" and (b.get("asset") or filled.get(b.get("need"))) == ASSET for i in range(b["from"], b["to"] + 1)} & kept)
 said = " ".join(f"[{i}]{doc['words'][i]['text']}" for i in shown)
 facts = FACTS.format(rooms="\n".join(f"{r['id']}: share {r['share']}, doors to {', '.join(r['doors']) or 'none found'}, windows {r['windows']}, fixtures: {', '.join(r['things']) or 'none found'}" for r in rooms))
-tagged = Path("/work/out/rooms/a4.jpg")
+tagged = Path("/work/out/rooms/which-room.jpg"); tagged.parent.mkdir(parents=True, exist_ok=True); plan.draw(asset["file"], {"rooms": rooms}, tagged)
 ways = {"picture only": lambda: suggest.ask(suggest.MARK + said, think=True, picture=tagged),
         "facts only": lambda: suggest.ask(facts + said, think=True),
         "facts and picture": lambda: suggest.ask(facts.replace("A house is shown", "The picture shows the plan with its tags. A house is shown") + said, think=True, picture=tagged)}
