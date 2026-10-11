@@ -243,13 +243,21 @@ class Presets(unittest.TestCase):
 
 
 class Walk(unittest.TestCase):
-    def test_the_way_between_two_rooms_goes_through_the_doors(self):
-        square = lambda x, y: [[x, y], [x + 0.2, y], [x + 0.2, y + 0.2], [x, y + 0.2]]
-        rooms = {"r1": {"shape": square(0, 0), "at": [0.1, 0.1], "doors": ["r2"]}, "r2": {"shape": square(0.2, 0), "at": [0.3, 0.1], "doors": ["r1", "r3"]},
-                 "r3": {"shape": square(0.4, 0), "at": [0.5, 0.1], "doors": ["r2"]}, "r4": {"shape": square(0, 0.6), "doors": []}}
-        way = project.route(rooms, "r1", "r3")
-        self.assertEqual((way[0], way[-1], len(way)), ([0.1, 0.1], [0.5, 0.1], 4)); self.assertEqual([p[0] for p in way[1:3]], [0.2, 0.4])   # through both walls, where the rooms meet
-        self.assertEqual(len(project.route(rooms, "r1", "r4")), 3); self.assertEqual(project.route(rooms, "r1", "r4")[-1], [0.1, 0.7])   # no doors lead there: straight, to the middle of its outline
+    def test_the_way_between_two_rooms_goes_through_the_door_and_turns_only_at_right_angles(self):
+        import numpy as np, tempfile, cv2
+        from engine import plan
+        with tempfile.TemporaryDirectory() as tmp:
+            was = plan.HOME; plan.HOME = Path(tmp); self.addCleanup(lambda: setattr(plan, "HOME", was)); plan._ways.clear()
+            picture = Path(tmp) / "plan.png"; cv2.imwrite(str(picture), np.full((200, 400, 3), 255, np.uint8))
+            square = lambda x, y: [[x, y], [x + 0.45, y], [x + 0.45, y + 0.9], [x, y + 0.9]]
+            known = {"format": plan.FORMAT, "rooms": [{"id": "r1", "shape": square(0.03, 0.05), "at": [0.2, 0.2]}, {"id": "r2", "shape": square(0.52, 0.05), "at": [0.8, 0.2]}], "names": {}}
+            plan.place(picture).parent.mkdir(parents=True); plan.place(picture).write_text(json.dumps(known))
+            walls = np.zeros((90, 180), np.uint8); walls[:, 88:92] = 1   # a wall between the two rooms from top to bottom
+            np.savez_compressed(plan.place(picture).with_suffix(".floor.npz"), doors=np.array([[0.5, 0.8, 0.02]], np.float32), walls=walls)   # and one door, low down
+            way = plan.way(picture, "r1", "r2")
+            self.assertTrue(all(a[0] == b[0] or a[1] == b[1] for a, b in zip(way, way[1:])))   # no step goes aslant
+            crossing = next(a for a, b in zip(way, way[1:]) if (a[0] - 0.5) * (b[0] - 0.5) < 0)
+            self.assertAlmostEqual(crossing[1], 0.8, delta=0.06)   # the wall is crossed where the door is
 
 
 class Restarts(unittest.TestCase):

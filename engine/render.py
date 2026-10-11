@@ -30,10 +30,40 @@ def strip(folder):
     (folder / "strip.part.jpg").replace(folder / f"strip{STRIP}.jpg")
 
 
-def still(folder, t, out):
+SAMPLES = {"number": {"kind": "number", "value": "150", "unit": "м²", "caption": "площа будинку"}, "sticker": {"kind": "sticker", "text": "Біля лісу", "icon": "🌲"},
+           "list": {"kind": "list", "title": "У будинку", "items": ["Гардеробна", "Пральня", "Тераса"]}}
+
+
+def sample(timeline, what):
+    """A moment of the video that shows one kind of decoration, for the gallery: a made-up number, sticker, list or break
+    laid over a moment where the speaker is alone in the frame, or a real moment of the project's own plan or picture.
+    Returns the second to look at; None when the project has nothing of that kind."""
+    taken = [(b["start"], b["end"]) for b in timeline["beats"] if b["kind"] in ("full", "cutaway", "title")]
+    alone = next((l["start"] + 0.7 for l in timeline["lines"] if l["end"] - l["start"] > 1.0 and not any(a - 1.2 < l["start"] + 0.7 < b + 0.5 for a, b in taken)), None)
+    if what == "plan":
+        walked = [m for b in timeline["beats"] for m in b.get("marks", []) if m.get("route")]; return walked[0]["start"] + 0.55 if walked else None
+    if what == "picture":
+        shown = [b for b in timeline["beats"] if b["kind"] == "cutaway" and b.get("file")]; return shown[0]["start"] + 1.0 if shown else None
+    if alone is None: return None
+    timeline["overlays"] = []; timeline["breaks"] = []
+    if what == "break": timeline["breaks"] = [{"id": "demo", "text": "Планування", "start": round(alone - 0.5, 3), "end": round(alone + 0.5, 3)}]
+    elif what in SAMPLES:
+        made = {**SAMPLES[what], "id": "demo", "start": round(alone - 1.2, 3), "end": round(alone + 2.0, 3), "side": "left"}
+        if what == "list": made["items"] = [{"text": text, "start": round(alone - 1.1 + 0.2 * n, 3)} for n, text in enumerate(made["items"])]
+        timeline["overlays"] = [made]
+    return alone
+
+
+def still(folder, t, out, style=None, demo=None):
     """One frame of the video as it would be built now, at second `t` of it: for seeing a change without building.
-    The speaker is shown as shot (no cut-out behind a backdrop, no zoom); everything drawn over the picture is as it will be."""
-    folder = Path(folder); doc = project.load(folder); timeline = project.resolve(doc); source = doc["sources"][0]
+    The speaker is shown as shot (no cut-out behind a backdrop, no zoom); everything drawn over the picture is as it will be.
+    `style` tries other choices on without keeping them; `demo` picks the moment itself, one that shows that kind of decoration."""
+    folder = Path(folder); doc = project.load(folder)
+    if style: doc["style"] = project.clean_style({**doc["style"], **style})
+    timeline = project.resolve(doc); source = doc["sources"][0]
+    if demo:
+        t = sample(timeline, demo)
+        if t is None: raise LookupError(f"this project has nothing to show a {demo} on")
     timeline["style"] = {**timeline["style"], **fonts.face(timeline["style"].get("font"))}
     width, height = timeline["width"], timeline["height"]; t = max(0.0, min(float(t), max(0.0, timeline["seconds"] - 0.05)))
     with tempfile.TemporaryDirectory() as tmp:

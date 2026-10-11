@@ -123,6 +123,10 @@
   .zone { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
   .zone input { flex: 1; height: 34px; }
   input.ov { height: 32px; padding: 0 9px; margin: 0 6px 4px 0; }
+  #gallery h3 { font-size: 14px; margin: 18px 0 8px; } .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+  .shot { height: auto; padding: 0 0 8px; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; gap: 6px; align-items: stretch; background: var(--chip); }
+  .shot img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; display: block; background: #000; } .shot span { font-size: 12px; padding: 0 8px; }
+  .shot.on { outline: 3px solid var(--brand); } .shot.none { display: none; }
   .zone input.guess { color: var(--muted); font-style: italic; }
   .zone small { flex: none; width: 76px; color: var(--subtle); font-size: 11px; }
   .card.mark { cursor: pointer; }
@@ -211,6 +215,7 @@
     <div class="tab" data-tab="plan">
     <section id="planBox"><h2>Кімнати на плані</h2><div id="plans"></div></section>
     </div>
+    <div class="tab" data-tab="gallery"><p class="hint" style="margin:0 0 12px">Усе оздоблення, яке вміє відео, на кадрах цього проєкту. Дотик до картинки вибирає цей варіант.</p><div id="gallery"></div></div>
     <div class="tab" data-tab="style">
     <section><h2>Стиль</h2><div id="style"></div></section>
     <section><h2>Словник</h2>
@@ -254,10 +259,30 @@ function drawTabs() {
   const waiting = (state.marks || []).filter((m) => !m.room).length + plans.filter((p) => !p.read).length;
   const list = [["text", "Текст", (state.corrections || []).filter((c) => c.by === "ai" && !c.accepted).length, true], ["montage", "Монтаж", needs, false]];
   if (plans.length) list.push(["plan", "План", waiting, false]);
-  list.push(["style", "Стиль", 0, false]);
+  list.push(["style", "Стиль", 0, false]); list.push(["gallery", "Галерея", 0, false]);
   if (!list.some(([id]) => id === tab)) tab = "text";
   $("tabs").innerHTML = list.map(([id, label, count, calm]) => `<button role="tab" data-tab-go="${id}" class="${id === tab ? "on" : ""}" aria-selected="${id === tab}">${label}${count ? `<span class="count${calm ? " calm" : ""}">${count}</span>` : ""}</button>`).join("");
   document.querySelectorAll(".tab").forEach((box) => box.classList.toggle("on", box.dataset.tab === tab));
+  drawGallery();
+}
+// The gallery: every look of every decoration as a frame of this project. Drawn only while its tab is open, and again only
+// when the style or the video has changed: each picture is a frame the service draws.
+let galleryKey = "";
+function drawGallery() {
+  if (tab !== "gallery" || !state || !state.style) return;
+  const key = JSON.stringify([name, state.style, state.render_version, (state.marks || []).length, (state.beats || []).length]);
+  if (key === galleryKey) return; galleryKey = key;
+  const st = state.style, base = { ...st }; delete base.name;
+  const tile = (label, change, demo, on) => `<button class="shot${on ? " on" : ""}" data-style='${JSON.stringify(change).replace(/'/g, "&#39;")}'><img loading="lazy" alt="${esc(label)}" src="/frame/${name}/frame.jpg?demo=${demo}&style=${encodeURIComponent(JSON.stringify(change))}&v=${encodeURIComponent(key.length + "-" + st.accent + st.font + st.caps)}" onerror="this.parentNode.classList.add('none')"><span>${esc(label)}</span></button>`;
+  const row = (title, key2, demo, options, note) => `<h3>${title}</h3><div class="shots">${options.map(([value, label]) => tile(label, { [key2]: value }, demo, st[key2] === value)).join("")}</div>${note ? `<p class="hint">${note}</p>` : ""}`;
+  $("gallery").innerHTML = `<h3>Готові стилі</h3><div class="shots">${(state.presets || []).map((p) => tile(p.name, p, "number", p.name === st.name)).join("")}</div>`
+    + row("Наліпка", "sticker", "sticker", [["paper", "Папірець"], ["pill", "Пігулка"], ["tag", "Бирка"], ["outline", "Скло"]])
+    + row("Число", "number", "number", [["big", "Велике"], ["badge", "Значок"], ["card", "Картка"]])
+    + row("Субтитри", "subtitle", "sticker", [["outline", "З обведенням"], ["plate", "На плашці"], ["shadow", "З тінню"]])
+    + row("Перебивка", "breaks", "break", [["slide", "Шторка"], ["flash", "Спалах"], ["bar", "Смуга"]])
+    + `<h3>Список</h3><div class="shots">${tile("Пункти з'являються по черзі", {}, "list", false)}</div>`
+    + row("Маршрут на плані", "navigator", "plan", [["arrow", "Стрілка"], ["steps", "Сліди"], ["off", "Без маршруту"]], "Показується, якщо в проєкті є план і мовець переходить між кімнатами.")
+    + row("Картинка зверху", "picture", "picture", [["card", "Картка"], ["edge", "На всю ширину"], ["polaroid", "Полароїд"], ["circle", "Коло"]], "Показується, якщо в проєкті є картинка над мовцем.");
 }
 
 const api = async (path, options) => {

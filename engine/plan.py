@@ -220,6 +220,88 @@ def place(picture):
     return HOME / "rooms" / (hashlib.sha1(Path(picture).read_bytes()).hexdigest()[:20] + ".json")
 
 
+SIDE_FOR_WAYS = 180   # the longer side of the grid a way through the plan is looked for on
+
+
+def seen_on(picture):
+    """What the reader sees on a plan that a way through it needs: the doors as [[x, y, radius]] in shares of the picture,
+    and the walls as a small grid (1 where a wall or a window stands). Worked out once and kept beside what is known of the plan."""
+    import cv2, numpy as np
+    kept = place(picture).with_suffix(".floor.npz")
+    if kept.exists():
+        with np.load(kept) as data: return data["doors"].tolist(), data["walls"]
+    colour = cv2.imread(str(picture)); h, w = colour.shape[:2]; gw = SIDE_FOR_WAYS if w >= h else round(SIDE_FOR_WAYS * w / h); gh = round(gw * h / w)
+    scale = min(1.0, SIDE / max(h, w)); small = cv2.resize(colour, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else colour
+    seen = READERS["cubicasa"](small); seen = seen if isinstance(seen, dict) else {"border": seen}; found = []
+    gaps = seen.get("doors"); gaps = gaps.astype(np.uint8) if gaps is not None else np.zeros(seen["border"].shape, np.uint8); sh, sw = gaps.shape
+    count, _, stats, middles = cv2.connectedComponentsWithStats(gaps, connectivity=8)
+    found = [[round(float(middles[d][0]) / sw, 4), round(float(middles[d][1]) / sh, 4), round(max(stats[d][2], stats[d][3]) / 2 / sw, 4)] for d in range(1, count) if stats[d][4] >= 12]
+    solid = seen["border"].astype(np.uint8) & (1 - cv2.dilate(gaps, np.ones((5, 5), np.uint8)))
+    # a cell of the grid is wall when any real part of it is: a thin wall must not open when the plan is made small
+    walls = (cv2.resize(solid.astype(np.float32), (gw, gh), interpolation=cv2.INTER_AREA) > 0.2).astype(np.uint8)
+    kept.parent.mkdir(parents=True, exist_ok=True); np.savez_compressed(kept, doors=np.array(found, dtype=np.float32).reshape(-1, 3), walls=walls); return found, walls
+
+
+def doors(picture): return seen_on(picture)[0]
+
+
+_ways = {}
+
+
+def way(picture, a, b):
+    """The walk from room `a` to room `b` of a plan as a person would go: inside the rooms, through the doors, turning only
+    at right angles. Points in shares of the picture. None when there is no such way (the rooms are not joined on the plan)."""
+    import cv2, numpy as np
+    kept = place(picture); key = (str(kept), kept.stat().st_mtime_ns if kept.exists() else 0, a, b)
+    if key in _ways: return _ways[key]
+    known = stored(picture, lenient=True) or {"rooms": []}; rooms_by = {r["id"]: r for r in known["rooms"]}
+    gaps, walls = seen_on(picture); gh, gw = walls.shape
+    # the floor: inside the rooms, not where a wall stands, and open again where there is a door
+    floor = np.zeros((gh, gw), np.uint8)
+    for r in known["rooms"]: cv2.fillPoly(floor, [(np.array(r["shape"]) * (gw, gh)).astype(np.int32)], 1)
+    floor[walls > 0] = 0
+    for x, y, radius in gaps: cv2.circle(floor, (round(x * gw), round(y * gh)), max(2, round(radius * gw) + 1), 1, -1)
+    def cell(room):
+        # the room's own point, moved to the nearest floor if a wall is drawn there
+        x, y = room.get("at") or np.array(room["shape"]).mean(axis=0); cx, cy = min(gw - 1, int(x * gw)), min(gh - 1, int(y * gh))
+        if floor[cy, cx]: return cy, cx
+        ys, xs = np.nonzero(floor); nearest = ((ys - cy) ** 2 + (xs - cx) ** 2).argmin(); return int(ys[nearest]), int(xs[nearest])
+    def search():
+        # the cheapest way over the floor, counted in steps, with a price for every turn and for hugging a wall
+        away = cv2.distanceTransform(floor, cv2.DIST_L2, 3); start, goal = cell(rooms_by[a]), cell(rooms_by[b])
+        moves = ((0, 1), (1, 0), (0, -1), (-1, 0)); best = {}; queue = [(0.0, start[0], start[1], -1, None)]; came = {}
+        while queue:
+            cost, y, x, heading, before = heapq.heappop(queue)
+            if (y, x, heading) in best: continue
+            best[(y, x, heading)] = cost; came[(y, x, heading)] = before
+            if (y, x) == goal:
+                cells, at = [], (y, x, heading)
+                while at: cells.append(at[:2]); at = came[at]
+                return cells[::-1]
+            for turn, (dy, dx) in enumerate(moves):
+                ny, nx = y + dy, x + dx
+                if not (0 <= ny < gh and 0 <= nx < gw) or not floor[ny, nx] or (ny, nx, turn) in best: continue
+                heapq.heappush(queue, (cost + 1 + 3.0 / (1 + away[ny, nx]) + (0 if heading in (-1, turn) else 10), ny, nx, turn, (y, x, heading)))
+        return None
+    cells = search() if a in rooms_by and b in rooms_by and floor.any() else None
+    if cells is None and a in rooms_by and b in rooms_by:
+        # no door joins them on the plan: an opening is made where the two rooms are nearest, and the way is looked for again
+        edge = lambda shape: [(x1 + (x2 - x1) * k / 4, y1 + (y2 - y1) * k / 4) for (x1, y1), (x2, y2) in zip(shape, shape[1:] + shape[:1]) for k in range(4)]
+        p, q = min(((p, q) for p in edge(rooms_by[a]["shape"]) for q in edge(rooms_by[b]["shape"])), key=lambda pq: (pq[0][0] - pq[1][0]) ** 2 + (pq[0][1] - pq[1][1]) ** 2)
+        if (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 < 0.06 ** 2:
+            cv2.circle(floor, (round((p[0] + q[0]) / 2 * gw), round((p[1] + q[1]) / 2 * gh)), 3, 1, -1); cells = search()
+    if cells is None and a in rooms_by and b in rooms_by:
+        # still none: the rooms are far apart with no doors seen between them. The way goes over the whole floor, walls or not
+        for r in known["rooms"]: cv2.fillPoly(floor, [(np.array(r["shape"]) * (gw, gh)).astype(np.int32)], 1)
+        floor = cv2.dilate(floor, np.ones((5, 5), np.uint8)); cells = search()
+    points = None
+    if cells:
+        # only the corners are kept
+        corners = [cells[0]] + [cells[i] for i in range(1, len(cells) - 1) if (cells[i][0] - cells[i - 1][0], cells[i][1] - cells[i - 1][1]) != (cells[i + 1][0] - cells[i][0], cells[i + 1][1] - cells[i][1])] + [cells[-1]]
+        points = [[round((x + 0.5) / gw, 4), round((y + 0.5) / gh, 4)] for y, x in corners]
+    _ways[key] = points; return points
+
+
 def stored(picture, lenient=False):
     """What is already known of a picture, without reading it again; None if it has not been read. An answer found by an
     earlier way of finding is given only to the `lenient`: a video already tied to its rooms must still build."""

@@ -164,7 +164,11 @@ class Handler(BaseHTTPRequestHandler):
             folder = ROOT / parts[1]
             if not (folder / "project.json").exists(): return self.send({"error": "there is no such project"}, 404)
             with tempfile.TemporaryDirectory() as tmp:
-                return self.send(render.still(folder, float(query.get("t") or 0), Path(tmp) / "frame.jpg").read_bytes(), kind="image/jpeg")
+                # for the gallery: other choices of style tried on, at a moment that shows the decoration asked for
+                try: tried = json.loads(query["style"]) if query.get("style") else None
+                except ValueError: tried = None
+                try: return self.send(render.still(folder, float(query.get("t") or 0), Path(tmp) / "frame.jpg", style=tried if isinstance(tried, dict) else None, demo=query.get("demo")).read_bytes(), kind="image/jpeg")
+                except LookupError as error: return self.send({"error": str(error)}, 404)
         if len(parts) == 3 and parts[0] == "strip":
             folder = ROOT / parts[1]
             picture = folder / f"strip{render.STRIP}.jpg"

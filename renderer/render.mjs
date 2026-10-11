@@ -188,7 +188,8 @@ function paintPlan(ctx, beat, t, image, a) {
       for (let i = 0; i < lens.length; i++) { if (left >= lens[i]) { out.push(pts[i + 1]); left -= lens[i]; } else { const f = lens[i] ? left / lens[i] : 0; out.push([lerp(pts[i][0], pts[i + 1][0], f), lerp(pts[i][1], pts[i + 1][1], f)]); break; } }
       return out;
     };
-    const line = (pts, width, colour, dash = []) => { if (pts.length < 2) return; ctx.beginPath(); pts.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](x, y)); ctx.lineWidth = width; ctx.strokeStyle = colour; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.setLineDash(dash); ctx.stroke(); ctx.setLineDash([]); };
+    // the way turns at right angles; each corner is rounded a little
+    const line = (pts, width, colour, dash = []) => { if (pts.length < 2) return; ctx.beginPath(); pts.forEach(([x, y], i) => { if (!i) ctx.moveTo(x, y); else if (i < pts.length - 1) ctx.arcTo(x, y, pts[i + 1][0], pts[i + 1][1], Math.min(22, Math.hypot(x - pts[i - 1][0], y - pts[i - 1][1]) / 2, Math.hypot(pts[i + 1][0] - x, pts[i + 1][1] - y) / 2)); else ctx.lineTo(x, y); }); ctx.lineWidth = width; ctx.strokeStyle = colour; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.setLineDash(dash); ctx.stroke(); ctx.setLineDash([]); };
     const head = (pts, size, colour) => {
       if (pts.length < 2) return; const [x, y] = pts[pts.length - 1], [x0, y0] = pts[pts.length - 2], turn = Math.atan2(y - y0, x - x0);
       ctx.save(); ctx.translate(x, y); ctx.rotate(turn); ctx.beginPath(); ctx.moveTo(size * 0.55, 0); ctx.lineTo(-size * 0.55, -size * 0.6); ctx.lineTo(-size * 0.25, 0); ctx.lineTo(-size * 0.55, size * 0.6); ctx.closePath(); ctx.fillStyle = colour; ctx.fill(); ctx.restore();
