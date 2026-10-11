@@ -32,7 +32,8 @@ def probe(path):
     width, height = video.get("width", 0), video.get("height", 0)
     if abs(rotation) == 90: width, height = height, width  # as it is displayed, not as it is stored
     return {"seconds": round(float(data["format"].get("duration", 0)), 3), "width": width, "height": height, "fps": round(_rate(video.get("r_frame_rate")) or 30),
-            "hdr": video.get("color_transfer") in ("smpte2084", "arib-std-b67"), "has_audio": any(s["codec_type"] == "audio" for s in data["streams"])}
+            "hdr": video.get("color_transfer") in ("smpte2084", "arib-std-b67"), "has_audio": any(s["codec_type"] == "audio" for s in data["streams"]),
+            "shot": (data["format"].get("tags") or {}).get("creation_time")}   # when the camera says it was recorded
 
 
 def loudness(path):

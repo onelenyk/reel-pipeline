@@ -160,7 +160,7 @@
   <span id="spaceNew" style="display:none"><input type="text" id="spaceName" placeholder="назва простору" style="width:11em"> <button id="spaceMake">Створити</button></span>
   <select id="pick" aria-label="Проєкт"></select>
   <select id="move" aria-label="Перемістити проєкт" title="Перемістити цей проєкт в інший простір"></select>
-  <label class="btn">Нове відео<input type="file" id="take" accept="video/*"></label>
+  <label class="btn" title="Одне відео, або кілька файлів одразу, якщо ролик знято окремими записами: вони стануть одним відео в порядку зйомки">Нове відео<input type="file" id="take" accept="video/*" multiple></label>
   <span id="top" class="hint" style="margin:0"></span>
 </header>
 <main>
@@ -224,7 +224,7 @@
 <div id="picker"></div>
 <script>
 const $ = (id) => document.getElementById(id);
-const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", decorate: "AI додає накладки", render: "Збираю відео" };
+const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", join: "Зводжу записи в одне відео", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", decorate: "AI додає накладки", render: "Збираю відео" };
 const KIND = { full: "Картинка на весь кадр", title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
 const NOTE = { strip: "готую стрічку кадрів", preparing: "готуюсь", "building the video": "кодую" };
 const HINT = {
@@ -423,7 +423,7 @@ function drawSteps() {
   const busy = !!state.busy;
   $("render").disabled = busy || !state.words;
   $("render").textContent = busy ? "Працюю…" : "Зібрати відео";
-  const order = ["probe", "transcribe", "review", "suggest", "decorate", "render"], running = state.steps.find((s) => s.state === "running"), failed = state.steps.find((s) => s.state === "failed");
+  const order = ["probe", "transcribe", "join", "review", "suggest", "decorate", "render"], running = state.steps.find((s) => s.state === "running"), failed = state.steps.find((s) => s.state === "failed");
   const done = state.steps.filter((s) => s.state === "done").length, total = Math.max(state.steps.length, 1), clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const kind = failed && !busy ? "failed" : busy ? "running" : state.has_render ? "done" : "idle";
   if (busy || failed) $("stepsFold").open = true;
@@ -435,7 +435,8 @@ function drawSteps() {
     kind === "running" && running ? `<span class="clock">${clock(Math.max(0, Date.now() / 1000 - running.at))}</span>` : ""}</div>`;
   document.title = kind === "running" ? `⏳ ${running ? STEP[running.step] : "Працюю"} · Reel` : kind === "failed" ? "⚠ Помилка · Reel" : "Reel";
   $("steps").innerHTML = state.steps.map((s) => `<li class="${s.state}"><span class="dot"></span>${STEP[s.step] || s.step}<span class="note">${
-    s.state === "done" ? s.seconds + " с" : s.state === "failed" ? esc(s.error) : s.state === "running" ? esc(NOTE[s.note] || (s.note ? "вирізаю мовця з фону" : "триває")) + ` · ${Math.max(0, Math.round(Date.now() / 1000 - s.at))} с` : ""}</span></li>`).join("");
+    s.state === "done" ? s.seconds + " с" : s.state === "failed" ? esc(s.error) : s.state === "running" ? esc(NOTE[s.note] || (s.note ? "вирізаю мовця з фону" : "триває")) + ` · ${Math.max(0, Math.round(Date.now() / 1000 - s.at))} с` : ""}</span></li>`).join("")
+    + (state.takes && state.takes.length ? `<li class="done"><span class="dot"></span>Зібрано з ${state.takes.length} записів<span class="note">${state.takes.map((t) => esc(t.name) + " " + Math.round(t.seconds) + " с").join(" · ")}</span></li>` : "");
   $("stale").textContent = edited && state.has_render && !busy ? "Є зміни, яких ще немає у відео. У плеєрі на паузі видно, як вони виглядатимуть; щоб отримати відео, натисніть «Зібрати відео»." : "";
   if (state.has_render && shown !== state.render_version) {
     const old = video(), place = old ? old.currentTime : 0;
@@ -797,6 +798,15 @@ document.addEventListener("change", async (e) => {
   if (input.id === "level") return edit({ style: { level: +input.value } });
   if (input.id === "accent") return edit({ style: { accent: input.value } });
   if (!file) return;
+  if (input.id === "take" && input.files.length > 1) {
+    // a video shot as several files: they go up one by one and become one project
+    try {
+      const group = Math.random().toString(36).slice(2, 12).padEnd(8, "0"), all = [...input.files];
+      for (const [n, one] of all.entries()) { $("top").textContent = `Вивантажую ${n + 1} з ${all.length}…`; await api(`/api/take/${group}/${String(n + 1).padStart(2, "0")}-${safeName(one)}`, { method: "POST", body: one }); }
+      const made = await api(`/api/new-from/${group}?space=${encodeURIComponent(space || "")}`, { method: "POST" }); location.search = "?p=" + made.project;
+    } catch (error) { fail(error); }
+    input.value = ""; return;
+  }
   if (input.id === "ownPhoto") { const fresh = await act(`/api/projects/${name}/assets/${safeName(file)}`, { method: "POST", body: file }); if (fresh && picker) choose(fresh.added); }
   else if (input.id === "take") {
     try { $("top").textContent = "Вивантажую…"; const made = await api(`/api/new/${safeName(file)}?space=${encodeURIComponent(space || "")}`, { method: "POST", body: file }); location.search = "?p=" + made.project; } catch (error) { fail(error); }

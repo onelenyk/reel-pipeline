@@ -16,7 +16,7 @@
 """
 import json, sys, time
 from pathlib import Path
-from . import HOME, media, project, render, speech, styles, suggest
+from . import HOME, media, project, render, speech, styles, suggest, takes
 
 ROOT = HOME / "projects"
 
@@ -24,7 +24,7 @@ ROOT = HOME / "projects"
 def say(data): print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
-def create(video, folder):
+def create(videos, folder):
     """A project from a raw take. Each step reports its progress, so the page can show it live.
     What a step made is kept until the project is whole, so a pipeline that stopped (no connection, no money on the AI
     account) goes on from the step that failed and does not recognise the speech again."""
@@ -36,16 +36,29 @@ def create(video, folder):
         except Exception as error: project.progress(folder, name, "failed", error=str(error)[-300:]); raise
         took[name] = round(time.time() - started, 1); project.progress(folder, name, "done", seconds=took[name])
         had[name] = {"seconds": took[name], "made": result}; kept.write_text(json.dumps(had, ensure_ascii=False), encoding="utf-8"); return result
-    for name in ("probe", "transcribe", "review", "suggest", "decorate", "render"): project.progress(folder, name, "waiting")
+    videos = [Path(v) for v in (videos if isinstance(videos, (list, tuple)) else [videos])]; several = len(videos) > 1
+    for name in ("probe", "transcribe", *(["join"] if several else []), "review", "suggest", "decorate", "render"): project.progress(folder, name, "waiting")
     if (folder / "project.json").exists():
         # the project itself was made before it stopped: only the overlays are left to ask for
         for name in ("probe", "transcribe", "review", "suggest"): project.progress(folder, name, "done")
         step("decorate", lambda: bool(overlays(folder))); kept.unlink(missing_ok=True); return took
-    facts = step("probe", lambda: usable(video))
-    transcript = step("transcribe", lambda: heard(speech.transcribe(video)))
-    cuts = step("review", lambda: suggest.review(transcript["words"]))
+    if several:
+        # A video shot as separate files: each is recognised on its own, then they are joined in the order they were shot
+        every = step("probe", lambda: [usable(v) for v in videos]); turn = takes.order(videos, every); videos = [videos[i] for i in turn]; every = [every[i] for i in turn]
+        each = step("transcribe", lambda: [heard(speech.transcribe(v)) for v in videos])
+        joined = step("join", lambda: (lambda made: {"file": str(made[0]), "parts": made[1]})(takes.join(videos, every, folder)))
+        video = Path(joined["file"]); facts = usable(video); words, parts = [], []
+        for n, (one, part, original) in enumerate(zip(each, joined["parts"], videos), 1):
+            mine = [{**w, "start": round(w["start"] + part["start"], 2), "end": round(min(w["end"], part["seconds"]) + part["start"], 2), "take": f"t{n}"} for w in one["words"]]
+            parts.append({"id": f"t{n}", "name": original.name, "file": str(original), **part, "from": len(words), "to": len(words) + len(mine) - 1}); words += mine
+        transcript = {"language": each[0]["language"], "words": words}
+    else:
+        video = videos[0]; parts = None
+        facts = step("probe", lambda: usable(video))
+        transcript = step("transcribe", lambda: heard(speech.transcribe(video)))
+    cuts = step("review", lambda: suggest.review(transcript["words"], starts=[p["from"] for p in parts[1:]] if parts else ()))
     ideas = step("suggest", lambda: suggest.suggest(transcript["words"], {i for c in cuts for i in range(c["from"], c["to"] + 1)}))
-    project.save(folder, project.new(video, facts, transcript, ideas, styles.default(), cuts))
+    project.save(folder, project.new(video, facts, transcript, ideas, styles.default(), cuts, takes=parts))
     step("decorate", lambda: bool(overlays(folder)))
     kept.unlink(missing_ok=True); return took
 
@@ -123,9 +136,11 @@ def replan(folder):
     project.save(folder, doc); show(folder)
 
 
-def new(video, name=None):
-    video = Path(video); folder = ROOT / (name or video.stem)
-    took = create(video, folder)
+def new(*given):
+    """One take, or several that are one video; a last word that is not a file is the project's name."""
+    name = given[-1] if len(given) > 1 and not Path(given[-1]).exists() else None; videos = [Path(v) for v in (given[:-1] if name else given)]
+    folder = ROOT / (name or videos[0].stem)
+    took = create(videos if len(videos) > 1 else videos[0], folder)
     show(folder); say({"project": str(folder), "took_seconds": took})
 
 

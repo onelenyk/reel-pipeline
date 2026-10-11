@@ -40,11 +40,13 @@ def segments_of(kept):
     return segments
 
 
-def new(source_file, facts, transcript, suggestions, style=None, cuts=()):
+def new(source_file, facts, transcript, suggestions, style=None, cuts=(), takes=None):
     words = transcript["words"]; gone = {i for c in cuts for i in range(c["from"], c["to"] + 1)}
     return {
         "format": FORMAT,
         "sources": [{"id": "s1", "file": str(source_file), **facts}],
+        # the separate files a video was shot as, joined into the source: where each starts in it and which words are its own
+        **({"takes": takes} if takes else {}),
         "language": transcript["language"],
         "words": [{"id": i, "source": "s1", **w} for i, w in enumerate(words)],
         # The cut, in words: one segment keeps everything from one word to another, inclusive
@@ -94,11 +96,14 @@ def resolve(doc):
     """Turns the document (in words) into a timeline (in seconds of the finished video)."""
     words = doc["words"]; source = doc["sources"][0]
     kept, spans = [], []  # spans: [source_start, source_end] stretches that stay
+    bounds = {t["id"]: (t["start"], t["start"] + t["seconds"]) for t in doc.get("takes", [])}
     for segment in doc["edit"]["segments"]:
         for w in words[segment["from"]:segment["to"] + 1]:
+            # one take never runs into the next: where the file changes there is always a join
+            low, high = bounds.get(w.get("take"), (0.0, source["seconds"])); same = not kept or not bounds or kept[-1].get("take") == w.get("take")
             kept.append(w)
-            if spans and w["start"] - spans[-1][1] <= JOIN + 2 * PAD: spans[-1][1] = min(source["seconds"], w["end"] + PAD)
-            else: spans.append([max(0.0, w["start"] - PAD), min(source["seconds"], w["end"] + PAD)])
+            if spans and same and w["start"] - spans[-1][1] <= JOIN + 2 * PAD: spans[-1][1] = min(high, w["end"] + PAD)
+            else: spans.append([max(low, w["start"] - PAD), min(high, w["end"] + PAD)])
     offsets, total = [], 0.0
     for a, b in spans: offsets.append(total); total += b - a
 

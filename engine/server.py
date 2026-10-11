@@ -62,7 +62,7 @@ def summary(name):
         fixed = {c["word"]: c["text"] for c in doc["corrections"] if c["accepted"]}
         plan = project.resolve(doc); at = {w["id"]: w["start"] for line in plan["lines"] for w in line["words"]}  # where each word is in the finished video
         assets = {a["id"]: a for a in doc["assets"]}; used = {n.get("asset") for n in doc["needs"]} | {b.get("asset") for b in doc["beats"]}
-        out.update(source=doc["sources"][0], language=doc["language"],
+        out.update(source=doc["sources"][0], takes=[{"name": t["name"], "seconds": t["seconds"]} for t in doc.get("takes", [])], language=doc["language"],
                    words=[{"id": w["id"], "text": fixed.get(w["id"], w["text"]), "heard": w["text"], "fixed": w["id"] in fixed, "start": w["start"], "at": at.get(w["id"]), "kept": w["id"] in kept,
                            "hot": w["id"] in hot, "unsure": w["confidence"] < 0.5} for w in doc["words"]],
                    corrections=doc["corrections"], cuts=doc["cuts"], kinds={b["id"]: b["kind"] for b in plan["beats"]}, seconds=plan["seconds"], style=doc["style"],
@@ -183,6 +183,26 @@ class Handler(BaseHTTPRequestHandler):
                 if space and space != HOME_SPACE: set_space(name, space)
                 background(name, "pipeline", lambda: (create(video, folder), render.render(folder)))
                 return self.send({"project": name})
+            if parts[:2] == ["api", "take"] and len(parts) == 4 and re.fullmatch(r"[a-z0-9]{6,24}", parts[2]):
+                # one of several takes that are one video: kept until the last has come
+                group = INBOX / "groups" / parts[2]; group.mkdir(parents=True, exist_ok=True); suffix = Path(parts[3]).suffix or ".mov"
+                tmp = self.upload(suffix); tmp.replace(group / (re.sub(r"[^\w.-]", "_", Path(parts[3]).stem)[:80] + suffix)); return self.send({"kept": len(list(group.iterdir()))})
+            if parts[:2] == ["api", "new-from"] and len(parts) == 3 and re.fullmatch(r"[a-z0-9]{6,24}", parts[2]):
+                # the takes are all here: they become one project, named after the first
+                group = INBOX / "groups" / parts[2]; files = sorted(group.iterdir()) if group.is_dir() else []
+                if not files: return self.send({"error": "no takes were sent"}, 400)
+                stem = re.sub(r"^\d+-", "", files[0].stem)
+                with changing:
+                    name, count = stem, 1
+                    while (ROOT / name).exists() or busy.get(name): count += 1; name = f"{stem}-{count}"
+                    folder = ROOT / name; folder.mkdir(parents=True)
+                videos = []
+                for n, file in enumerate(files, 1): kept = INBOX / f"{name}.{n}{file.suffix}"; file.replace(kept); videos.append(kept)
+                group.rmdir(); (folder / "intake.json").write_text(json.dumps([str(v) for v in videos]), encoding="utf-8")
+                space = parse_qs(urlsplit(self.path).query).get("space", [""])[0]
+                if space and space != HOME_SPACE: set_space(name, space)
+                background(name, "pipeline", lambda: (create(videos if len(videos) > 1 else videos[0], folder), render.render(folder)))
+                return self.send({"project": name})
             if parts == ["api", "spaces"]: return self.send({"spaces": set_space(space=json.loads(self.body() or b"{}").get("name"))["spaces"]})
             if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "space":
                 if not (ROOT / parts[2]).is_dir(): return self.send({"error": "there is no such project"}, 404)
@@ -200,7 +220,8 @@ class Handler(BaseHTTPRequestHandler):
             if busy.get(name) and action != "state": return self.send({"error": f"{busy[name]} is still running"}, 409)
             if action == "retry":
                 # a pipeline that stopped goes on from the step that failed
-                video = next(iter(sorted(INBOX.glob(f"{name}.*"))), None)
+                intake = folder / "intake.json"; several = [Path(v) for v in json.loads(intake.read_text(encoding="utf-8"))] if intake.exists() else []
+                video = several if len(several) > 1 and all(v.exists() for v in several) else next(iter(sorted(INBOX.glob(f"{name}.*"))), None)
                 if not video: return self.send({"error": "the take this project was made from is no longer in the inbox: send it again"}, 404)
                 background(name, "pipeline", lambda: (create(video, folder), render.render(folder))); return self.send(summary(name))
             if action == "render": background(name, "render", lambda: render.render(folder)); return self.send(summary(name))

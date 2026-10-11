@@ -108,12 +108,20 @@ def usage():
 VOTERS = 3
 
 
-def review(words, fresh=False):
+TAKES = """Позначки ⟦запис N⟧ показують, де починається наступний окремий файл: відео знімали кількома записами. Новий запис може продовжувати розповідь,
+а може бути новою спробою того, що вже сказано в попередньому записі: тоді попередню спробу вирізай цілком (retake), навіть якщо це весь попередній запис, і лишай останню.
+Самі позначки не є словами і номерів не мають.
+
+"""
+
+
+def review(words, fresh=False, starts=()):
     """What should not reach the viewer: failed attempts that were said again, remarks not meant for the viewer, swearing."""
     if not words: return []
     if not enabled(): return merged([], restarts(words))
     # Three answers at once, and a word is cut when most of them cut it: one answer alone sometimes strays
-    prompt = REVIEW + " ".join(f"[{i}]{w['text']}" for i, w in enumerate(words))
+    opens = {i: n for n, i in enumerate(starts, 2)}   # a video of one take is asked about exactly as before
+    prompt = REVIEW + (TAKES if opens else "") + " ".join((f"⟦запис {opens[i]}⟧ " if i in opens else "") + f"[{i}]{w['text']}" for i, w in enumerate(words))
     with ThreadPoolExecutor(VOTERS) as pool: answers = list(pool.map(lambda n: clean_cuts(ask(prompt, think=True, sample=n, fresh=fresh), len(words)), range(VOTERS)))
     return merged([c for c in vote(answers) if c["why"] != "garble" or empty(words, c)], restarts(words))
 

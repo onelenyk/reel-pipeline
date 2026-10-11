@@ -214,6 +214,25 @@ class Vote(unittest.TestCase):
         self.assertEqual(vote([[cut(5, 9)], [], []]), [])
 
 
+class Takes(unittest.TestCase):
+    """A video shot as several files: where the file changes there is always a join, and the review is told where."""
+
+    def test_one_take_never_runs_into_the_next(self):
+        said = [{"text": t, "start": i * 0.4, "end": i * 0.4 + 0.35, "confidence": 0.9, "take": "t1" if i < 3 else "t2"} for i, t in enumerate("Це перший запис. А це другий.".split())]
+        parts = [{"id": "t1", "name": "a.mov", "start": 0, "seconds": 1.2, "from": 0, "to": 2}, {"id": "t2", "name": "b.mov", "start": 1.2, "seconds": 1.4, "from": 3, "to": 5}]
+        doc = project.new("x.mp4", {"seconds": 2.6, "width": 1080, "height": 1920, "fps": 30, "hdr": False, "has_audio": True}, {"language": "uk", "words": said}, {"beats": [], "needs": [], "emphasis": [], "corrections": []}, takes=parts)
+        line = project.resolve(doc)
+        self.assertEqual(len(line["spans"]), 2); self.assertLessEqual(line["spans"][0][1], 1.2); self.assertGreaterEqual(line["spans"][1][0], 1.2)
+        del doc["takes"]; self.assertEqual(len(project.resolve(doc)["spans"]), 1)   # the same words as one take run on
+
+    def test_the_review_is_told_where_each_file_starts_and_one_take_is_asked_about_as_before(self):
+        asked = []; was = (suggest.ask, suggest.enabled); self.addCleanup(lambda: (setattr(suggest, "ask", was[0]), setattr(suggest, "enabled", was[1])))
+        suggest.enabled = lambda: True; suggest.ask = lambda prompt, **k: asked.append(prompt) or {"cuts": []}
+        words = [{"text": t} for t in "Це перший запис. А це другий.".split()]
+        suggest.review(words); suggest.review(words, starts=[3])
+        self.assertNotIn("⟦", asked[0]); self.assertIn("[2]запис. ⟦запис 2⟧ [3]А", asked[-1])
+
+
 class Restarts(unittest.TestCase):
     words = staticmethod(lambda text: [{"text": t} for t in text.split()])
 
