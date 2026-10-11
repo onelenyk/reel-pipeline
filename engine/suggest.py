@@ -3,9 +3,11 @@
 Everything it returns is a suggestion. Emphasis and beats are accepted by default (they are easy to see and undo);
 changes to words are never applied until a person accepts them, because the model guesses names it cannot know.
 """
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-import base64, json, os, re
+import base64, hashlib, json, os, re
 import requests
+from . import HOME
 
 PROMPT = """Ти монтажер коротких вертикальних відео про нерухомість. Нижче розшифровка одного дубля, де людина говорить у камеру; слова пронумеровані.
 Поверни один JSON:
@@ -42,23 +44,57 @@ REVIEW = """Ти редактор відео про нерухомість. Ни
 """
 
 
-def ask(prompt, think=False, picture=None):
-    """One question to the model, answered as JSON. Thinking costs seconds; it is for the questions where a quick answer is often wrong."""
+TEMPERATURE = 0  # for the quick questions; the thinking ones do not take a temperature
+ANSWERS = HOME / "answers"
+
+
+def ask(prompt, think=False, picture=None, sample=0, fresh=False):
+    """One question to the model, answered as JSON. Thinking costs seconds; it is for the questions where a quick answer is often wrong.
+
+    The model does not answer the same question the same way twice, so an answer is kept: the same take gives the same video
+    however many times it is sent. `fresh` asks again (the author wants another answer); `sample` tells apart the several
+    answers to one question that a vote is taken from."""
+    mark = hashlib.sha1(json.dumps(["deepseek-flash", think, prompt, hashlib.sha1(Path(picture).read_bytes()).hexdigest() if picture else None, sample]).encode()).hexdigest()
+    kept = ANSWERS / f"{mark}.json"
+    if kept.exists() and not fresh: return json.loads(kept.read_text(encoding="utf-8"))
     body = {"model": "deepseek-flash", "thinking": {"type": "enabled" if think else "disabled"}, "response_format": {"type": "json_object"}, "max_tokens": 64000 if picture else 32000 if think else 8000,
             "messages": [{"role": "user", "content": prompt}]}
     if picture: body["messages"][0]["content"] = [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(picture).read_bytes()).decode()}}]
-    if not think: body["temperature"] = 0.3
+    if not think: body["temperature"] = TEMPERATURE
     response = requests.post("https://api.deepseek.com/chat/completions", timeout=300, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"}, json=body)
     response.raise_for_status()
     answer = response.json()["choices"][0]["message"]["content"]
     if not answer.strip(): raise RuntimeError("the AI thought until its allowance ran out and gave no answer")
-    return json.loads(answer)
+    answer = json.loads(answer)
+    ANSWERS.mkdir(parents=True, exist_ok=True); kept.write_text(json.dumps(answer, ensure_ascii=False), encoding="utf-8")
+    return answer
 
 
-def review(words):
+VOTERS = 3
+
+
+def review(words, fresh=False):
     """What should not reach the viewer: failed attempts that were said again, remarks not meant for the viewer, swearing."""
     if not enabled() or not words: return []
-    return clean_cuts(ask(REVIEW + " ".join(f"[{i}]{w['text']}" for i, w in enumerate(words)), think=True), len(words))
+    # Three answers at once, and a word is cut when most of them cut it: one answer alone sometimes strays
+    prompt = REVIEW + " ".join(f"[{i}]{w['text']}" for i, w in enumerate(words))
+    with ThreadPoolExecutor(VOTERS) as pool: answers = list(pool.map(lambda n: clean_cuts(ask(prompt, think=True, sample=n, fresh=fresh), len(words)), range(VOTERS)))
+    return vote(answers)
+
+
+def vote(answers):
+    """The cuts most of the answers agree on, word by word; each keeps the reason of the first answer that had it."""
+    reason = {}
+    for cuts in answers:
+        for c in cuts:
+            for i in range(c["from"], c["to"] + 1): reason.setdefault(i, (c["why"], c["note"]))
+    agreed = sorted(i for i in reason if sum(any(c["from"] <= i <= c["to"] for c in cuts) for cuts in answers) * 2 > len(answers))
+    cuts, start = [], None
+    for i, nxt in zip(agreed, agreed[1:] + [None]):
+        start = i if start is None else start
+        if nxt != i + 1 or reason[nxt][0] != reason[i][0]:
+            cuts.append({"id": f"c{len(cuts) + 1}", "from": start, "to": i, "why": reason[start][0], "note": reason[start][1], "by": "ai"}); start = None
+    return cuts
 
 
 def clean_cuts(raw, count):
@@ -94,7 +130,7 @@ def edit(words, kept, first, last, request):
     if not enabled(): return {"say": "AI вимкнено: немає ключа.", "ops": []}
     lo, hi = max(0, first - 150), min(len(words), last + 151)  # the stretch with enough around it to see repeats
     text = " ".join(f"[{i}]{words[i]['text']}" if i in kept else f"([{i}]{words[i]['text']})" for i in range(lo, hi))
-    raw = ask(EDIT.format(first=first, last=last, request=request.replace('"', "'")[:400]) + text, think=True)
+    raw = ask(EDIT.format(first=first, last=last, request=request.replace('"', "'")[:400]) + text, think=True, fresh=True)
     ok = lambda i: isinstance(i, int) and not isinstance(i, bool) and lo <= i < hi
     ops = []
     for o in raw.get("ops", [])[:20] if isinstance(raw.get("ops"), list) else []:
@@ -161,13 +197,13 @@ def enabled():
     return bool(os.environ.get("DEEPSEEK_API_KEY")) and os.environ.get("REEL_AI", "on") != "off"
 
 
-def suggest(words, skip=()):
+def suggest(words, skip=(), fresh=False):
     """The montage plan for the words that stay; the words in `skip` were cut by the review and are not shown to the model."""
     if not enabled() or not words: return clean({}, len(words))  # no key or switched off: the video is made without suggestions
     skip = set(skip)
     numbered = " ".join(f"[{i}]{w['text']}" for i, w in enumerate(words) if i not in skip)
     kept = len(words) - len(skip); beats = max(5, min(16, round(kept / 25)))  # about one insert for every ten seconds of speech
-    ideas = clean(ask(PROMPT.replace("{beats}", str(beats)).replace("{needs}", str(max(4, min(8, beats // 2)))) + numbered), len(words))
+    ideas = clean(ask(PROMPT.replace("{beats}", str(beats)).replace("{needs}", str(max(4, min(8, beats // 2)))) + numbered, fresh=fresh), len(words))
     ideas["beats"] = [b for b in ideas["beats"] if not any(i in skip for i in range(b["from"], b["to"] + 1)) and (b["kind"] != "title" or spoken(b["text"], words[b["from"]:b["to"] + 1]))]
     return ideas
 

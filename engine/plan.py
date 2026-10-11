@@ -18,10 +18,12 @@ GAP = 0.09    # the widest gap in a wall line that is still bridged, as a share 
 SMALL = 0.004 # a space smaller than this share of the plan is not a room of its own
 PAPER = 252   # lighter than this is bare paper
 HATCH = 13    # gaps this wide in a hatched floor or a dashed outline are closed
+DASH = 31     # the gaps of a dashed line are shorter than this
 YARD = 0.015  # a place outdoors is at least this share of the plan
 LOOSE = 0.08 # a piece of wall smaller than this share of the main walls, and apart from them, is not a wall
 OPEN = 0.3    # a room with more of its edge than this open to a neighbour is not a room of its own
 _net = None
+FORMAT = 6    # rises whenever rooms are found differently: answers kept under an older number are worked out again
 
 
 def cubicasa(colour):
@@ -86,10 +88,19 @@ def outdoors(grey, wall, owner):
     outlines, _ = cv2.findContours((wall | (owner > 0)).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE); cv2.drawContours(house, outlines, -1, 1, -1)
     house = cv2.dilate(house, np.ones((7, 7), np.uint8))
     drawn = ((grey < PAPER) & (house == 0)).astype(np.uint8)
-    drawn = cv2.morphologyEx(drawn, cv2.MORPH_CLOSE, np.ones((HATCH, HATCH), np.uint8))
+    # a dashed line is a line: its dashes are joined along their own direction, further than gaps are closed elsewhere
+    dashes = cv2.morphologyEx(drawn, cv2.MORPH_CLOSE, np.ones((1, DASH), np.uint8)) | cv2.morphologyEx(drawn, cv2.MORPH_CLOSE, np.ones((DASH, 1), np.uint8))
+    drawn = cv2.morphologyEx(drawn, cv2.MORPH_CLOSE, np.ones((HATCH, HATCH), np.uint8)) | cv2.morphologyEx(dashes, cv2.MORPH_OPEN, np.ones((1, 3 * DASH), np.uint8)) | cv2.morphologyEx(dashes, cv2.MORPH_OPEN, np.ones((3 * DASH, 1), np.uint8))
     whole = np.zeros((h, w), np.uint8)
     outlines, _ = cv2.findContours(drawn, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE); cv2.drawContours(whole, outlines, -1, 1, -1)
     whole = cv2.morphologyEx(whole, cv2.MORPH_OPEN, np.ones((HATCH, HATCH), np.uint8))  # a lone line is not a place
+    # A carport is often only a thin outline, dashed and not quite closed: lines that frame a large box stand for the box
+    for outline in outlines:
+        x, y, bw, bh = cv2.boundingRect(outline)
+        if YARD * h * w <= bw * bh <= 0.3 * h * w and min(bw, bh) >= 0.1 * max(h, w) and whole[y:y + bh, x:x + bw].mean() < 0.5:
+            sides = [drawn[y:y + 6, x:x + bw].any(0).mean(), drawn[y + bh - 6:y + bh, x:x + bw].any(0).mean(), drawn[y:y + bh, x:x + 6].any(1).mean(), drawn[y:y + bh, x + bw - 6:x + bw].any(1).mean()]
+            if sum(side > 0.6 for side in sides) >= 3: whole[y:y + bh, x:x + bw] = 1
+    whole[house > 0] = 0
     count, parts, stats, _ = cv2.connectedComponentsWithStats(whole, connectivity=4); beside = cv2.dilate(house, np.ones((25, 25), np.uint8)); found = []
     for i in range(1, count):
         x, y, bw, bh, area = stats[i]
@@ -209,12 +220,13 @@ def place(picture):
     return HOME / "rooms" / (hashlib.sha1(Path(picture).read_bytes()).hexdigest()[:20] + ".json")
 
 
-def stored(picture):
-    """What is already known of a picture, without reading it again; None if it has not been read."""
+def stored(picture, lenient=False):
+    """What is already known of a picture, without reading it again; None if it has not been read. An answer found by an
+    earlier way of finding is given only to the `lenient`: a video already tied to its rooms must still build."""
     kept = place(picture)
     if not kept.exists(): return None
     known = json.loads(kept.read_text(encoding="utf-8"))
-    return known if known.get("format") == 5 else None
+    return known if known.get("format") == FORMAT or lenient else None
 
 
 def outline(picture, reader="cubicasa"):
@@ -224,7 +236,7 @@ def outline(picture, reader="cubicasa"):
     if known: return known
     colour = cv2.imread(str(picture))
     if colour is None: raise RuntimeError("this file is not a picture the pipeline can read")
-    result = {"format": 5, "reader": reader, "rooms": [{"id": f"r{i}", **r} for i, r in enumerate(rooms(colour, reader), 1)], "names": {}}
+    result = {"format": FORMAT, "reader": reader, "rooms": [{"id": f"r{i}", **r} for i, r in enumerate(rooms(colour, reader), 1)], "names": {}}
     kept = place(picture); kept.parent.mkdir(parents=True, exist_ok=True); kept.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8"); return result
 
 

@@ -203,3 +203,12 @@ class Rooms(unittest.TestCase):
         halves = self.plan.rooms(sheet, "ink", points=[(150, 200), (450, 200)])
         self.assertEqual(len(halves), 2)
         for room in halves: self.assertAlmostEqual(self.area(room), 240 * 280, delta=0.12 * 240 * 280)
+
+
+class Vote(unittest.TestCase):
+    def test_a_cut_stays_when_most_answers_have_it(self):
+        from engine.suggest import vote
+        cut = lambda a, b, why="retake": {"id": "c1", "from": a, "to": b, "why": why, "note": None, "by": "ai"}
+        agreed = vote([[cut(5, 9), cut(20, 22, "aside")], [cut(5, 9)], [cut(5, 10), cut(20, 22, "aside")]])
+        self.assertEqual([(c["from"], c["to"], c["why"]) for c in agreed], [(5, 9, "retake"), (20, 22, "aside")])
+        self.assertEqual(vote([[cut(5, 9)], [], []]), [])

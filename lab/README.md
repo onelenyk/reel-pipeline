@@ -9,6 +9,8 @@ question, the command that runs it and what was found; this page is the index. R
 | `speech/two_languages.py` | Does a second, English pass hear English names better? | No: it translates the speech and is up to three times slower |
 | `speech/vocabulary.py` | Does a vocabulary given to the recogniser fix names? | Yes, as an opening sentence; `hotwords` drop punctuation |
 | `review/retakes.py` | What does the AI review cut? | Failed attempts and asides, with thinking on; not the same on every run |
+| `review/stability.py` | Does the review differ from run to run? | Hardly, on one transcript: 0 and 2 words of 225 and 510 over five runs; a vote of three removes the rest |
+| `review/plan_stability.py` | Does the montage plan differ from run to run? | Yes: four different plans in four runs at temperature 0.3, two or three at 0. So answers are kept |
 | `plans/model_boxes.py` | Can a model with eyes outline rooms? | Roughly: boxes 15-30 px off, rectangles only |
 | `plans/snap_boxes.py` | Can those boxes be pulled onto the drawn walls? | Yes: 8 of 8 rooms on a simple plan, 13 of 16 on a complex one |
 | `plans/drawing_only.py` | Can rooms be found from the drawing alone? | On her plans' style partly; on scanned plans a third of the rooms |

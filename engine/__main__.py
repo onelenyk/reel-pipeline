@@ -81,7 +81,7 @@ def replan(folder):
     """Asks the AI for the montage again, for a project that already has its words. The text, the cuts and the pictures stay."""
     doc = project.load(folder); kept = set()
     for s in doc["edit"]["segments"]: kept.update(range(s["from"], s["to"] + 1))
-    ideas = suggest.suggest(doc["words"], set(range(len(doc["words"]))) - kept)
+    ideas = suggest.suggest(doc["words"], set(range(len(doc["words"]))) - kept, fresh=True)  # the author asked for another plan
     doc.update(emphasis=ideas["emphasis"], beats=ideas["beats"], needs=ideas["needs"], corrections=[c for c in doc["corrections"] if c["by"] == "user"] + ideas["corrections"])
     project.save(folder, doc); show(folder)
 

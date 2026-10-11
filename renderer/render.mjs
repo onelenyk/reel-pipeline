@@ -103,6 +103,71 @@ function drawFull(beat, t) {
   ctx.restore();
 }
 
+// ---------- a floor plan: on a card, with the camera moving to the room being spoken of ----------
+const lerp = (a, b, k) => a + (b - a) * k;
+const titled = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+function drawPlan(beat, t) {
+  const image = pictures.get(beat.file);
+  if (!image) return;
+  const a = presence(t, beat.start, beat.end, 0.25, 0.22);
+  if (a <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = a;
+  const paper = ctx.createLinearGradient(0, 0, 0, H); paper.addColorStop(0, "#f6f3ec"); paper.addColorStop(1, "#e6e0d4");
+  ctx.fillStyle = paper; ctx.fillRect(0, 0, W, H);
+  // The card the plan lies on
+  const card = { x: W * 0.045, y: H * 0.07, w: W * 0.91, h: H * 0.56 }, round = 44;
+  ctx.shadowColor = "rgba(60,45,20,0.22)"; ctx.shadowBlur = 50; ctx.shadowOffsetY = 18;
+  ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.roundRect(card.x, card.y, card.w, card.h, round); ctx.fill();
+  ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.beginPath(); ctx.roundRect(card.x, card.y, card.w, card.h, round); ctx.clip();
+  // The camera: the whole plan at first, then towards each room as it is named
+  const marks = beat.marks ?? [], fit = Math.min((card.w - 60) / image.width, (card.h - 60) / image.height);
+  const view = (mark) => {
+    if (!mark) {
+      // the whole drawing, without the empty paper around it
+      const [x0, y0, x1, y1] = beat.extent ?? [0, 0, 1, 1];
+      return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, zoom: clamp(Math.min((card.w - 90) / ((x1 - x0) * image.width * fit), (card.h - 90) / ((y1 - y0) * image.height * fit)), 1, 1.6) };
+    }
+    const xs = mark.shape.map((p) => p[0]), ys = mark.shape.map((p) => p[1]);
+    const bw = (Math.max(...xs) - Math.min(...xs)) * image.width * fit, bh = (Math.max(...ys) - Math.min(...ys)) * image.height * fit;
+    const zoom = clamp(Math.min((card.w * 0.5) / bw, (card.h * 0.5) / bh), home.zoom * 1.1, Math.max(1.9, home.zoom * 1.3));
+    // halfway between the room and the middle of the plan: the room comes closer without the rest being lost
+    return { x: lerp(home.x, (Math.max(...xs) + Math.min(...xs)) / 2, 0.75), y: lerp(home.y, (Math.max(...ys) + Math.min(...ys)) / 2, 0.75), zoom };
+  };
+  const home = view();
+  const index = marks.reduce((last, m, i) => (t >= m.start ? i : last), -1), now = marks[index];
+  const from = view(marks[index - 1]), to = view(now), k = now ? ease((t - now.start) / 0.7) : 1;
+  const cam = { x: lerp(from.x, to.x, k), y: lerp(from.y, to.y, k), zoom: lerp(from.zoom, to.zoom, k) };
+  const scale = fit * cam.zoom, pw = image.width * scale, ph = image.height * scale;
+  // keep the plan inside the card: the camera does not look past its edge
+  const left = clamp(card.x + card.w / 2 - cam.x * pw, card.x + card.w - 30 - pw, card.x + 30) , top = clamp(card.y + card.h / 2 - cam.y * ph, card.y + card.h - 30 - ph, card.y + 30);
+  const px = pw <= card.w - 60 ? card.x + (card.w - pw) / 2 : left, py = ph <= card.h - 60 ? card.y + (card.h - ph) / 2 : top;
+  ctx.drawImage(image, px, py, pw, ph);
+  const trace = (mark) => { ctx.beginPath(); mark.shape.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](px + x * pw, py + y * ph)); ctx.closePath(); };
+  if (now) {
+    const lit = presence(t, now.start, now.end, 0.35, 0.2);
+    // The rest of the plan steps back, the room keeps its ink and takes the accent colour
+    ctx.save(); ctx.beginPath(); ctx.rect(card.x, card.y, card.w, card.h); now.shape.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](px + x * pw, py + y * ph)); ctx.closePath();
+    ctx.globalAlpha = a * lit * 0.55; ctx.fillStyle = "#fff"; ctx.fill("evenodd"); ctx.restore();
+    trace(now); ctx.globalAlpha = a * lit * 0.3; ctx.fillStyle = ACCENT; ctx.fill();
+    trace(now); ctx.globalAlpha = a * lit; ctx.strokeStyle = ACCENT; ctx.lineWidth = 9; ctx.lineJoin = "round"; ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 14; ctx.stroke(); ctx.shadowBlur = 0;
+  }
+  ctx.restore();
+  // The room's name on a plate at the foot of the card
+  if (now && now.name) {
+    const shown = presence(t, now.start + 0.15, now.end, 0.35, 0.2);
+    if (shown > 0) {
+      ctx.save(); ctx.globalAlpha = a * shown; font(46, 800);
+      const text = titled(now.name), tw = ctx.measureText(text).width, bx = card.x + 34, by = card.y + card.h - 34 - 84 + (1 - shown) * 24;
+      ctx.shadowColor = "rgba(0,0,0,0.25)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
+      ctx.fillStyle = "#111"; ctx.beginPath(); ctx.roundRect(bx, by, tw + 64, 84, 42); ctx.fill();
+      ctx.shadowColor = "transparent"; ctx.fillStyle = ACCENT; ctx.textBaseline = "middle"; ctx.fillText(text, bx + 32, by + 44);
+      ctx.restore();
+    }
+  }
+}
+
 // ---------- title: the accent colour with a glow, a small overshoot on the way in and a light sweep across it ----------
 const titleLayer = createCanvas(W, Math.round(H * 0.12));
 const titleCtx = titleLayer.getContext("2d");
@@ -188,6 +253,32 @@ function drawSubtitle(line, t, onLight = false) {
   });
 }
 
+// ---------- one frame ----------
+function drawFrame(t) {
+  // Backdrops are composited by ffmpeg behind the speaker; here only pictures that sit on top are drawn
+  const pictureNow = timeline.beats.filter((b) => b.kind === "cutaway" && t >= b.start - 0.05 && t <= b.end + 0.05);
+  const fullNow = timeline.beats.filter((b) => b.kind === "full" && t >= b.start - 0.05 && t <= b.end + 0.05);
+  const titles = timeline.beats.filter((b) => b.kind === "title" && t >= b.start && t <= b.end);
+  const line = timeline.lines.find((l) => t >= l.start - 0.06 && t < l.end);
+  if (!pictureNow.length && !fullNow.length && !titles.length && !line) return false;
+  ctx.clearRect(0, 0, W, H);
+  fullNow.forEach((beat) => (beat.plan ? drawPlan(beat, t) : drawFull(beat, t)));
+  pictureNow.forEach((beat) => drawPicture(beat, t));
+  titles.forEach((beat) => drawTitle(beat, t));
+  if (line) drawSubtitle(line, t, fullNow.some((b) => t >= b.start + 0.1 && t <= b.end - 0.1 && (b.plan || lightPictures.has(b.file))));
+  return true;
+}
+
+// Stills, for looking at a design without building the video:  node render.mjs timeline.json --stills 12.5,31 out/still
+if (process.argv[3] === "--stills") {
+  const { writeFileSync } = await import("node:fs");
+  for (const t of process.argv[4].split(",").map(Number)) {
+    if (!drawFrame(t)) ctx.clearRect(0, 0, W, H);
+    writeFileSync(`${process.argv[5]}-${t.toFixed(1)}.png`, canvas.toBuffer("image/png"));
+  }
+  process.exit(0);
+}
+
 // ---------- frames ----------
 const frames = Math.ceil(timeline.seconds * fps);
 const blank = Buffer.alloc(W * H * 4);
@@ -196,17 +287,7 @@ process.stdout.on("error", () => process.exit(0)); // ffmpeg has all it needs
 
 for (let frame = 0; frame < frames; frame++) {
   const t = frame / fps;
-  // Backdrops are composited by ffmpeg behind the speaker; here only pictures that sit on top are drawn
-  const pictureNow = timeline.beats.filter((b) => b.kind === "cutaway" && t >= b.start - 0.05 && t <= b.end + 0.05);
-  const fullNow = timeline.beats.filter((b) => b.kind === "full" && t >= b.start - 0.05 && t <= b.end + 0.05);
-  const titles = timeline.beats.filter((b) => b.kind === "title" && t >= b.start && t <= b.end);
-  const line = timeline.lines.find((l) => t >= l.start - 0.06 && t < l.end);
-  if (!pictureNow.length && !fullNow.length && !titles.length && !line) { await write(blank); continue; }
-  ctx.clearRect(0, 0, W, H);
-  fullNow.forEach((beat) => drawFull(beat, t));
-  pictureNow.forEach((beat) => drawPicture(beat, t));
-  titles.forEach((beat) => drawTitle(beat, t));
-  if (line) drawSubtitle(line, t, fullNow.some((b) => t >= b.start + 0.1 && t <= b.end - 0.1 && lightPictures.has(b.file)));
+  if (!drawFrame(t)) { await write(blank); continue; }
   const pixels = ctx.getImageData(0, 0, W, H).data;
   await write(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength));
 }

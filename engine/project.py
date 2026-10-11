@@ -118,7 +118,10 @@ def resolve(doc):
         start = at(inside[0]["start"])
         end = min(total, max(at(inside[-1]["end"]), start + MIN_BEAT[b["kind"]]))
         beats.append({"id": b["id"], "kind": b["kind"], "start": start, "end": end, "source_start": inside[0]["start"], "text": b.get("text"), "file": asset["file"] if asset else None})
-        if b["kind"] == "full": beats[-1]["marks"] = lit(doc, asset, kept_ids, at, start, end)
+        if b["kind"] == "full":
+            beats[-1]["marks"] = lit(doc, asset, kept_ids, at, start, end); beats[-1]["plan"] = len(rooms_of(asset["file"])) >= 3
+            points = [p for r in rooms_of(asset["file"]) for p in r["shape"]]
+            if beats[-1]["plan"]: beats[-1]["extent"] = [min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points)]  # where the drawing itself is on the sheet
     # A title and a picture share the top of the frame: the title leaves as the picture arrives
     pictures = [b for b in beats if b["kind"] in PICTURED]
     for title in (b for b in beats if b["kind"] == "title"):
@@ -150,14 +153,14 @@ def lit(doc, asset, kept_ids, at, start, end):
         begin = at(said[0]["start"])
         if not start - 0.05 <= begin < end - 0.4: continue
         if marks: marks[-1]["end"] = min(marks[-1]["end"], begin)
-        marks.append({"id": m["id"], "start": max(start, begin), "end": end, "shape": rooms[m["room"]]["shape"]})
+        marks.append({"id": m["id"], "start": max(start, begin), "end": end, "shape": rooms[m["room"]]["shape"], "name": m.get("name")})
     return marks
 
 
 def rooms_of(file):
     """The rooms found on a picture, if it is a plan that has been read."""
     from . import plan
-    return (plan.stored(file) or {}).get("rooms", []) if Path(file).exists() else []
+    return (plan.stored(file, lenient=True) or {}).get("rooms", []) if Path(file).exists() else []
 
 
 def plan_assets(doc):

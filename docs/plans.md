@@ -31,7 +31,8 @@ Outdoors (a terrace, a carport), where there are no walls for the reader to see:
 
 1. The house is cut out of the picture.
 2. Everything that is not bare paper (`PAPER`) counts as drawn; gaps between boards and dashes are closed (`HATCH`).
-3. A piece that is large enough (`YARD`) and touches the house is a place.
+3. Dashes are joined along their own direction (`DASH`), and thin lines that frame a large box on three sides or more stand for the box: a carport is often only a dashed outline.
+4. A piece that is large enough (`YARD`) and touches the house is a place.
 
 Each room is kept as an outline in shares of the picture's width and height, with its share of the floor, the rooms its doors
 open to, its windows and the fixtures the reader saw in it.
@@ -41,14 +42,15 @@ open to, its windows and the fixtures the reader saw in it.
 `rooms/<first 20 hex digits of the picture's SHA-1>.json`, so that the same plan in another video is known at once:
 
 ```json
-{"format": 5, "reader": "cubicasa",
+{"format": 6, "reader": "cubicasa",
  "rooms": [{"id": "r1", "at": [0.31, 0.24], "shape": [[0.24, 0.13], ...], "share": 0.14, "doors": ["r2", "r5"], "windows": 2, "things": ["closet"]}],
  "names": {"техні примі": "r13"}}
 ```
 
 `names` is what people have clicked: a room's name as the speaker says it (cut to word stems) and the room it means.
-`format` rises whenever the finding changes, and kept answers of an older format are worked out again. Room tags may then
-differ, so `names` start empty.
+`format` (`FORMAT` in `engine/plan.py`) rises whenever the finding changes. A kept answer of an older format is worked out
+again when the plan is next read (room tags may then differ, and `names` start empty); until then a video already tied to
+its rooms builds from the old answer.
 
 In a project document, `marks` tie words to rooms: `{"id", "asset", "room", "from", "to", "name", "by"}`. A mark with no room
 waits for a click and is not drawn.
@@ -66,7 +68,7 @@ nothing else changes. `lab/plans/drawing_only.py` is a start on a reader with no
 
 - The thresholds above were set on three plans of two house types. Plans of another drawing style may need others.
 - On a blurred plan (a frame cut from a video) half of the room numbers are not found, and rooms that share a space stay joined.
-- A carport drawn with a thin dashed line is not found. A person cannot yet draw a place by hand.
+- A place outdoors takes the shape of what is drawn there (cars and their shadow), not of the slab meant. A person cannot yet draw a place by hand.
 - One name is remembered for one room: "гардеробна" said of three rooms has to be clicked each time, and a moment cannot yet
   light two rooms.
 - A picture that is not a plan is told apart only by having fewer than three rooms.
@@ -77,3 +79,10 @@ nothing else changes. `lab/plans/drawing_only.py` is a start on a reader with no
 - `./reel rooms media/kit/shelest-plan-1.jpg` - reads one plan and writes a picture to look at in `out/`.
 - `./reel run lab/plans/score.py plans/cubicasa 20` - scores the finder against plans marked by people.
 - `./reel page rooms IMG_7824` - the page: picking a room by a click.
+
+## How it looks in the video
+
+`drawPlan` in `renderer/render.mjs`: the plan lies on a white card over warm paper; the camera starts on the drawing itself
+(without the empty sheet around it) and moves towards each room as it is named; the rest of the plan steps back, the room
+takes the accent colour, and its name stands on a plate at the foot of the card. To judge a change without building the
+video: `./reel run tools/stills.py IMG_7824 19.5,29.5,43.5`.

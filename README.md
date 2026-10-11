@@ -61,14 +61,14 @@ The AI key goes in `.env` (see `.env.example`); `.env`, media, projects and mode
 | `tests/` | `test_engine.py` (`./reel test`, seconds, no video or network) and `page/` (browser scenarios, `./reel page NAME`) |
 | `e2e/` | the end-to-end run on generated takes (`./reel e2e`) |
 | `lab/` | experiments, each with its question and its finding; the index is `lab/README.md` |
-| `tools/` | one-off helpers for working with the service: `run-originals.sh`, `fill-from-internet.py` |
+| `tools/` | helpers: `flow.py` (the author's path, step by step), `sheet.py` (a contact sheet of a finished video), `stills.py` (single frames of a design), `run-originals.sh`, `fill-from-internet.py` |
 | `docs/` | `plan.md` (the product plan), `findings.md` (first experiments), `plans.md` (rooms on a floor plan), `overlays.md` (a design, not built) |
 
-Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output, safe to delete), `models/` (weights), `plans/` (test plans), `rooms/` (what is known of each plan), `styles/`, `vocabulary.txt`, `.env`.
+Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output, safe to delete), `models/` (weights), `plans/` (test plans), `rooms/` (what is known of each plan), `answers/` (the AI's answers, kept so that the same take gives the same video; delete the folder to have everything asked again), `styles/`, `vocabulary.txt`, `.env`.
 
 ## Three kinds of check
 
-- `./reel test` after any change to `engine/`: 23 tests, under a second.
+- `./reel test` after any change to `engine/`: 24 tests, under a second.
 - `./reel page player|timeline|ask|rooms [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
 - `./reel e2e` before trusting the whole: about eight minutes.
 
