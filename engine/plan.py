@@ -20,7 +20,8 @@ _net = None
 
 
 def cubicasa(colour):
-    """Walls, doors and windows as the CubiCasa5k network sees them: True where a room ends."""
+    """The plan as the CubiCasa5k network sees it. "border" is True where a room ends: that much every reader must give.
+    "doors", "windows" and "things" (fixtures by name) are extras that tell rooms apart; a reader may leave them out."""
     global _net
     import cv2, numpy as np, torch
     home = HOME / "models" / "cubicasa"
@@ -34,7 +35,8 @@ def cubicasa(colour):
     padded = cv2.copyMakeBorder(colour, 0, H - h, 0, W - w, cv2.BORDER_CONSTANT, value=(255, 255, 255))
     with torch.no_grad(): answer = _net(torch.from_numpy(cv2.cvtColor(padded, cv2.COLOR_BGR2RGB)).permute(2, 0, 1)[None].float() / 127.5 - 1)[0]
     kind = answer[21:33].argmax(0).numpy()[:h, :w]; icon = answer[33:44].argmax(0).numpy()[:h, :w]
-    return (kind == 2) | (kind == 8) | (icon == 1) | (icon == 2)
+    things = {"closet": 3, "appliance": 4, "toilet": 5, "sink": 6, "sauna bench": 7, "fireplace": 8, "bathtub": 9}
+    return {"border": (kind == 2) | (kind == 8) | (icon == 1) | (icon == 2), "doors": icon == 2, "windows": icon == 1, "things": {name: icon == n for name, n in things.items()}}
 
 
 READERS = {"cubicasa": cubicasa}
@@ -44,16 +46,16 @@ def numbers(grey):
     """Where the plan's room numbers are. A number sits in a small frame of its own: a thin rectangle, empty but for a few glyphs."""
     import cv2, numpy as np
     found = []
-    count, parts, stats, _ = cv2.connectedComponentsWithStats((grey < 200).astype(np.uint8), connectivity=8)
-    for i in range(1, count):
-        x, y, bw, bh, area = stats[i]
-        if not (11 <= bw <= 44 and 8 <= bh <= 28 and 1.15 <= bw / bh <= 2.4): continue
-        own = parts[y:y + bh, x:x + bw] == i
-        # a frame: ink along all four sides of its box, and little of it inside
-        sides = min(own[:2].any(0).mean(), own[-2:].any(0).mean(), own[:, :2].any(1).mean(), own[:, -2:].any(1).mean())
-        if sides < 0.8: continue
-        inside = grey[y + 2:y + bh - 2, x + 2:x + bw - 2]; ink = (inside < 170).mean()
-        if 0.04 <= ink <= 0.55 and (inside > 215).mean() >= 0.3: found.append((int(x + bw // 2), int(y + bh // 2)))
+    for level in (170, 185, 200, 215):  # the frame's line is fainter on some plans than on others
+        count, parts, stats, _ = cv2.connectedComponentsWithStats((grey < level).astype(np.uint8), connectivity=8)
+        for i in range(1, count):
+            x, y, bw, bh, area = stats[i]
+            if not (11 <= bw <= 44 and 8 <= bh <= 28 and 1.15 <= bw / bh <= 2.4): continue
+            own = parts[y:y + bh, x:x + bw] == i
+            # a frame: ink along all four sides of its box, and a few glyphs inside
+            if min(own[:2].any(0).mean(), own[-2:].any(0).mean(), own[:, :2].any(1).mean(), own[:, -2:].any(1).mean()) < 0.8: continue
+            inside = grey[y + 2:y + bh - 2, x + 2:x + bw - 2]
+            if 0.04 <= (inside < level - 30).mean() <= 0.55 and not any(abs(x + bw // 2 - a) < 16 and abs(y + bh // 2 - b) < 12 for a, b in found): found.append((int(x + bw // 2), int(y + bh // 2)))
     return found
 
 
@@ -71,12 +73,14 @@ def spread(owner, open_, depth):
 
 
 def rooms(colour, reader="cubicasa", points=None):
-    """The plan's rooms: [{"at": [x, y], "shape": [[x, y], ...]}], everything in shares of the picture's width and height.
+    """The plan's rooms: [{"at": [x, y], "shape": [[x, y], ...], "share", "doors", "windows", "things"}], places in shares of the
+    picture's width and height. "doors" names the rooms a door leads to (or "outside"), "share" is the room's part of the floor.
     `points` are places known to be inside rooms (pixels of the picture); without them the plan's own numbers are looked for."""
     import cv2, numpy as np
     scale = min(1.0, SIDE / max(colour.shape[:2])); small = cv2.resize(colour, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else colour
     grey = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY); h, w = grey.shape
-    wall = cv2.morphologyEx(READERS[reader](small).astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    seen = READERS[reader](small); seen = seen if isinstance(seen, dict) else {"border": seen}
+    wall = cv2.morphologyEx(seen["border"].astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     gap = round(GAP * max(h, w)); bridge = np.zeros_like(wall)
     for along, across in (((1, RUN), (1, gap)), ((RUN, 1), (gap, 1))):
         bridge |= cv2.morphologyEx(cv2.morphologyEx(wall, cv2.MORPH_OPEN, np.ones(along, np.uint8)), cv2.MORPH_CLOSE, np.ones(across, np.uint8))
@@ -116,13 +120,32 @@ def rooms(colour, reader="cubicasa", points=None):
             if here or (space in open_air and stats[piece, cv2.CC_STAT_AREA] >= SMALL * h * w): claim(part, here)
     spread(owner, free, depth)    # numbers that share a space divide it
     spread(owner, ~wall, depth)   # small leftovers go to a neighbour, through the bridges
-    found = []
+    # What tells the rooms apart: which rooms a door joins, where the windows are, what stands inside
+    joined = {i: set() for i in range(1, len(at) + 1)}; windows = dict.fromkeys(joined, 0)
+    for what in ("doors", "windows"):
+        if what not in seen: continue
+        count, spots = cv2.connectedComponents(seen[what].astype(np.uint8), connectivity=8)
+        for d in range(1, count):
+            around = cv2.dilate((spots == d).astype(np.uint8), np.ones((13, 13), np.uint8)).astype(bool)
+            sides, sizes = np.unique(owner[around & (owner != 0)], return_counts=True); sides = [int(v) for v, n in zip(sides, sizes) if n >= 6]
+            for a in sides:
+                if a < 0: continue
+                if what == "windows": windows[a] += 1; continue
+                for b in sides:
+                    if b != a: joined[a].add(b)
+    total = sum(int((owner == i).sum()) for i in joined) or 1; found = []
     for i, (x, y) in enumerate(at, 1):
-        mask = cv2.morphologyEx((owner == i).astype(np.uint8), cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+        mine = owner == i; mask = cv2.morphologyEx(mine.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
         outlines, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not outlines: continue
         shape = cv2.approxPolyDP(max(outlines, key=cv2.contourArea), 0.004 * SIDE, True).reshape(-1, 2)
-        if len(shape) >= 3: found.append({"at": [round(x / w, 4), round(y / h, 4)], "shape": [[round(px / w, 4), round(py / h, 4)] for px, py in shape]})
+        if len(shape) < 3: continue
+        things = [name for name, where in seen.get("things", {}).items() if (where & mask.astype(bool)).sum() >= 40]
+        found.append({"n": i, "at": [round(x / w, 4), round(y / h, 4)], "shape": [[round(px / w, 4), round(py / h, 4)] for px, py in shape], "share": round(int(mine.sum()) / total, 3),
+                      "doors": sorted(joined[i]), "windows": windows[i], "things": things})
+    # doors are kept by the rooms' final names
+    name = {r["n"]: f"r{k}" for k, r in enumerate(found, 1)}
+    for r in found: r["doors"] = sorted({"outside" if d < 0 else name[d] for d in r["doors"] if d < 0 or d in name}); del r["n"]
     return found
 
 
@@ -130,10 +153,10 @@ def outline(picture, reader="cubicasa"):
     """The rooms of a picture, worked out once and kept beside it."""
     import cv2
     picture = Path(picture); kept = picture.with_suffix(".rooms.json")
-    if kept.exists() and kept.stat().st_mtime >= picture.stat().st_mtime: return json.loads(kept.read_text())
+    if kept.exists() and kept.stat().st_mtime >= picture.stat().st_mtime and json.loads(kept.read_text()).get("format") == 2: return json.loads(kept.read_text())
     colour = cv2.imread(str(picture))
     if colour is None: raise RuntimeError("this file is not a picture the pipeline can read")
-    result = {"format": 1, "reader": reader, "rooms": [{"id": f"r{i}", "name": None, **r} for i, r in enumerate(rooms(colour, reader), 1)]}
+    result = {"format": 2, "reader": reader, "rooms": [{"id": f"r{i}", "name": None, **r} for i, r in enumerate(rooms(colour, reader), 1)]}
     kept.write_text(json.dumps(result, ensure_ascii=False)); return result
 
 
