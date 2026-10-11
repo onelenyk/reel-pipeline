@@ -156,7 +156,10 @@
 </style>
 <header>
   <h1>Reel</h1>
-  <select id="pick" aria-label="Відео"></select>
+  <select id="space" aria-label="Робочий простір" title="Робочий простір: тут зібрані проєкти однієї теми"></select>
+  <span id="spaceNew" style="display:none"><input type="text" id="spaceName" placeholder="назва простору" style="width:11em"> <button id="spaceMake">Створити</button></span>
+  <select id="pick" aria-label="Проєкт"></select>
+  <select id="move" aria-label="Перемістити проєкт" title="Перемістити цей проєкт в інший простір"></select>
   <label class="btn">Нове відео<input type="file" id="take" accept="video/*"></label>
   <span id="top" class="hint" style="margin:0"></span>
 </header>
@@ -796,24 +799,48 @@ document.addEventListener("change", async (e) => {
   if (!file) return;
   if (input.id === "ownPhoto") { const fresh = await act(`/api/projects/${name}/assets/${safeName(file)}`, { method: "POST", body: file }); if (fresh && picker) choose(fresh.added); }
   else if (input.id === "take") {
-    try { $("top").textContent = "Вивантажую…"; const made = await api(`/api/new/${safeName(file)}`, { method: "POST", body: file }); location.search = "?p=" + made.project; } catch (error) { fail(error); }
+    try { $("top").textContent = "Вивантажую…"; const made = await api(`/api/new/${safeName(file)}?space=${encodeURIComponent(space || "")}`, { method: "POST", body: file }); location.search = "?p=" + made.project; } catch (error) { fail(error); }
   }
   input.value = "";
 });
-$("pick").addEventListener("change", (e) => { location.search = "?p=" + e.target.value; });
+$("pick").addEventListener("change", (e) => { if (e.target.value) location.search = "?p=" + e.target.value; });
+// Workspaces: the projects of one subject under one name. The one last looked at is remembered in this browser.
+let space = null, spaceList = [];
+const remember = (value) => { space = value; try { localStorage.setItem("reel-space", value); } catch (error) { /* a private window */ } };
+$("space").addEventListener("change", (e) => {
+  if (e.target.value === "+") { $("spaceNew").style.display = ""; $("spaceName").focus(); return; }
+  remember(e.target.value); const first = projects.find((p) => p.space === space); location.search = first ? "?p=" + first.name : "?";
+});
+$("spaceMake").addEventListener("click", async () => {
+  const made = $("spaceName").value.trim(); if (!made) return;
+  try { await api("/api/spaces", { method: "POST", body: JSON.stringify({ name: made }) }); remember(made); location.search = "?"; } catch (error) { fail(error); }
+});
+$("move").addEventListener("change", async (e) => {
+  if (!e.target.value || !name) return;
+  try { await api(`/api/projects/${name}/space`, { method: "POST", body: JSON.stringify({ space: e.target.value }) }); remember(e.target.value); tick.now(); } catch (error) { fail(error); }
+});
+let projects = [];
 
 api("/api/vocabulary").then((v) => { $("vocab").value = v.terms.join("\n"); }).catch(() => {});
 window.addEventListener("resize", () => { if (state) drawLine(); });
 
 async function tick() {
   try {
-    const list = await api("/api/projects");
-    if (!name && list.length) name = list[0].name;
-    $("pick").innerHTML = list.map((p) => `<option value="${esc(p.name)}"${p.name === name ? " selected" : ""}>${esc(p.name)}</option>`).join("") || `<option>немає відео</option>`;
+    const [list, known] = await Promise.all([api("/api/projects"), api("/api/spaces")]); projects = list; spaceList = known.spaces;
+    // the workspace is the one of the project being looked at; with no project, the one last looked at
+    const mine = list.find((p) => p.name === name);
+    if (mine) space = mine.space; else if (!space) { try { space = localStorage.getItem("reel-space"); } catch (error) { /* a private window */ } }
+    if (!spaceList.includes(space)) space = (list[0] && list[0].space) || spaceList[0];
+    const here = list.filter((p) => p.space === space);
+    if (!name && here.length) name = here[0].name;
+    if (document.activeElement !== $("space")) $("space").innerHTML = spaceList.map((s) => `<option value="${esc(s)}"${s === space ? " selected" : ""}>${esc(s)} (${list.filter((p) => p.space === s).length})</option>`).join("") + `<option value="+">＋ Новий простір…</option>`;
+    if (document.activeElement !== $("pick")) $("pick").innerHTML = here.map((p) => `<option value="${esc(p.name)}"${p.name === name ? " selected" : ""}>${esc(p.name)}</option>`).join("") || `<option value="">проєктів ще немає</option>`;
+    if (document.activeElement !== $("move")) { $("move").innerHTML = `<option value="">перемістити в…</option>` + spaceList.filter((s) => s !== space).map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join(""); $("move").style.display = name && spaceList.length > 1 ? "" : "none"; }
     if (name) { const [fresh, saved] = await Promise.all([api(`/api/projects/${name}`), api("/api/styles")]); state = fresh; styles = saved; draw(); }
   } catch (error) { /* the engine is restarting: keep the last picture */ }
-  setTimeout(tick, state && state.busy ? 1000 : 2500);
+  clearTimeout(tick.timer); tick.timer = setTimeout(tick, state && state.busy ? 1000 : 2500);
 }
+tick.now = () => { clearTimeout(tick.timer); tick(); };
 tick();
 </script>
 </html>

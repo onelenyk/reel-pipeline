@@ -20,3 +20,4 @@ lab/blind/work/
 lab/blind/.venv/
 usage.jsonl
 balance.jsonl
+workspaces.json

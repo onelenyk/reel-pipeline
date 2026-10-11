@@ -18,6 +18,29 @@ busy = {}  # project name → what is running, so two jobs never write the same 
 NAME = re.compile(r"^[\w.-]{1,60}$")
 
 
+SPACES = HOME / "workspaces.json"; HOME_SPACE = "Мої відео"   # the workspace of a project that was put in none
+
+
+def spaces():
+    """The workspaces and which project is in which: {"spaces": [names], "of": {project: name}}. A workspace is only a name
+    projects are gathered under; the projects themselves stay where they are."""
+    try: kept = json.loads(SPACES.read_text(encoding="utf-8"))
+    except (OSError, ValueError): kept = {}
+    names = [n for n in kept.get("spaces", []) if isinstance(n, str) and n.strip()]; of = {p: s for p, s in kept.get("of", {}).items() if s in names}
+    return {"spaces": [HOME_SPACE] + [n for n in names if n != HOME_SPACE], "of": of}
+
+
+def set_space(project_name=None, space=None):
+    """Makes a workspace, and puts a project into it when one is named."""
+    space = " ".join(str(space or "").split())[:40]
+    if not space: raise ValueError("a workspace needs a name")
+    with changing:
+        kept = spaces(); names = kept["spaces"] if space in kept["spaces"] else kept["spaces"] + [space]
+        if project_name: kept["of"][project_name] = space
+        SPACES.write_text(json.dumps({"spaces": names, "of": kept["of"]}, ensure_ascii=False, indent=1), encoding="utf-8")
+    return spaces()
+
+
 def background(name, what, work):
     if busy.get(name): raise RuntimeError(f"{busy[name]} is still running")
     busy[name] = what
@@ -108,7 +131,9 @@ class Handler(BaseHTTPRequestHandler):
         if not parts: return self.send(PAGE.read_bytes(), kind="text/html; charset=utf-8")
         if parts == ["api", "projects"]:
             names = sorted((p.name for p in ROOT.iterdir() if p.is_dir()), key=lambda n: -(ROOT / n).stat().st_mtime) if ROOT.exists() else []
-            return self.send([{"name": n, "busy": busy.get(n), "has_render": (ROOT / n / "render.mp4").exists()} for n in names])
+            kept = spaces()
+            return self.send([{"name": n, "busy": busy.get(n), "has_render": (ROOT / n / "render.mp4").exists(), "space": kept["of"].get(n, HOME_SPACE)} for n in names])
+        if parts == ["api", "spaces"]: return self.send({"spaces": spaces()["spaces"]})
         if parts == ["api", "styles"]: return self.send(styles.listing())
         if parts == ["api", "vocabulary"]: return self.send({"terms": speech.lines()})
         if len(parts) == 3 and parts[:2] == ["api", "projects"]:
@@ -154,8 +179,14 @@ class Handler(BaseHTTPRequestHandler):
                     while (ROOT / name).exists() or busy.get(name): count += 1; name = f"{stem}-{count}"
                     folder = ROOT / name; folder.mkdir(parents=True)
                 INBOX.mkdir(parents=True, exist_ok=True); video = INBOX / f"{name}{suffix}"; tmp.replace(video)
+                space = parse_qs(urlsplit(self.path).query).get("space", [""])[0]
+                if space and space != HOME_SPACE: set_space(name, space)
                 background(name, "pipeline", lambda: (create(video, folder), render.render(folder)))
                 return self.send({"project": name})
+            if parts == ["api", "spaces"]: return self.send({"spaces": set_space(space=json.loads(self.body() or b"{}").get("name"))["spaces"]})
+            if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "space":
+                if not (ROOT / parts[2]).is_dir(): return self.send({"error": "there is no such project"}, 404)
+                return self.send({"spaces": set_space(parts[2], json.loads(self.body() or b"{}").get("space"))["spaces"]})
             if parts == ["api", "vocabulary"]:
                 terms = json.loads(self.body() or b"{}").get("terms"); return self.send({"terms": speech.set_vocabulary(terms if isinstance(terms, list) else [])})
             if parts[:2] == ["api", "styles"] and len(parts) == 4 and parts[3] in ("default", "delete"):
