@@ -222,6 +222,19 @@ class Spelling(unittest.TestCase):
         self.assertEqual(" ".join(w["text"] for w in words), "в G-Village, біля села Гореничі. Заходимо передпокій, а там Перемога")
         self.assertEqual(words[1]["heard"], "G Village,"); self.assertEqual((words[1]["start"], words[1]["end"]), (1, 2.5))
 
+    def test_a_long_term_heard_with_one_letter_wrong_is_respelled(self):
+        from engine.speech import spelled
+        heard = [{"text": t, "start": i, "end": i + 0.5, "confidence": 0.9} for i, t in enumerate("Заходимо в перепокій, далі гардеробну і терасу. Панорама.".split())]
+        words = spelled(heard, ["передпокій", "гардеробна", "тераса", "панорамні"])
+        self.assertEqual(" ".join(w["text"] for w in words), "Заходимо в передпокій, далі гардеробну і терасу. Панорама.")
+        self.assertEqual(words[2]["heard"], "перепокій,")
+
+    def test_what_was_heard_right_is_left_alone(self):
+        from engine.speech import spelled
+        said = "Таунхаус у Гореничах, тут кухня, вітальня і тераса."
+        heard = [{"text": t, "start": i, "end": i + 0.5, "confidence": 0.9} for i, t in enumerate(said.split())]
+        self.assertEqual(" ".join(w["text"] for w in spelled(heard, ["Гореничі", "кухня-вітальня"])), said)
+
     def test_a_name_heard_quite_differently_is_respelled_once_someone_has_said_how(self):
         from engine.speech import letters, spelled
         heard = [{"text": t, "start": i, "end": i + 0.5, "confidence": 0.9} for i, t in enumerate("будинку в Джівілич, ми попадаємо вперед покій.".split())]

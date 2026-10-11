@@ -21,6 +21,8 @@ question, the command that runs it and what was found; this page is the index. R
 | (no script) | Can the order of the tour name a nameless room: the one room behind a door of the room just spoken of? | Tried in `engine/project.py` on 2026-10-11 and removed: on the first real take it gave a wardrobe the name of a room the speaker only imagined. A wrong name costs more than an empty one |
 | `build_time.py` | Where does the time of a build go? | Drawing the graphics, 85 of 110 s: the plan screen repainted every frame, and outlined text. Painting an unchanged frame once halved the build |
 | `plans/which_room.py` | Can the AI tell which room the speaker means? | No: one or two of four, in two to three minutes. A person clicks instead |
+| `blind/score.py` | How do the steps do on takes whose right answer is known (four written takes spoken by the Mac's voice, with failed attempts, asides, rooms and figures)? | 2026-10-11: the review left no wrong word and cut one right one in four takes; rooms 7 to 9 of 10, figures 4 to 5 of 9, differing between fresh answers. It found two spelling mistakes of our own, now fixed: "у Гореничах" became "у Гореничі", and "кухня, вітальня" in a list became "кухня-вітальня" |
+| (no script) | Should a room named in passing ("a door to the terrace") get a moment of its own? | Tried in the prompt on 2026-10-11 and taken back: it found more on the written takes and on IMG_7824, and on IMG_7811 renamed two rooms wrongly |
 | `plans/score.py` | How well are rooms outlined, in numbers? | Scores a finder against 232 plans marked by people (`plans/cubicasa`) |
 
 ## Data the experiments use

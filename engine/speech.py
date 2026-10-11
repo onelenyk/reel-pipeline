@@ -118,6 +118,13 @@ ALIKE = 0.72                      # how alike a heard name and a name of the voc
 def letters(text): return re.sub(r"[^\w]", "", text.lower().replace("ʼ", "").replace("'", ""))
 
 
+def slip(heard, term):
+    """Whether `heard` is `term` with one letter missing, added or wrong, the first and the last three letters being the same."""
+    if heard == term or abs(len(heard) - len(term)) > 1 or heard[:3] != term[:3] or heard[-3:] != term[-3:]: return False
+    ops = [o for o in difflib.SequenceMatcher(None, heard, term).get_opcodes() if o[0] != "equal"]
+    return len(ops) == 1 and max(ops[0][2] - ops[0][1], ops[0][4] - ops[0][3]) == 1
+
+
 def spelled(words, terms, known=None):
     """The vocabulary's spelling for what was heard, applied after recognition.
     Two words that together are a term become it ("перед покій", "G Village"); a capitalised word that is nearly a name
@@ -135,14 +142,21 @@ def spelled(words, terms, known=None):
             out.append({**word, "heard": word["text"], "text": term + tail}); continue
         if letters(word["text"]) in whole and whole[letters(word["text"])] != word["text"][:len(word["text"]) - len(tail)] and letters(whole[letters(word["text"])]) != letters(word["text"]):
             out.append({**word, "heard": word["text"], "text": whole[letters(word["text"])] + tail}); continue
-        if out and letters(out[-1]["text"]) + letters(word["text"]) in whole and letters(word["text"]) not in whole:
+        # two words with a comma or a full stop between them are two things said, not one term: "кухня, вітальня і тераса"
+        if out and not re.search(r"[,.;:!?…]$", out[-1]["text"]) and letters(out[-1]["text"]) + letters(word["text"]) in whole and letters(word["text"]) not in whole:
             term = whole[letters(out[-1]["text"]) + letters(word["text"])]; first = out[-1]["text"]
             out[-1] = {**out[-1], "heard": out[-1].get("heard", first) + " " + word["text"], "text": (term[:1].upper() + term[1:] if first[:1].isupper() and not term[:1].isupper() else term) + tail,
                        "end": word["end"], "confidence": round(min(out[-1]["confidence"], word["confidence"]), 2)}
             continue
         bare = word["text"][:len(word["text"]) - len(tail)] if tail else word["text"]
+        # a long term heard with one letter missing, added or wrong: "перепокій" is "передпокій"
+        near = next((t for key, t in whole.items() if len(key) >= 8 and key == letters(t) and slip(letters(bare), key)), None)
+        if near and letters(bare) not in whole:
+            out.append({**word, "heard": word["text"], "text": (near[:1].upper() + near[1:] if bare[:1].isupper() and not near[:1].isupper() else near) + tail}); continue
         if bare[:1].isupper() and len(bare) >= 5 and letters(bare) not in whole:
             best = max(names, key=lambda t: difflib.SequenceMatcher(None, letters(bare), letters(t)).ratio(), default=None)
+            # the name in another case ("у Гореничах") was heard right and stays as said
+            if best and letters(bare).startswith(letters(best)[:-1]): best = None
             if best and best[:1].lower() == bare[:1].lower() and difflib.SequenceMatcher(None, letters(bare), letters(best)).ratio() >= ALIKE:
                 word = {**word, "heard": word["text"], "text": best + tail}
         out.append(word)
