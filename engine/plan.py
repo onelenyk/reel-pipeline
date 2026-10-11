@@ -16,6 +16,9 @@ SIDE = 1000   # plans are worked on at this size: the widths below are in these 
 RUN = 15      # a wall line runs at least this far
 GAP = 0.09    # the widest gap in a wall line that is still bridged, as a share of the plan's longer side
 SMALL = 0.004 # a space smaller than this share of the plan is not a room of its own
+PAPER = 252   # lighter than this is bare paper
+HATCH = 13    # gaps this wide in a hatched floor or a dashed outline are closed
+YARD = 0.015  # a place outdoors is at least this share of the plan
 LOOSE = 0.08 # a piece of wall smaller than this share of the main walls, and apart from them, is not a wall
 OPEN = 0.3    # a room with more of its edge than this open to a neighbour is not a room of its own
 _net = None
@@ -74,6 +77,30 @@ def spread(owner, open_, depth):
                 owner[yy, xx] = mine; heapq.heappush(heap, (max(level, -float(depth[yy, xx])), yy, xx))
 
 
+def outdoors(grey, wall, owner):
+    """Places drawn beside the house that no wall encloses: a terrace, a carport. Each is whatever is drawn in one piece
+    next to the house's walls, with the gaps of a dashed outline or a boarded floor closed."""
+    import cv2, numpy as np
+    h, w = grey.shape
+    house = np.zeros((h, w), np.uint8)
+    outlines, _ = cv2.findContours((wall | (owner > 0)).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE); cv2.drawContours(house, outlines, -1, 1, -1)
+    house = cv2.dilate(house, np.ones((7, 7), np.uint8))
+    drawn = ((grey < PAPER) & (house == 0)).astype(np.uint8)
+    drawn = cv2.morphologyEx(drawn, cv2.MORPH_CLOSE, np.ones((HATCH, HATCH), np.uint8))
+    whole = np.zeros((h, w), np.uint8)
+    outlines, _ = cv2.findContours(drawn, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE); cv2.drawContours(whole, outlines, -1, 1, -1)
+    whole = cv2.morphologyEx(whole, cv2.MORPH_OPEN, np.ones((HATCH, HATCH), np.uint8))  # a lone line is not a place
+    count, parts, stats, _ = cv2.connectedComponentsWithStats(whole, connectivity=4); beside = cv2.dilate(house, np.ones((25, 25), np.uint8)); found = []
+    for i in range(1, count):
+        x, y, bw, bh, area = stats[i]
+        if area < YARD * h * w or not (beside[parts == i]).any(): continue
+        shape = cv2.approxPolyDP(max(cv2.findContours((parts == i).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0], key=cv2.contourArea), 0.006 * SIDE, True).reshape(-1, 2)
+        if len(shape) < 3: continue
+        deep = cv2.distanceTransform((parts == i).astype(np.uint8), cv2.DIST_L2, 3); cy, cx = np.unravel_index(deep.argmax(), deep.shape)
+        found.append({"n": -1, "at": [round(cx / w, 4), round(cy / h, 4)], "shape": [[round(px / w, 4), round(py / h, 4)] for px, py in shape], "share": 0, "doors": [], "windows": 0, "things": [], "outdoors": True})
+    return found
+
+
 def rooms(colour, reader="cubicasa", points=None):
     """The plan's rooms: [{"at": [x, y], "shape": [[x, y], ...], "share", "doors", "windows", "things"}], places in shares of the
     picture's width and height. "doors" names the rooms a door leads to (or "outside"), "share" is the room's part of the floor.
@@ -92,14 +119,21 @@ def rooms(colour, reader="cubicasa", points=None):
     gap = round(GAP * max(h, w)); bridge = np.zeros_like(wall)
     for along, across in (((1, RUN), (1, gap)), ((RUN, 1), (gap, 1))):
         bridge |= cv2.morphologyEx(cv2.morphologyEx(wall, cv2.MORPH_OPEN, np.ones(along, np.uint8)), cv2.MORPH_CLOSE, np.ones(across, np.uint8))
-    wall = wall.astype(bool); bridge = bridge.astype(bool) & ~wall; free = ~wall & ~bridge
+    wall = wall.astype(bool); bridge = bridge.astype(bool) & ~wall
+    seeds = [(round(x * scale), round(y * scale)) for x, y in points] if points is not None else numbers(grey)
+    # A number printed across a bridge says the space is one room there: that bridge goes
+    _, spans = cv2.connectedComponents(bridge.astype(np.uint8), connectivity=8)
+    for x, y in seeds:
+        if 0 <= y < h and 0 <= x < w:
+            for crossed in np.unique(spans[max(0, y - 6):y + 7, max(0, x - 9):x + 10]):
+                if crossed: bridge[spans == crossed] = False
+    free = ~wall & ~bridge
     depth = cv2.distanceTransform((~wall).astype(np.uint8), cv2.DIST_L2, 3)
     # Spaces as the walls alone enclose them, and the pieces the bridges cut them into
     _, whole = cv2.connectedComponents((~wall).astype(np.uint8), connectivity=4)
     count, parts, stats, _ = cv2.connectedComponentsWithStats(free.astype(np.uint8), connectivity=4)
     edge = lambda grid: set(np.unique(np.concatenate([grid[0], grid[-1], grid[:, 0], grid[:, -1]]))) - {0}
     open_air, rim = edge(whole), edge(parts)
-    seeds = [(round(x * scale), round(y * scale)) for x, y in points] if points is not None else numbers(grey)
     def stand(x, y):
         """A number printed across a bridge or a wall line stands in the nearest open place."""
         if not (0 <= y < h and 0 <= x < w): return None
@@ -163,8 +197,9 @@ def rooms(colour, reader="cubicasa", points=None):
         things = [name for name, where in seen.get("things", {}).items() if (where & mask.astype(bool)).sum() >= 40]
         found.append({"n": i, "at": [round(x / w, 4), round(y / h, 4)], "shape": [[round(px / w, 4), round(py / h, 4)] for px, py in shape], "share": round(int(mine.sum()) / total, 3),
                       "doors": sorted(joined[i]), "windows": windows[i], "things": things})
+    found += outdoors(grey, wall, owner)
     # doors are kept by the rooms' final names
-    name = {r["n"]: f"r{k}" for k, r in enumerate(found, 1)}
+    name = {r["n"]: f"r{k}" for k, r in enumerate(found, 1) if r["n"] > 0}
     for r in found: r["doors"] = sorted({"outside" if d < 0 else name[d] for d in r["doors"] if d < 0 or d in name}); del r["n"]
     return found
 
@@ -179,7 +214,7 @@ def stored(picture):
     kept = place(picture)
     if not kept.exists(): return None
     known = json.loads(kept.read_text(encoding="utf-8"))
-    return known if known.get("format") == 4 else None
+    return known if known.get("format") == 5 else None
 
 
 def outline(picture, reader="cubicasa"):
@@ -189,7 +224,7 @@ def outline(picture, reader="cubicasa"):
     if known: return known
     colour = cv2.imread(str(picture))
     if colour is None: raise RuntimeError("this file is not a picture the pipeline can read")
-    result = {"format": 4, "reader": reader, "rooms": [{"id": f"r{i}", **r} for i, r in enumerate(rooms(colour, reader), 1)], "names": {}}
+    result = {"format": 5, "reader": reader, "rooms": [{"id": f"r{i}", **r} for i, r in enumerate(rooms(colour, reader), 1)], "names": {}}
     kept = place(picture); kept.parent.mkdir(parents=True, exist_ok=True); kept.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8"); return result
 
 
