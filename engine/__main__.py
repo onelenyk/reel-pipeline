@@ -7,6 +7,7 @@
   beat PROJECT KIND FROM TO [FILE|TEXT]   add your own beat over the words FROM..TO: backdrop, cutaway (with a picture), title (with a text), zoom
   unbeat PROJECT ID           remove a beat
   replan PROJECT              ask the AI for the montage again, keeping the words and the cuts
+  rooms PICTURE               find the rooms of a floor plan; writes PICTURE.rooms.json and a picture to look at in out/
   show PROJECT                what the project holds: the text, the beats and the open requests
   serve [PORT]                the web page: watch the pipeline, edit the text, answer requests, render
 """
@@ -49,6 +50,12 @@ def usable(video):
 def heard(transcript):
     if not transcript["words"]: raise ValueError("no speech was heard in this video")
     return transcript
+
+
+def rooms(picture):
+    from . import plan
+    picture = Path(picture); found = plan.outline(picture); seen = HOME / "out" / f"{picture.stem}.rooms.jpg"
+    seen.parent.mkdir(exist_ok=True); plan.draw(picture, found, seen); say(f"{len(found['rooms'])} rooms; look at {seen}")
 
 
 def replan(folder):
@@ -100,6 +107,6 @@ def serve(port="8787"):
 
 
 if __name__ == "__main__":
-    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "replan": replan, "serve": serve}
+    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "replan": replan, "rooms": rooms, "serve": serve}
     if len(sys.argv) < 2 or sys.argv[1] not in commands or (len(sys.argv) < 3 and sys.argv[1] != "serve"): sys.exit(__doc__)
     commands[sys.argv[1]](*sys.argv[2:])

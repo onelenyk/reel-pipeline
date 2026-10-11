@@ -3,11 +3,20 @@
 #   ./reel new media/IMG_7821.MOV          make a project from a raw take (transcribe, suggest)
 #   ./reel render projects/IMG_7821        build the video from the project document
 #   ./reel serve                           the web page at http://127.0.0.1:8787
+#   ./reel rooms media/kit/plan.jpg       find the rooms of a floor plan
+#   ./reel plans-setup                     fetch the plan reader (CubiCasa5k: non-commercial use only), once
 #   ./reel test                            the engine's tests
 #   ./reel e2e [WORDS] [--ai] [--fresh]    end to end: generated takes through the real service (see e2e/run.py)
 #   ./reel lab probe /in/IMG_7821.MOV      the experiments from lab/lab.py
 cd "$(dirname "$0")" || exit 1
 if [ "$1" = "lab" ]; then shift; exec docker run --rm --env-file .env -v "$PWD/media":/in:ro -v "$PWD":/work --entrypoint python reel /work/lab/lab.py "$@"; fi
+if [ "$1" = "plans-setup" ]; then
+  # The network that reads walls, doors and windows. Its code and weights are CC BY-NC 4.0 and stay out of the repository
+  mkdir -p models/cubicasa && cd models/cubicasa || exit 1
+  [ -d repo ] || git clone -q --depth 1 https://github.com/CubiCasa/CubiCasa5k.git repo || exit 1
+  [ -s weights.pkl ] || curl -fL -o weights.pkl "https://drive.usercontent.google.com/download?id=1gRB7ez1e4H7a9Y09lLqRuna0luZO5VRK&export=download&confirm=t" || exit 1
+  echo "the plan reader is in models/cubicasa"; exit 0
+fi
 if [ "$1" = "test" ]; then exec docker run --rm -v "$PWD":/work --entrypoint python reel -m unittest discover -s tests -v; fi
 if [ "$1" = "e2e" ]; then
   # The spoken part of the test takes comes from the Mac's own Ukrainian voice; everything else happens in the container

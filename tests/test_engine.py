@@ -173,3 +173,33 @@ class Suggestions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Rooms(unittest.TestCase):
+    """Rooms of a plan, with a reader that takes the drawn black lines for walls."""
+
+    def setUp(self):
+        import numpy as np
+        from engine import plan
+        self.plan = plan; plan.READERS["ink"] = lambda colour: colour[:, :, 0] < 100
+        # Two rooms side by side in one box, joined by a doorway in the wall between them
+        sheet = np.full((400, 600, 3), 255, np.uint8); sheet[50:60, 50:550] = 0; sheet[340:350, 50:550] = 0; sheet[50:350, 50:60] = 0; sheet[50:350, 540:550] = 0
+        sheet[50:150, 295:305] = 0; sheet[210:350, 295:305] = 0
+        self.sheet = sheet
+
+    def area(self, room): 
+        import cv2, numpy as np
+        return cv2.contourArea((np.array(room["shape"]) * (600, 400)).astype(np.float32))
+
+    def test_a_door_the_reader_marks_parts_two_rooms(self):
+        self.assertEqual(len(self.plan.rooms(self.sheet, "ink", points=[])), 1)  # an open doorway and no numbers: one space
+        self.sheet[150:210, 295:305] = 0; found = self.plan.rooms(self.sheet, "ink", points=[])
+        self.assertEqual(len(found), 2)
+        for room in found: self.assertAlmostEqual(self.area(room), 235 * 280, delta=0.06 * 235 * 280)
+
+    def test_two_numbers_in_one_space_divide_it(self):
+        sheet = self.sheet.copy(); sheet[50:350, 295:305] = 255; sheet[50:60, 295:305] = 0; sheet[340:350, 295:305] = 0; sheet[50:120, 295:305] = 0; sheet[280:350, 295:305] = 0
+        self.assertEqual(len(self.plan.rooms(sheet, "ink", points=[(150, 200)])), 1)
+        halves = self.plan.rooms(sheet, "ink", points=[(150, 200), (450, 200)])
+        self.assertEqual(len(halves), 2)
+        for room in halves: self.assertAlmostEqual(self.area(room), 240 * 280, delta=0.12 * 240 * 280)

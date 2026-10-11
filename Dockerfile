@@ -9,6 +9,8 @@ RUN mkdir -p /opt/rnnoise && curl -fsSL -o /opt/rnnoise/std.rnnn https://raw.git
 RUN mkdir -p /opt/renderer && cd /opt/renderer && npm init -y >/dev/null && npm install --no-audit --no-fund @napi-rs/canvas@0.1.65 >/dev/null
 # Person matting (cutting the speaker out of the background)
 RUN pip install --no-cache-dir torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cpu
+# Floor plans: finding walls and rooms in a picture
+RUN pip install --no-cache-dir "opencv-python-headless<4.11" "numpy<2"
 ENV TORCH_HOME=/work/models/torch NODE_PATH=/opt/renderer/node_modules PYTHONPATH=/work PYTHONUNBUFFERED=1
 WORKDIR /work
 ENTRYPOINT ["python", "-m", "engine"]
