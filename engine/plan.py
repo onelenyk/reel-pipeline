@@ -16,6 +16,8 @@ SIDE = 1000   # plans are worked on at this size: the widths below are in these 
 RUN = 15      # a wall line runs at least this far
 GAP = 0.09    # the widest gap in a wall line that is still bridged, as a share of the plan's longer side
 SMALL = 0.004 # a space smaller than this share of the plan is not a room of its own
+LOOSE = 0.08 # a piece of wall smaller than this share of the main walls, and apart from them, is not a wall
+OPEN = 0.3    # a room with more of its edge than this open to a neighbour is not a room of its own
 _net = None
 
 
@@ -81,6 +83,12 @@ def rooms(colour, reader="cubicasa", points=None):
     grey = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY); h, w = grey.shape
     seen = READERS[reader](small); seen = seen if isinstance(seen, dict) else {"border": seen}
     wall = cv2.morphologyEx(seen["border"].astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    # A streak of "wall" that stands apart from the house's walls is the edge of a rug or a shadow, not a wall
+    count, pieces, stats, _ = cv2.connectedComponentsWithStats(wall, connectivity=8)
+    if count > 2:
+        largest = max(stats[1:, cv2.CC_STAT_AREA])
+        for i in range(1, count):
+            if stats[i, cv2.CC_STAT_AREA] < LOOSE * largest: wall[pieces == i] = 0
     gap = round(GAP * max(h, w)); bridge = np.zeros_like(wall)
     for along, across in (((1, RUN), (1, gap)), ((RUN, 1), (gap, 1))):
         bridge |= cv2.morphologyEx(cv2.morphologyEx(wall, cv2.MORPH_OPEN, np.ones(along, np.uint8)), cv2.MORPH_CLOSE, np.ones(across, np.uint8))
@@ -120,6 +128,17 @@ def rooms(colour, reader="cubicasa", points=None):
             if here or (space in open_air and stats[piece, cv2.CC_STAT_AREA] >= SMALL * h * w): claim(part, here)
     spread(owner, free, depth)    # numbers that share a space divide it
     spread(owner, ~wall, depth)   # small leftovers go to a neighbour, through the bridges
+    # A division is kept only where walls bear it out: a part whose edge is mostly open to its neighbour was cut on a guess
+    # (two numbers in one space with no wall line between them), and goes back to that neighbour
+    while True:
+        for i in range(1, len(at) + 1):
+            mine = owner == i
+            if not mine.any(): continue
+            edge = cv2.dilate(mine.astype(np.uint8), np.ones((7, 7), np.uint8)).astype(bool) & ~mine
+            beyond = cv2.dilate((edge & ~wall).astype(np.uint8), np.ones((7, 7), np.uint8)).astype(bool) & ~mine & (owner > 0)
+            sides, sizes = np.unique(owner[beyond], return_counts=True)
+            if len(sides) and (edge & ~wall).sum() > OPEN * edge.sum(): owner[mine] = int(sides[sizes.argmax()]); break
+        else: break
     # What tells the rooms apart: which rooms a door joins, where the windows are, what stands inside
     joined = {i: set() for i in range(1, len(at) + 1)}; windows = dict.fromkeys(joined, 0)
     for what in ("doors", "windows"):
@@ -136,6 +155,7 @@ def rooms(colour, reader="cubicasa", points=None):
     total = sum(int((owner == i).sum()) for i in joined) or 1; found = []
     for i, (x, y) in enumerate(at, 1):
         mine = owner == i; mask = cv2.morphologyEx(mine.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+        if not mine.any(): continue
         outlines, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not outlines: continue
         shape = cv2.approxPolyDP(max(outlines, key=cv2.contourArea), 0.004 * SIDE, True).reshape(-1, 2)
@@ -159,7 +179,7 @@ def stored(picture):
     kept = place(picture)
     if not kept.exists(): return None
     known = json.loads(kept.read_text(encoding="utf-8"))
-    return known if known.get("format") == 2 else None
+    return known if known.get("format") == 4 else None
 
 
 def outline(picture, reader="cubicasa"):
@@ -169,7 +189,7 @@ def outline(picture, reader="cubicasa"):
     if known: return known
     colour = cv2.imread(str(picture))
     if colour is None: raise RuntimeError("this file is not a picture the pipeline can read")
-    result = {"format": 2, "reader": reader, "rooms": [{"id": f"r{i}", **r} for i, r in enumerate(rooms(colour, reader), 1)], "names": {}}
+    result = {"format": 4, "reader": reader, "rooms": [{"id": f"r{i}", **r} for i, r in enumerate(rooms(colour, reader), 1)], "names": {}}
     kept = place(picture); kept.parent.mkdir(parents=True, exist_ok=True); kept.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8"); return result
 
 
