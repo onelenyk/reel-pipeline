@@ -78,7 +78,7 @@ Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output
 
 ## Four kinds of check
 
-- `./reel test` after any change to `engine/`: 50 tests, under a second.
+- `./reel test` after any change to `engine/`: 48 tests, under a second.
 - `./reel page player|timeline|ask|rooms|zones|draw-zone|reshape-zone|peek|font|overlays|spaces|gallery [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
 - `./reel e2e` before trusting the whole: about eight minutes.
 - `lab/blind/`: forty takes whose right answer is known, spoken by local voices. `./reel run lab/blind/score.py` says what the review cut, what stays in the sound, which rooms and figures were found; `lab/blind/show.py` sends them through the running service with a floor plan each. About $0.40 of AI for a full run.
