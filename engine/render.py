@@ -1,7 +1,7 @@
 """Builds the finished video from a project document: ffmpeg cuts, colours, frames and mixes; the Node renderer draws."""
 import hashlib, json, subprocess, tempfile, time
 from pathlib import Path
-from . import fonts, matte, media, project
+from . import fonts, matte, media, project, sounds
 
 RENDERER = Path(__file__).resolve().parent.parent / "renderer" / "render.mjs"
 ZOOM = 0.12   # how much closer a zoom beat comes
@@ -40,7 +40,7 @@ def still(folder, t, out):
         tmp = Path(tmp); (tmp / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
         drawn = subprocess.run(["node", str(RENDERER), str(tmp / "timeline.json"), "--stills", f"{t:.3f}", str(tmp / "layer")], capture_output=True, text=True)
         if drawn.returncode: raise RuntimeError("the graphics could not be drawn: " + drawn.stderr[-300:])
-        layer = tmp / f"layer-{t:.1f}.png"
+        layer = next(tmp.glob("layer-*.png"))   # the renderer names it by the time, rounded its own way
         # where this moment is in the take: the stretches that stay, laid end to end
         at, passed = 0.0, 0.0
         for a, b in timeline["spans"]:
@@ -98,6 +98,9 @@ def build(folder):
     level = doc["style"]["level"]
     dip = "*".join(f"clip(abs(t-{edge:.3f})/{FADE},0,1)" for a, b in timeline["spans"][:60] for edge in (a, b))
     audio = f"volume='{dip}':eval=frame,aselect='{keep}',asetpts=N/SR/TB,highpass=f=80," + ("arnndn=m=/opt/rnnoise/std.rnnn," if doc.get("audio", {}).get("denoise") == "light" else "") + f"loudnorm=I={level + 1.5}:TP=-1.5:LRA=7,aresample=48000"
+    # The sounds of what appears on screen go under the voice after it is levelled, so they do not change how loud it is
+    effects = sounds.track(timeline, folder / "sounds.wav")
+    if effects: inputs += ["-i", str(effects)]; audio += f"[voice];[voice][{inputs.count('-i') - 1}:a]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.89:level=disabled"
     out = folder / "render.mp4"; draft = folder / "render.part.mp4"
     started = time.time()
     project.progress(folder, "render", "running", note="building the video")

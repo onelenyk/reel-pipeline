@@ -207,6 +207,10 @@ DECORATE = """Ти режисер коротких вертикальних ві
   Підпис складай лише з того, що мовець сказав у цьому місці; не вигадуй фактів.
 - {"kind": "list", "from": N, "to": N, "title": "У будинку", "items": [{"at": N, "text": "Гардеробна"}, {"at": N, "text": "Пральня"}]}
   Список, пункти якого з'являються по черзі, коли мовець їх називає (2-4 пункти, кожен 1-2 слова). Лише там, де мовець справді перелічує.
+- {"kind": "break", "from": N, "text": "Планування"}
+  Перебивка: на секунду кадр перекриває заставка з назвою наступної частини розповіді (1-2 слова: «Локація», «Будинок», «Планування», «Ділянка», «Ціна»).
+  Став її на перше слово речення, з якого мовець переходить до нової теми. Якщо у відео понад 80 слів, дай обов'язково 2-3 перебивки: не на самому початку, між ними щонайменше 30 слів.
+  Перебивки не входять у кількість накладок нижче.
 
 Правила:
 - приблизно {count} накладок на все відео (не більше), розподілених рівномірно від початку до кінця; між сусідніми щонайменше 8 слів.
@@ -235,11 +239,18 @@ def decorate(words, skip=(), busy=(), fresh=False):
         near = stem(" ".join(words[i]["text"] for i in range(max(0, first - 12), min(len(words), last + 13)) if i not in skip))
         return bool(stem(text)) and len(stem(text) & near) >= max(1, len(stem(text)) - 1)
     def icon(value): found = ICONS.findall(value) if isinstance(value, str) else []; return value.strip()[:8] if found and len(value.strip()) <= 8 else None
-    out, blocked = [], {i for a, b in busy for i in range(a, b + 1)}
+    out, breaks, blocked = [], [], {i for a, b in busy for i in range(a, b + 1)}
     for o in raw.get("overlays", []) if isinstance(raw, dict) and isinstance(raw.get("overlays"), list) else []:
         if not isinstance(o, dict): continue
-        first, last = o.get("from"), o.get("to")
+        first = o.get("from"); last = first if o.get("kind") == "break" else o.get("to")
         if not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(words) and i not in skip for i in (first, last)) or not first <= last <= first + 40: continue
+        if o.get("kind") == "break":
+            # a break stands where a sentence starts, not at the very beginning, and not close to another
+            text = " ".join(str(o.get("text") or "").split()[:2])[:18]; before = next((words[i]["text"] for i in range(first - 1, -1, -1) if i not in skip), "")
+            if text and len(breaks) < 3 and first not in blocked and (re.search(r"[.!?…]$", before) or words[first]["text"][:1].isupper()) and kept.index(first) >= 10 and all(abs(first - b["from"]) >= 25 for b in breaks):
+                breaks.append({"from": first, "to": first, "kind": "break", "text": text, "by": "ai", "accepted": True})
+            continue
+        if len(out) >= count: continue
         if any(i in blocked for i in range(first, last + 1)) or any(first <= k["to"] + 1 and k["from"] <= last + 1 for k in out): continue
         if o.get("kind") == "number":
             # a range ("7-8 метрів") is a number too, and is kept as a range
@@ -256,9 +267,8 @@ def decorate(words, skip=(), busy=(), fresh=False):
             if len(items) < 2: continue
             item = {"kind": "list", "title": str(o.get("title") or "").strip()[:20] or None, "items": sorted(items, key=lambda i: i["at"])}; last = max(last, items[-1]["at"])
         else: continue
-        out.append({"id": f"o{len(out) + 1}", "from": first, "to": last, **item, "by": "ai", "accepted": True})
-        if len(out) >= count: break
-    return out
+        out.append({"from": first, "to": last, **item, "by": "ai", "accepted": True})
+    return [{"id": f"o{i}", **o} for i, o in enumerate(sorted(out + breaks, key=lambda o: o["from"]), 1)]
 
 
 def enabled():

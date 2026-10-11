@@ -249,6 +249,19 @@ function drawOverlay(o, t) {
   ctx.restore();
 }
 
+// ---------- break: a dark card with the name of the next part slides across the frame and away ----------
+function drawBreak(b, t) {
+  const coming = t < (b.start + b.end) / 2, k = coming ? ease((t - b.start) / 0.26) : ease((b.end - t) / 0.26);
+  const panel = (inset, colour) => { ctx.fillStyle = colour; ctx.beginPath(); ctx.moveTo(-W * 0.18 + inset, 0); ctx.lineTo(W * 1.34 - inset, 0); ctx.lineTo(W * 1.18 - inset, H); ctx.lineTo(-W * 0.34 + inset, H); ctx.closePath(); ctx.fill(); };
+  ctx.save(); ctx.translate((coming ? -1 : 1) * (1 - k) * W * 1.4, 0);
+  panel(0, ACCENT); panel(W * 0.035, "#101216");
+  const text = b.text.toUpperCase(), size = fitted(ctx, text, 170, W * 0.8), grow = 0.85 + 0.15 * back((t - b.start - 0.12) / 0.4);
+  ctx.translate(W / 2, H * 0.42); ctx.scale(grow, grow); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `${WEIGHT} ${size}px ${FONT}`; ctx.fillStyle = ACCENT; ctx.fillText(text, 0, 0);
+  const bar = ctx.measureText(text).width * 0.5 * ease((t - b.start - 0.2) / 0.35); plate(ctx, -bar / 2, size * 0.78, bar, 12, 6, "#fff");
+  ctx.restore();
+}
+
 // ---------- title: the accent colour with a glow, a small overshoot on the way in and a light sweep across it ----------
 const titleLayer = createCanvas(W, Math.round(H * 0.12));
 const titleCtx = titleLayer.getContext("2d");
@@ -356,12 +369,13 @@ function drawFrame(t) {
   const titles = timeline.beats.filter((b) => b.kind === "title" && t >= b.start && t <= b.end);
   const line = timeline.lines.find((l) => t >= l.start - 0.06 && t < l.end);
   const overlays = (timeline.overlays ?? []).filter((o) => t >= o.start && t <= o.end);
-  if (!pictureNow.length && !fullNow.length && !titles.length && !line && !overlays.length) return false;
+  const breaks = (timeline.breaks ?? []).filter((b) => t >= b.start && t <= b.end);
+  if (!pictureNow.length && !fullNow.length && !titles.length && !line && !overlays.length && !breaks.length) return false;
   ctx.clearRect(0, 0, W, H);
   const clock = (what, work) => { if (!process.env.REEL_PROFILE) return work(); const a = performance.now(); work(); parts[what] = (parts[what] ?? 0) + performance.now() - a; };
   clock("pictures", () => { fullNow.forEach((beat) => (beat.plan ? drawPlan(beat, t) : drawFull(beat, t))); pictureNow.forEach((beat) => drawPicture(beat, t)); });
   clock("titles", () => titles.forEach((beat) => drawTitle(beat, t)));
-  clock("overlays", () => overlays.forEach((o) => drawOverlay(o, t)));
+  clock("overlays", () => { overlays.forEach((o) => drawOverlay(o, t)); breaks.forEach((b) => drawBreak(b, t)); });
   clock("subtitles", () => { if (line) drawSubtitle(line, t, fullNow.some((b) => t >= b.start + 0.1 && t <= b.end - 0.1 && (b.plan || lightPictures.has(b.file)))); });
   return true;
 }

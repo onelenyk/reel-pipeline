@@ -331,6 +331,20 @@ class Fonts(unittest.TestCase):
         self.assertEqual(project.clean_style({})["font"], "Inter")
 
 
+class Sounds(unittest.TestCase):
+    def test_everything_that_appears_has_its_sound_and_a_style_can_have_none(self):
+        import tempfile, wave
+        from engine import sounds
+        line = {"seconds": 12, "style": {"sounds": "quiet"}, "beats": [{"kind": "title", "start": 1.0}, {"kind": "full", "start": 6.0}, {"kind": "zoom", "start": 3.0}],
+                "overlays": [{"kind": "number", "start": 2.0}, {"kind": "sticker", "start": 4.0}], "breaks": [{"start": 9.0, "end": 10.0}]}
+        self.assertEqual([name for _, name in sounds.events(line)], ["thud", "pop", "chime", "pop", "whoosh", "whoosh", "whoosh"])
+        with tempfile.TemporaryDirectory() as tmp:
+            out = sounds.track(line, Path(tmp) / "s.wav")
+            with wave.open(str(out)) as file: self.assertEqual((file.getframerate(), file.getnframes()), (48000, 12 * 48000))
+            self.assertEqual(Path(out).read_bytes(), Path(sounds.track(line, Path(tmp) / "again.wav")).read_bytes())   # the same every time
+            self.assertIsNone(sounds.track({**line, "style": {"sounds": "off"}}, Path(tmp) / "none.wav"))
+
+
 class Overlays(unittest.TestCase):
     """What the AI proposes to lay over the speaker is checked against the words before it is kept."""
 
@@ -345,6 +359,11 @@ class Overlays(unittest.TestCase):
     def test_a_number_must_be_one_that_was_said(self):
         made = self.kept([{"kind": "number", "from": 2, "to": 4, "value": "154", "unit": "м²"}, {"kind": "number", "from": 8, "to": 9, "value": "7-8", "unit": "м"}, {"kind": "number", "from": 12, "to": 14, "value": "200", "unit": "м"}])
         self.assertEqual([(o["value"], o["unit"]) for o in made], [("154", "м²"), ("7-8", "м")])
+
+    def test_a_break_stands_where_a_sentence_starts_and_not_at_the_very_beginning(self):
+        self.words = [{"text": t} for t in ("Привіт, це будинок біля лісу. " + "Тут тихо і зелено навколо, є річка. " * 2 + "Тепер про планування будинку і кімнати.").split()]
+        made = self.kept([{"kind": "break", "from": 0, "text": "Початок"}, {"kind": "break", "from": 19, "text": "Планування будинку докладно"}, {"kind": "break", "from": 21, "text": "Посеред речення"}])
+        self.assertEqual([(o["kind"], o["from"], o["text"]) for o in made], [("break", 19, "Планування будинку")])
 
     def test_a_sticker_is_made_of_what_was_said_and_not_laid_over_a_picture(self):
         made = self.kept([{"kind": "sticker", "from": 11, "to": 15, "text": "Біля лісу", "icon": "🌲"}, {"kind": "sticker", "from": 2, "to": 4, "text": "Басейн і сауна", "icon": "🏊"}])

@@ -122,6 +122,7 @@
   .zone.on input { outline: 2px solid var(--brand); }
   .zone { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
   .zone input { flex: 1; height: 34px; }
+  input.ov { height: 32px; padding: 0 9px; margin: 0 6px 4px 0; }
   .zone input.guess { color: var(--muted); font-style: italic; }
   .zone small { flex: none; width: 76px; color: var(--subtle); font-size: 11px; }
   .card.mark { cursor: pointer; }
@@ -201,7 +202,7 @@
     <div class="tab" data-tab="montage">
     <section id="needsBox"><h2>Потрібно для цього відео</h2><div id="needs"></div></section>
     <section><h2>Вставки</h2><div id="beats"></div></section>
-    <section><h2>Накладки</h2><p class="hint" style="margin:0 0 10px">Числа, що набігають, наліпки й списки поверх мовця: з'являються на слові, про яке йдеться.</p><div id="overlays"></div>
+    <section><h2>Накладки</h2><p class="hint" style="margin:0 0 10px">Числа, що набігають, наліпки й списки поверх мовця та перебивки між темами: з'являються на слові, про яке йдеться. Текст можна виправити просто тут.</p><div id="overlays"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button id="decorate">Придумати накладки заново (AI)</button></div></section>
     </div>
     <div class="tab" data-tab="plan">
@@ -488,11 +489,12 @@ function draw(force) {
     return `<div class="card"><div class="what">${esc(text.length > 110 ? text.slice(0, 110) + "…" : text)}<small>${WHY[c.why] || ""}${c.note ? ": " + esc(c.note) : ""} · ${out ? "вирізано" : "повернуто"}</small></div>${(() => { const before = words.slice(0, c.from).reverse().find((w) => w.at != null), at = out ? (before ? Math.max(0, before.at - 1.2) : 0) : when(c.from, c.to); return at != null ? `<button class="jump" data-seek="${at}" aria-label="Послухати це місце">▶ ${out ? "стик" : "послухати"}</button>` : ""; })()}<button data-cut="${c.from}-${c.to}" data-back="${out ? 1 : ""}">${out ? "Повернути" : "Вирізати"}</button></div>`;
   }).join("");
   drawPlans(); drawTabs(); loadFonts();
-  const KINDS = { number: "Число", sticker: "Наліпка", list: "Список" }, live = new Set(state.shown_overlays || []);
+  const KINDS = { number: "Число", sticker: "Наліпка", list: "Список", break: "Перебивка" }, field = (o, key, label, width) => `<input type="text" class="ov" data-overlay-field="${o.id}:${key}" value="${esc(o[key] || "")}" placeholder="${label}" aria-label="${label}" style="width:${width}">`, live = new Set(state.shown_overlays || []);
   $("decorate").disabled = !!state.busy; $("decorate").textContent = state.busy === "decorate" ? "AI думає…" : "Придумати накладки заново (AI)";
   $("overlays").innerHTML = (state.overlays || []).slice().sort((a, b) => a.from - b.from).map((o) => {
     const said = words.slice(o.from, o.to + 1).filter((w) => w.at != null), at = said.length ? said[0].at : null;
-    const what = o.kind === "number" ? `${esc(o.value)} ${esc(o.unit || "")}${o.caption ? " · " + esc(o.caption) : ""}` : o.kind === "list" ? `${esc(o.title || "")}: ${o.items.map((i) => esc(i.text)).join(", ")}` : `${esc(o.icon || "")} ${esc(o.text)}`;
+    const what = o.kind === "number" ? field(o, "value", "число", "4.5em") + field(o, "unit", "одиниця", "4em") + field(o, "caption", "підпис", "11em") : o.kind === "list" ? field(o, "title", "заголовок", "9em") + ` ${o.items.map((i) => esc(i.text)).join(", ")}`
+      : o.kind === "break" ? field(o, "text", "назва частини", "12em") : field(o, "icon", "емодзі", "3em") + field(o, "text", "підпис", "13em");
     return `<div class="card${o.accepted ? "" : " off"}"><span class="tag">${KINDS[o.kind]}</span><div class="what">${what}<small>${o.accepted ? (live.has(o.id) ? "на словах: " + esc(said.map((w) => w.text).join(" ").slice(0, 50)) : "не показується: у цей час кадр зайнятий іншим") : "вимкнено"}</small></div>
       ${at != null ? `<button class="jump" data-seek="${at + 0.9}">▶ ${mmss(at)}</button>` : ""}<button data-overlay="${o.id}" data-on="${o.accepted ? 0 : 1}">${o.accepted ? "Вимкнути" : "Увімкнути"}</button><button class="quiet" data-overlay-remove="${o.id}">Видалити</button></div>`;
   }).join("") || `<p class="hint">Накладок немає.</p>`;
@@ -508,6 +510,7 @@ function draw(force) {
     <div class="row"><span></span><span class="hint" style="margin:0;width:auto;flex:1">Шрифт завантажується з Google Fonts один раз і лишається на цьому комп'ютері. Не кожен шрифт має українські літери: чого бракує, домальовується звичайним.</span></div>
     <div class="row"><span>Субтитри</span>${seg("subtitle_size", [["s", "Малі"], ["m", "Середні"], ["l", "Великі"]])}${seg("subtitle_place", [["low", "Внизу"], ["middle", "Посередині"]])}</div>
     <div class="row"><span>Ритм кадру</span>${seg("rhythm", [[true, "Міняти крупність"], [false, "Один план"]])}</div>
+    <div class="row"><span>Звуки появи</span>${seg("sounds", [["off", "Без звуків"], ["quiet", "Тихо"], ["normal", "Чутно"]])}</div>
     <div class="row"><span>Слова</span>${seg("karaoke", [[true, "Загоряються по черзі"], [false, "Усі одразу"]])}</div>
     <div class="row"><span>Титр</span>${seg("title_glow", [[true, "Зі світінням"], [false, "Без світіння"]])}</div>
     <div class="row"><span>Картинка зверху</span>${seg("picture", [["card", "Картка"], ["edge", "На всю ширину"], ["polaroid", "Полароїд"], ["circle", "Коло"], ["mix", "По черзі"]])}</div>
@@ -677,6 +680,7 @@ async function saveWord(input) {
 }
 
 document.addEventListener("change", async (e) => {
+  if (e.target.dataset.overlayField) { const [id, key] = e.target.dataset.overlayField.split(":"); await edit({ overlay: { id, [key]: e.target.value } }); return; }
   if (e.target.id === "fontPick") { await edit({ style: { font: e.target.value } }); return; }
   const input = e.target.closest && e.target.closest("input[data-zone]");
   if (input && await edit({ zone: { asset: input.dataset.plan, room: input.dataset.zone, name: input.value } })) peek(litAt(input.dataset.zone));
@@ -684,6 +688,7 @@ document.addEventListener("change", async (e) => {
 document.addEventListener("focusin", (e) => { const input = e.target.closest && e.target.closest("input[data-zone]"); document.querySelectorAll(".plan polygon.hot").forEach((x) => x.classList.remove("hot")); if (input) { const shape = document.querySelector(`polygon[data-room="${input.dataset.zone}"][data-plan="${input.dataset.plan}"]`); if (shape) shape.classList.add("hot"); } });
 document.addEventListener("click", async (e) => {
   if (e.target.id === "decorate") { await act(`/api/projects/${name}/decorate`, { method: "POST" }); return; }
+  if (e.target.closest("[data-overlay-field]")) return;
   if (e.target.closest("[data-overlay]")) { const b = e.target.closest("[data-overlay]"); await edit({ overlay: { id: b.dataset.overlay, accepted: b.dataset.on === "1" } }); return; }
   if (e.target.closest("[data-overlay-remove]")) { await edit({ overlay: { id: e.target.closest("[data-overlay-remove]").dataset.overlayRemove, remove: true } }); return; }
   if (e.target.id === "fontSet") { const wanted = $("fontOther").value.trim(); if (wanted) await edit({ style: { font: wanted } }); return; }

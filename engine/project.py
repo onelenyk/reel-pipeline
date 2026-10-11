@@ -13,8 +13,8 @@ MIN_BEAT = {"title": 2.6, "cutaway": 2.5, "backdrop": 2.5, "full": 2.5, "zoom": 
 
 
 # ---------- style: how the graphics and the sound of a video are finished; saved styles are reused across videos ----------
-STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "level": -15}
-CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge", "polaroid", "circle", "mix")}
+STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "sounds": "quiet", "level": -15}
+CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge", "polaroid", "circle", "mix"), "sounds": ("off", "quiet", "normal")}
 
 
 def clean_style(raw):
@@ -76,6 +76,7 @@ def load(folder):
 
 
 OVERLAY_LEAST, OVERLAY_MOST = 2.4, 5.0  # seconds an overlay stays on screen
+BREAK, BREAK_APART = 1.0, 6.0   # seconds a break card is on screen, and the least between two
 KEPT = 40  # earlier versions of a document kept in its history folder
 
 
@@ -155,7 +156,15 @@ def resolve(doc):
     # Overlays: each appears on its word and stays a little after the thought ends. One that would fall on a picture
     # covering the frame, or on the title, is not shown: the frame is already full there.
     full = [(b["start"], b["end"]) for b in beats if b["kind"] in ("full", "cutaway", "title")]; overlays = []
+    # Breaks: for a second a card with the name of the next part of the story covers the frame, where nothing else does
+    breaks = []
+    for o in sorted(doc.get("overlays", []), key=lambda o: o["from"]):
+        if o["kind"] != "break" or not o.get("accepted") or o["from"] not in kept_ids: continue
+        start = round(max(0.0, at(words[o["from"]]["start"]) - 0.2), 3); end = round(start + BREAK, 3)
+        if end > total - 0.5 or any(a < end + 0.3 and start - 0.3 < b for a, b in full) or (breaks and start - breaks[-1]["end"] < BREAK_APART): continue
+        breaks.append({"id": o["id"], "text": o["text"], "start": start, "end": end})
     for o in doc.get("overlays", []):
+        if o["kind"] == "break": continue
         inside = [w for w in words[o["from"]:o["to"] + 1] if w["id"] in kept_ids]
         if not o.get("accepted") or not inside or inside[0]["id"] != o["from"]: continue
         start = at(inside[0]["start"]); end = min(total, max(at(inside[-1]["end"]) + 0.9, start + OVERLAY_LEAST)); end = min(end, start + OVERLAY_MOST)
@@ -171,7 +180,7 @@ def resolve(doc):
         item = {k: o[k] for k in ("id", "kind", "value", "unit", "caption", "text", "icon", "title") if o.get(k) is not None}
         if o["kind"] == "list": item["items"] = [{"text": i["text"], "start": max(start, at(words[i["at"]]["start"]))} for i in o["items"] if i["at"] < len(words) and words[i["at"]]["id"] in kept_ids]
         overlays.append({**item, "start": start, "end": end, "side": "left" if len(overlays) % 2 == 0 else "right"})
-    return {"spans": spans, "seconds": round(total, 3), "lines": lines, "beats": beats, "overlays": overlays, "punches": punches, "style": doc["style"], **doc["output"]}
+    return {"spans": spans, "seconds": round(total, 3), "lines": lines, "beats": beats, "overlays": overlays, "breaks": breaks, "punches": punches, "style": doc["style"], **doc["output"]}
 
 
 # ---------- changes to a project ----------
