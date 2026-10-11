@@ -5,7 +5,7 @@ changes to words are never applied until a person accepts them, because the mode
 """
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-import base64, hashlib, json, os, re
+import base64, hashlib, json, os, re, time
 import requests
 from . import HOME
 
@@ -63,7 +63,15 @@ def ask(prompt, think=False, picture=None, sample=0, fresh=False):
             "messages": [{"role": "user", "content": prompt}]}
     if picture: body["messages"][0]["content"] = [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(picture).read_bytes()).decode()}}]
     if not think: body["temperature"] = TEMPERATURE
-    response = requests.post("https://api.deepseek.com/chat/completions", timeout=300, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"}, json=body)
+    for attempt in range(3):
+        # a connection that drops or a server that is busy is asked again; a refusal (a bad key, a bad request) is not
+        try:
+            response = requests.post("https://api.deepseek.com/chat/completions", timeout=300, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"}, json=body)
+            if response.status_code < 500 and response.status_code != 429: break
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ChunkedEncodingError):
+            if attempt == 2: raise
+        time.sleep(3 * (attempt + 1))
+    if response.status_code == 402: raise RuntimeError("the AI account has no money left: top it up at platform.deepseek.com, then run this step again")
     response.raise_for_status()
     answer = response.json()["choices"][0]["message"]["content"]
     if not answer.strip(): raise RuntimeError("the AI thought until its allowance ran out and gave no answer")

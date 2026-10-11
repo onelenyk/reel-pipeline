@@ -1,10 +1,13 @@
 """Takes written for a test, with the right answer known in advance.
 
-Each line of a take is spoken; "+" lines must stay in the finished text, "-" lines are failed attempts and asides that must go.
-`rooms` are the rooms the speaker walks through, `numbers` the figures worth showing on screen.
+A take is a list of lines, each spoken on its own. A line that must stay in the finished text has keep=True; the others are
+failed attempts and asides of a named kind. `rooms` are the rooms spoken of, `numbers` the figures worth showing on screen.
+Four takes are written by hand; the rest are put together by `generated()` from the same pieces every time.
 """
-SAMPLES = [
-    {"name": "flat", "rooms": ["передпокій", "кухня-вітальня", "спальня", "санвузол", "балкон"], "numbers": ["68", "9"], "lines": [
+import random
+
+HAND = [
+    {"name": "flat", "rooms": ["передпокій", "кухня-вітальня", "спальня", "санвузол", "балкон"], "numbers": ["68"], "lines": [
         "+ Привіт! Сьогодні показую двокімнатну квартиру в новому будинку біля метро.",
         "- Площа квартири шістдесят... ой.",
         "+ Площа квартири шістдесят вісім квадратних метрів, дев'ятий поверх.",
@@ -15,7 +18,7 @@ SAMPLES = [
         "+ Санвузол уже з ремонтом, плитка і сантехніка нові.",
         "+ І балкон, з якого видно парк.",
         "+ Пишіть у дірект, покажу квартиру наживо."]},
-    {"name": "townhouse", "rooms": ["тераса", "гардеробна"], "numbers": ["120", "2", "4"], "lines": [
+    {"name": "townhouse", "rooms": ["тераса", "гардеробна"], "numbers": ["120"], "lines": [
         "+ Таунхаус у Гореничах, десять хвилин від Києва.",
         "+ Сто двадцять квадратних метрів на двох поверхах.",
         "- На першому поверсі в нас кухня і... так, стоп.",
@@ -33,7 +36,7 @@ SAMPLES = [
         "+ До траси триста метрів асфальтованої дороги.",
         "+ Сусіди вже будуються, тож містечко швидко оживає.",
         "+ Документи готові, можна виходити на угоду хоч завтра."]},
-    {"name": "messy", "rooms": ["кухня", "спальня", "тераса"], "numbers": ["95", "2"], "lines": [
+    {"name": "messy", "rooms": ["кухня", "спальня", "тераса"], "numbers": ["95"], "lines": [
         "- Отже, будинок... ні.",
         "- Отже, цей будинок має...",
         "+ Отже, цей будинок має дев'яносто п'ять квадратних метрів і два санвузли.",
@@ -46,6 +49,71 @@ SAMPLES = [
         "- Дякую. Ну що, нормально вийшло?"]},
 ]
 
+# ---------- the pieces a generated take is made of ----------
+OPENINGS = ["Привіт! Сьогодні показую {what} {where}.", "Усім привіт, це {what} {where}.", "Дивіться, який варіант: {what} {where}.", "Сьогодні у нас {what} {where}.", "Вітаю! Покажу вам {what} {where}."]
+WHAT = ["будинок", "одноповерховий будинок", "таунхаус", "двокімнатну квартиру", "котедж", "сімейний будинок", "квартиру з ремонтом", "дуплекс"]
+WHERE = ["біля Києва", "у котеджному містечку", "поруч з лісом", "за десять хвилин від міста", "у тихому районі", "біля озера", "у новому житловому комплексі"]
+AREAS = {"45": "сорок п'ять", "68": "шістдесят вісім", "95": "дев'яносто п'ять", "120": "сто двадцять", "154": "сто п'ятдесят чотири", "210": "двісті десять", "86": "вісімдесят шість", "132": "сто тридцять два"}
+AREA = ["Загальна площа {n} квадратних метрів.", "Тут {n} квадратних метрів житлової площі.", "Площа складає {n} квадратних метрів."]
+PLOTS = {"4": "чотири сотки", "6": "шість соток", "8": "вісім соток", "10": "десять соток", "12": "дванадцять соток", "15": "п'ятнадцять соток"}
+PLOT = ["Ділянка {n}, є місце для саду.", "Навколо будинку {n} землі.", "До будинку йде ділянка, {n}."]
+ROOMS = {
+    "передпокій": ["Заходимо в передпокій, тут є місце під велику шафу.", "Починаємо з передпокою, він просторий і світлий."],
+    "кухня-вітальня": ["Далі кухня-вітальня з панорамними вікнами.", "Серце будинку це кухня-вітальня, тут збирається вся родина."],
+    "спальня": ["Спальня виходить у тихий двір, тут завжди спокійно.", "Головна спальня має власний вихід на балкон."],
+    "санвузол": ["Санвузол уже з ремонтом, плитка і сантехніка нові.", "Гостьовий санвузол розташований одразу біля входу."],
+    "гардеробна": ["Окрема гардеробна вмістить речі всієї родини.", "Поруч зі спальнею є велика гардеробна з вікном."],
+    "тераса": ["З вітальні є вихід на терасу, де можна снідати влітку.", "Простора тераса дивиться просто на сад."],
+    "балкон": ["З балкона відкривається вид на парк.", "Балкон засклений, тут можна зробити робоче місце."],
+    "пральня": ["Є окрема пральня, пральна машина не займає місце у ванній.", "Пральня розташована поруч із технічним приміщенням."],
+    "кабінет": ["Кабінет зручний для роботи з дому, тут тихо.", "На першому поверсі зробили кабінет з окремим входом."],
+    "дитяча": ["Дитяча кімната світла, вікна виходять на сонячний бік.", "Дитяча розрахована на двох дітей."],
+    "навіс": ["Перед будинком навіс на два автомобілі.", "Машини стоять під навісом, взимку це дуже зручно."],
+    "комора": ["Біля кухні є комора для запасів і техніки.", "Комора невелика, але дуже практична."],
+}
+FEATURES = ["Територія закрита, є охорона і відеонагляд.", "У будинку тепла підлога по всьому першому поверху.", "Стелі високі, три метри, тому багато повітря.", "Поруч школа, садочок і магазини.",
+            "Комунікації всі центральні, газ і електрика заведені.", "Ремонт зроблено повністю, можна заїжджати і жити.", "Вікна панорамні, тому вдень завжди світло.", "До лісу п'ять хвилин пішки.",
+            "Є власне укриття, що зараз дуже важливо.", "Опалення економне, рахунки взимку невеликі."]
+ENDINGS = ["Пишіть у дірект, покажу все наживо.", "Ось такий варіант, який точно знайде свого власника.", "Записуйтесь на перегляд, буду рада показати.", "Якщо сподобалось, пишіть, розповім про ціну.", "Телефонуйте, домовимось про зручний час."]
+ASIDES = ["Так, стоп.", "Ой, ще раз.", "Зачекай, я збилась.", "Ні, не так.", "Стоп, давай спочатку.", "Ану ще раз.", "Так, заново."]
+OPERATOR = ["Ми вже знімаємо?", "Можна ще раз з цього місця?", "Зачекай, машина їде.", "Я нормально стою?", "Телефон задзвонив, секунду."]
+LAST = ["Ну що, нормально вийшло?", "Все, стоп.", "Дякую, знято.", "Як вам, ще раз записати?"]
+VOICES = ["mykyta", "mykyta", "mykyta", "tetiana", "lada"]   # mostly a man's voice: the real takes are a woman's
 
-def said(sample): return " ".join(line[2:] for line in sample["lines"])
-def ideal(sample): return " ".join(line[2:] for line in sample["lines"] if line[0] == "+")
+
+def generated(count=36, seed=2026):
+    """Takes put together from the pieces: the same ones every time for the same seed."""
+    rng = random.Random(seed); out = []
+    for index in range(count):
+        area = rng.choice(list(AREAS)); numbers = [area]; rooms = rng.sample(list(ROOMS), rng.randint(2, 6))
+        kept = [rng.choice(OPENINGS).format(what=rng.choice(WHAT), where=rng.choice(WHERE)), rng.choice(AREA).format(n=AREAS[area])]
+        if rng.random() < 0.5: plot = rng.choice(list(PLOTS)); numbers.append(plot); kept.append(rng.choice(PLOT).format(n=PLOTS[plot]))
+        middle = [rng.choice(ROOMS[r]) for r in rooms] + rng.sample(FEATURES, rng.randint(1, 3))
+        tour = [rng.choice(ROOMS[r]) for r in rooms]; rest = [m for m in middle if m not in tour]
+        for feature in rest: tour.insert(rng.randint(0, len(tour)), feature)
+        kept += tour + [rng.choice(ENDINGS)]
+        lines = [{"keep": True, "kind": "said", "text": text} for text in kept]
+        # failed attempts and asides, each before the sentence it belongs to
+        for _ in range(rng.choice([0, 1, 2, 2, 3, 4])):
+            at = rng.randrange(1, len(lines)); kind = rng.choice(["false start", "false start", "false start and aside", "repeat", "operator"])
+            if not lines[at]["keep"] or (at and not lines[at - 1]["keep"]): continue
+            words = lines[at]["text"].split()
+            if kind == "repeat": lines.insert(at, {"keep": False, "kind": "repeat", "text": lines[at]["text"]})
+            elif kind == "operator": lines.insert(at, {"keep": False, "kind": "operator", "text": rng.choice(OPERATOR)})
+            else:
+                lines.insert(at, {"keep": False, "kind": "false start", "text": " ".join(words[:rng.randint(2, max(2, len(words) - 2))]).rstrip(",.") + "..."})
+                if kind == "false start and aside": lines.insert(at + 1, {"keep": False, "kind": "aside", "text": rng.choice(ASIDES)})
+        if rng.random() < 0.3: lines.append({"keep": False, "kind": "after the end", "text": rng.choice(LAST)})
+        out.append({"name": f"take{index + 1:02d}", "rooms": rooms, "numbers": numbers, "lines": lines, "voice": rng.choice(VOICES), "pace": rng.choice([0.9, 1.0, 1.0, 1.1]),
+                    "pause": rng.choice([0.5, 0.8, 1.2]), "noise": rng.choice([0, 0, 0.01, 0.03])})
+    return out
+
+
+def by_hand():
+    return [{**s, "voice": "mykyta", "pace": 1.0, "pause": 0.9, "noise": 0,
+             "lines": [{"keep": line[0] == "+", "kind": "said" if line[0] == "+" else "by hand", "text": line[2:]} for line in s["lines"]]} for s in HAND]
+
+
+SAMPLES = by_hand() + generated()
+def said(sample): return " ".join(line["text"] for line in sample["lines"])
+def ideal(sample): return " ".join(line["text"] for line in sample["lines"] if line["keep"])
