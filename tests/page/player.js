@@ -22,7 +22,7 @@ ok("other modes still work (no seek)", document.querySelector("[data-mode].on").
 document.querySelector('[data-mode="play"]').click(); const place = v.currentTime;
 document.getElementById("render").click(); await sleep(2500);
 ok("while building, the status names the step", /Крок \d з \d: Збираю відео/.test(document.querySelector(".status .big").textContent) && !!document.querySelector(".status .clock") && document.title.startsWith("⏳"), document.querySelector(".status .big").textContent + " | " + document.title);
-for (let i = 0; i < 90 && state.busy; i++) await sleep(1000);
+for (let i = 0; i < 300 && state.busy; i++) await sleep(1000);  // a video with plans takes two minutes to build
 await sleep(3500);
 ok("after building, ready again and the place is kept", document.querySelector(".status .big").textContent === "Відео готове" && Math.abs(document.querySelector("video").currentTime - place) < 1.5, document.querySelector(".status .big").textContent + " " + document.querySelector("video").currentTime + " vs " + place);
 window.scrollTo(0, 0);

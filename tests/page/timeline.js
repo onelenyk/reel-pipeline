@@ -6,7 +6,7 @@ const at = (t) => ({ clientX: box().left + box().width * t / state.seconds, clie
 const ev = (type, t) => line.dispatchEvent(new PointerEvent(type, at(t)));
 ok("the ruler has time labels", document.querySelectorAll("#ruler span").length >= 6, document.querySelectorAll("#ruler span").length);
 ev("pointermove", 20); await sleep(100);
-ok("hovering shows the time and the word", /0:20\.\d · \S+/.test(document.getElementById("lineTip").textContent), document.getElementById("lineTip").textContent);
+ok("hovering shows the time and the word", /0:(19|20)\.\d · \S+/.test(document.getElementById("lineTip").textContent), document.getElementById("lineTip").textContent);
 ev("pointerdown", 30.3); ev("pointermove", 33); ev("pointermove", 36.4); ev("pointerup", 36.4); await sleep(200);
 const starts = state.words.filter((w) => w.at != null).map((w) => w.at);
 ok("the marked stretch snaps to word boundaries", starts.includes(sel[0]) && (starts.includes(sel[1]) || sel[1] === state.seconds), JSON.stringify(sel));

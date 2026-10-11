@@ -73,8 +73,17 @@ def load(folder):
     return doc
 
 
+KEPT = 40  # earlier versions of a document kept in its history folder
+
+
 def save(folder, doc):
-    write_whole(Path(folder) / "project.json", json.dumps(doc, ensure_ascii=False, indent=1))
+    """Writes the document. What it replaces goes to the project's history, so that a change made by mistake can be taken back."""
+    file = Path(folder) / "project.json"; text = json.dumps(doc, ensure_ascii=False, indent=1)
+    if file.exists() and file.read_text(encoding="utf-8") != text:
+        history = Path(folder) / "history"; history.mkdir(exist_ok=True)
+        shutil.copy2(file, history / f"{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() % 1000000:06d}.json")
+        for old in sorted(history.glob("*.json"))[:-KEPT]: old.unlink()
+    write_whole(file, text)
 
 
 def resolve(doc):

@@ -77,6 +77,17 @@
   .w.now { background: var(--brand); color: #000; }
   .w.picked { background: var(--bad); color: #fff; }
   .words input { height: 32px; font-size: 16px; width: 11em; }
+  .tabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--ink); z-index: 5; overflow-x: auto; }
+  .tabs button { background: none; border-radius: 0; height: 44px; padding: 0 14px; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
+  .tabs button:hover { background: none; color: var(--fg); }
+  .tabs button.on { color: var(--fg); border-bottom-color: var(--brand); }
+  .tabs .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: var(--brand); color: #000; font-size: 11px; line-height: 18px; text-align: center; }
+  .tabs .count.calm { background: var(--chip2); color: var(--muted); }
+  .tab { display: none; } .tab.on { display: block; }
+  .fold { margin-bottom: 24px; } .fold summary { cursor: pointer; color: var(--subtle); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; font-weight: 600; padding: 4px 0 8px; }
+  #beats .card { padding: 8px 12px; } #beats .card .what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; }
+  #beats .card button { height: 32px; padding: 0 10px; }
+  @media (min-width: 1100px) { .planGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; } .planGrid .plan { position: sticky; top: 60px; max-width: none; } }
   .plan { position: relative; background: #fff; border-radius: 12px; overflow: hidden; margin-bottom: 10px; max-width: 560px; }
   .plan img { display: block; width: 100%; }
   .plan svg { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -128,7 +139,7 @@
       <div style="display:flex;gap:8px;margin-top:10px"><button class="primary" id="render" style="flex:1">Зібрати відео</button></div>
       <p class="hint" id="stale"></p>
     </section>
-    <section><h2>Кроки</h2><ul class="steps" id="steps"></ul></section>
+    <details class="fold" id="stepsFold"><summary>Кроки обробки</summary><ul class="steps" id="steps"></ul></details>
   </div>
   <div>
     <div id="error"></div>
@@ -142,10 +153,11 @@
         <div id="wordLane"></div>
       </div></div>
       <p class="legend"><span><b style="background:#0a84ff"></b>на весь кадр</span><span><b style="background:#30d158"></b>картинка зверху</span><span><b style="background:#bf5af2"></b>за мовцем</span><span><b style="background:var(--brand)"></b>титр</span><span><b style="background:#ff9f0a"></b>наближення</span><span><b style="background:var(--bad)"></b>склейка</span></p>
-      <p class="hint">Дотик переходить у це місце, протягування позначає відрізок (він прилипає до меж слів, краї можна тягнути). + і − наближають стрічку до окремих слів. Стрілки ← → пересувають на секунду, Esc знімає виділення.</p>
+      <p class="hint">Дотик переходить у це місце. Протягніть, щоб позначити відрізок і попросити AI щось у ньому змінити.</p>
       <div id="ask"></div>
     </section>
-    <section id="needsBox"><h2>Потрібно для цього відео</h2><div id="needs"></div></section>
+    <nav class="tabs" id="tabs" role="tablist"></nav>
+    <div class="tab" data-tab="text">
     <section>
       <h2>Текст</h2>
       <div class="seg" role="group" aria-label="Що робить дотик до слова">
@@ -155,16 +167,24 @@
       <div class="words" id="words"></div>
       <div id="beatMenu"></div>
     </section>
-    <section><h2>Монтаж</h2><div id="beats"></div></section>
-    <section id="planBox"><h2>Кімнати на плані</h2><div id="plans"></div></section>
     <section id="cutBox"><h2>AI прибрав із відео</h2><div id="cuts"></div></section>
     <section id="fixBox"><h2>Пропозиції AI щодо слів</h2><div id="fixes"></div></section>
+    </div>
+    <div class="tab" data-tab="montage">
+    <section id="needsBox"><h2>Потрібно для цього відео</h2><div id="needs"></div></section>
+    <section><h2>Вставки</h2><div id="beats"></div></section>
+    </div>
+    <div class="tab" data-tab="plan">
+    <section id="planBox"><h2>Кімнати на плані</h2><div id="plans"></div></section>
+    </div>
+    <div class="tab" data-tab="style">
     <section><h2>Стиль</h2><div id="style"></div></section>
     <section><h2>Словник</h2>
       <p class="hint">Назви об'єктів, сіл і терміни, по одному в рядку. Розпізнавач чекає на ці слова в нових відео, тому пише їх правильно. Виправлені вами назви додаються сюди самі.</p>
       <textarea id="vocab" aria-label="Словник"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button id="vocabSave">Зберегти словник</button><span class="hint" id="vocabSaid" style="margin:0"></span></div>
     </section>
+    </div>
   </div>
 </main>
 <div id="picker"></div>
@@ -183,6 +203,17 @@ const HINT = {
 const ACCENTS = ["#ffd60a", "#ffffff", "#30d158", "#0a84ff", "#ff453a", "#ff9f0a", "#bf5af2"];
 let name = new URLSearchParams(location.search).get("p"), state = null, styles = [], mode = "play", from = null, shown = 0, edited = false;
 let drawn = "", editing = null, range = null, picker = null, marked = null;
+let tab = "text"; try { tab = localStorage.getItem("reel-tab") || "text"; } catch {}
+function drawTabs() {
+  const needs = (state.needs || []).filter((n) => n.status === "open").length, plans = (state.plans || []).filter((p) => !p.read || p.rooms.length >= 3);
+  const waiting = (state.marks || []).filter((m) => !m.room).length + plans.filter((p) => !p.read).length;
+  const list = [["text", "Текст", (state.corrections || []).filter((c) => c.by === "ai" && !c.accepted).length, true], ["montage", "Монтаж", needs, false]];
+  if (plans.length) list.push(["plan", "План", waiting, false]);
+  list.push(["style", "Стиль", 0, false]);
+  if (!list.some(([id]) => id === tab)) tab = "text";
+  $("tabs").innerHTML = list.map(([id, label, count, calm]) => `<button role="tab" data-tab-go="${id}" class="${id === tab ? "on" : ""}" aria-selected="${id === tab}">${label}${count ? `<span class="count${calm ? " calm" : ""}">${count}</span>` : ""}</button>`).join("");
+  document.querySelectorAll(".tab").forEach((box) => box.classList.toggle("on", box.dataset.tab === tab));
+}
 
 const api = async (path, options) => {
   const response = await fetch(path, options); const data = await response.json().catch(() => ({}));
@@ -334,6 +365,7 @@ function drawSteps() {
   const order = ["probe", "transcribe", "review", "suggest", "render"], running = state.steps.find((s) => s.state === "running"), failed = state.steps.find((s) => s.state === "failed");
   const done = state.steps.filter((s) => s.state === "done").length, total = Math.max(state.steps.length, 1), clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const kind = failed && !busy ? "failed" : busy ? "running" : state.has_render ? "done" : "idle";
+  if (busy || failed) $("stepsFold").open = true;
   const number = running ? state.steps.filter((s) => order.indexOf(s.step) <= order.indexOf(running.step)).length : 0;
   $("status").innerHTML = `<div class="status ${kind}"><span class="spin"></span><div style="flex:1;min-width:0"><div class="big">${
     kind === "running" ? (running ? `Крок ${number} з ${total}: ${STEP[running.step] || running.step}` : "Починаю…") : kind === "failed" ? `Зупинилось: ${STEP[failed.step] || failed.step}` : kind === "done" ? "Відео готове" : "Очікую відео"}</div><div class="sub">${
@@ -354,7 +386,7 @@ function drawSteps() {
 
 function draw(force) {
   if (!state) return;
-  drawSteps();
+  drawSteps(); drawTabs();
   // Everything below is rebuilt only when the project itself changed, so typing in a field is never interrupted
   const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.busy, marked]);
   if (!force && signature === drawn) return;
@@ -396,7 +428,7 @@ function draw(force) {
     const piece = words.slice(c.from, c.to + 1), out = piece.every((w) => !w.kept), text = piece.map((w) => w.text).join(" ");
     return `<div class="card"><div class="what">${esc(text.length > 110 ? text.slice(0, 110) + "…" : text)}<small>${WHY[c.why] || ""}${c.note ? ": " + esc(c.note) : ""} · ${out ? "вирізано" : "повернуто"}</small></div>${(() => { const before = words.slice(0, c.from).reverse().find((w) => w.at != null), at = out ? (before ? Math.max(0, before.at - 1.2) : 0) : when(c.from, c.to); return at != null ? `<button class="jump" data-seek="${at}" aria-label="Послухати це місце">▶ ${out ? "стик" : "послухати"}</button>` : ""; })()}<button data-cut="${c.from}-${c.to}" data-back="${out ? 1 : ""}">${out ? "Повернути" : "Вирізати"}</button></div>`;
   }).join("");
-  drawPlans();
+  drawPlans(); drawTabs();
   const offers = state.corrections.filter((c) => c.by === "ai");
   $("fixBox").style.display = offers.length ? "" : "none";
   $("fixes").innerHTML = offers.map((c) => `<div class="card"><div class="what">${esc(words[c.word].heard)} → <b>${esc(c.text)}</b><small>${c.accepted ? "прийнято" : "не застосовано"}</small></div><button data-fix="${c.word}">${c.accepted ? "Скасувати" : "Прийняти"}</button></div>`).join("");
@@ -425,12 +457,12 @@ function drawPlans() {
     if (!p.read) return `<div class="card"><img src="${pic(p.file)}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px"><div class="what">Якщо це планування, я знайду на ньому кімнати<small>а в тексті — моменти, коли про них ідеться</small></div><button data-rooms="1" ${state.busy ? "disabled" : ""}>${state.busy === "rooms" ? "Шукаю…" : "Знайти кімнати"}</button></div>`;
     if (p.rooms.length < 3) return "";
     const mine = marks.filter((m) => m.asset === p.asset).sort((a, b) => a.from - b.from), picked = mine.find((m) => m.id === marked), used = new Set(mine.map((m) => m.room));
-    return `<div class="plan${picked ? " picking" : ""}"><img src="${pic(p.file)}" alt="План"><svg viewBox="0 0 1 1" preserveAspectRatio="none">${p.rooms.map((r) =>
+    return `<div class="planGrid"><div class="plan${picked ? " picking" : ""}"><img src="${pic(p.file)}" alt="План"><svg viewBox="0 0 1 1" preserveAspectRatio="none">${p.rooms.map((r) =>
       `<polygon points="${r.shape.map((q) => q.join(",")).join(" ")}" data-room="${r.id}" data-plan="${p.asset}" class="${picked && picked.room === r.id ? "on" : used.has(r.id) ? "used" : ""}"><title>${picked ? "Це вона" : "Спершу оберіть момент зі списку"}</title></polygon>`).join("")}</svg></div>
-      <p class="hint" style="margin:0 0 10px">${picked ? `Клацніть на плані кімнату, про яку мовець каже «${esc(picked.name || "…")}».` : "Оберіть момент у списку, потім клацніть його кімнату на плані. Назву я запам'ятаю для наступних відео з цим планом."}</p>
+      <div><p class="hint" style="margin:0 0 10px">${picked ? `Клацніть на плані кімнату, про яку мовець каже «${esc(picked.name || "…")}».` : "Оберіть момент у списку, потім клацніть його кімнату на плані. Назву я запам'ятаю для наступних відео з цим планом."}</p>
       ${mine.map((m) => { const piece = words.slice(m.from, m.to + 1).filter((w) => w.kept), text = piece.map((w) => w.text).join(" "), at = piece.length ? piece[0].at : null;
         return `<div class="card mark${m.id === marked ? " on" : ""}${m.room ? "" : " wait"}" data-mark="${m.id}"><div class="what"><b>${esc(m.name || "без назви")}</b> · ${esc(text.length > 70 ? text.slice(0, 70) + "…" : text)}<small>${m.room ? "кімнату обрано" : "кімнату ще не обрано — у відео не підсвітиться"}</small></div>${at != null ? `<button class="jump" data-seek="${at}">▶</button>` : ""}<button class="quiet" data-unmark="${m.id}" aria-label="Прибрати">✕</button></div>`; }).join("")}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 14px"><button data-rooms="1" ${state.busy ? "disabled" : ""}>${state.busy === "rooms" ? "Шукаю…" : mine.length ? "Знайти моменти заново" : "Знайти моменти в тексті"}</button><button data-mark-new="${p.asset}">Додати з виділеного на стрічці</button></div>`;
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 14px"><button data-rooms="1" ${state.busy ? "disabled" : ""}>${state.busy === "rooms" ? "Шукаю…" : mine.length ? "Знайти моменти заново" : "Знайти моменти в тексті"}</button><button data-mark-new="${p.asset}">Додати з виділеного на стрічці</button></div></div></div>`;
   }).join("");
 }
 
@@ -468,6 +500,7 @@ async function saveWord(input) {
 }
 
 document.addEventListener("click", async (e) => {
+  if (e.target.closest("[data-tab-go]")) { tab = e.target.closest("[data-tab-go]").dataset.tabGo; try { localStorage.setItem("reel-tab", tab); } catch {} drawTabs(); return; }
   const room = e.target.closest("polygon[data-room]"), markCard = e.target.closest("[data-mark]");
   if (e.target.closest("[data-rooms]")) { await act(`/api/projects/${name}/rooms`, { method: "POST" }); return; }
   if (e.target.closest("[data-unmark]")) { await edit({ remove_mark: e.target.closest("[data-unmark]").dataset.unmark }); return; }
