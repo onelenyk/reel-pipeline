@@ -9,7 +9,11 @@ SIZE = (432, 768)  # the matte is computed small and scaled up; edges are soften
 def matte(source, hdr, start, seconds, fps, frame, out):
     """`frame` is the (width, height) the footage is cropped to in the finished video, so the matte lines up with it."""
     import numpy as np, torch
-    model = torch.hub.load("PeterL1n/RobustVideoMatting", "mobilenetv3", trust_repo=True, verbose=False).eval()
+    # The model is fetched once; after that it is read from the disk and the network is not asked at all,
+    # so a build does not fail because a site far away is slow to answer
+    kept = Path(torch.hub.get_dir()) / "PeterL1n_RobustVideoMatting_master"
+    try: model = (torch.hub.load(str(kept), "mobilenetv3", source="local", verbose=False) if kept.exists() else torch.hub.load("PeterL1n/RobustVideoMatting", "mobilenetv3", trust_repo=True, verbose=False)).eval()
+    except Exception as error: raise RuntimeError(f"the model that cuts the speaker out could not be loaded ({str(error)[:120]}); it is fetched from the internet the first time") from error
     w, h = SIZE; started = time.time()
     crop = f"scale={frame[0]}:{frame[1]}:force_original_aspect_ratio=increase,crop={frame[0]}:{frame[1]},scale={w}:{h}"
     reader = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{start:.3f}", "-t", f"{seconds:.3f}", "-i", str(source),
