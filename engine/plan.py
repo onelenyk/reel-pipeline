@@ -23,7 +23,7 @@ YARD = 0.015  # a place outdoors is at least this share of the plan
 LOOSE = 0.08 # a piece of wall smaller than this share of the main walls, and apart from them, is not a wall
 OPEN = 0.3    # a room with more of its edge than this open to a neighbour is not a room of its own
 _net = None
-FORMAT = 6    # rises whenever rooms are found differently: answers kept under an older number are worked out again
+FORMAT = 7    # rises whenever rooms are found differently: answers kept under an older number are worked out again
 
 
 def cubicasa(colour):
@@ -236,8 +236,107 @@ def outline(picture, reader="cubicasa"):
     if known: return known
     colour = cv2.imread(str(picture))
     if colour is None: raise RuntimeError("this file is not a picture the pipeline can read")
-    result = {"format": FORMAT, "reader": reader, "rooms": [{"id": f"r{i}", **r} for i, r in enumerate(rooms(colour, reader), 1)], "names": {}}
+    found = [{"id": f"r{i}", **r} for i, r in enumerate(rooms(colour, reader), 1)]
+    describe(colour, found)
+    result = {"format": FORMAT, "reader": reader, "rooms": found, "names": {}}
     kept = place(picture); kept.parent.mkdir(parents=True, exist_ok=True); kept.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8"); return result
+
+
+def read_numbers(grey):
+    """The plan's room numbers as text, each with the place of its frame: [((x, y), "07"), ...]. Read on this machine by Tesseract;
+    a number it cannot read is left out rather than guessed."""
+    import cv2, shutil, subprocess, tempfile
+    if not shutil.which("tesseract"): return []
+    read = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for x, y in numbers(grey):
+            crop = grey[max(0, y - 9):y + 10, max(0, x - 14):x + 15]
+            if crop.shape[0] < 12 or crop.shape[1] < 16: continue
+            big = cv2.resize(crop, None, fx=6, fy=6, interpolation=cv2.INTER_CUBIC)
+            cv2.imwrite(f"{tmp}/n.png", cv2.copyMakeBorder(big[14:-14, 14:-14], 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=255))
+            text = subprocess.run(["tesseract", f"{tmp}/n.png", "-", "--psm", "7", "-c", "tessedit_char_whitelist=0123456789"], capture_output=True, text=True).stdout.strip()
+            if re.fullmatch(r"\d{2}", text): read.append(((x, y), text))
+    return read
+
+
+def describe(colour, found):
+    """What each room probably is, said before anyone is asked: its number as printed on the plan, and a name guessed from
+    what stands in it, its size, its windows and where its doors lead. A guess is marked as one ("guess": true) and a
+    person's word replaces it; a room nothing can be said of stays unnamed."""
+    import cv2, numpy as np
+    grey = cv2.cvtColor(colour, cv2.COLOR_BGR2GRAY); h, w = grey.shape
+    inside = lambda room, x, y: cv2.pointPolygonTest((np.array(room["shape"]) * (w, h)).astype(np.float32), (float(x), float(y)), False) >= 0
+    for (x, y), number in read_numbers(grey):
+        homes = [r for r in found if inside(r, x, y)]
+        if homes and "number" not in homes[0]: homes[0]["number"] = number
+    indoors = [r for r in found if not r.get("outdoors")]; by_id = {r["id"]: r for r in found}
+    largest = max(indoors, key=lambda r: r["share"], default=None)
+    wet = lambda r: any(t in r["things"] for t in ("toilet", "bathtub"))
+    small = lambda r: r["share"] < 0.07
+    kinds = {}
+    for r in found:
+        if r.get("outdoors"):
+            # cars are drawn in black ink, a boarded terrace in faint lines
+            mask = np.zeros((h, w), np.uint8); cv2.fillPoly(mask, [(np.array(r["shape"]) * (w, h)).astype(np.int32)], 1)
+            kinds[r["id"]] = "carport" if (grey[mask > 0] < 110).mean() > 0.02 else "terrace"
+        elif wet(r): kinds[r["id"]] = "bathroom" if "bathtub" in r["things"] else "toilet"
+        elif r is largest and (r["share"] >= 0.3 or any(t in r["things"] for t in ("appliance", "sink"))): kinds[r["id"]] = "living"
+        elif small(r) and r["windows"] == 0 and "closet" in r["things"]: kinds[r["id"]] = "wardrobe"
+        elif "outside" in r["doors"] and r["share"] < 0.2: kinds[r["id"]] = "hall"
+        elif 0.07 <= r["share"] < 0.28 and r["windows"] >= 1: kinds[r["id"]] = "bedroom"
+    for r in found:
+        if kinds.get(r["id"]) == "bedroom":
+            own = [kinds.get(d) for d in r["doors"] if d in by_id and by_id[d]["doors"] == [r["id"]]]  # rooms reached only through this one
+            if "bathroom" in own or "toilet" in own: kinds[r["id"]] = "master"
+    for r in found:
+        r["kind"] = kinds.get(r["id"]); r["name"] = NAMES.get(r["kind"]); r["guess"] = r["name"] is not None
+
+
+NAMES = {"carport": "Навіс", "terrace": "Тераса", "bathroom": "Ванна кімната", "toilet": "Санвузол", "living": "Кухня-вітальня", "wardrobe": "Гардеробна", "hall": "Передпокій",
+         "bedroom": "Спальня", "master": "Спальня господарів"}
+# Words that mean one room in a tour of a house: a zone named by one answers to the others
+SAME = [("навіс", "паркінг", "гараж", "паркомісце"), ("тераса", "дворик", "патіо"), ("ванна", "санвузол", "туалет", "вбиральня", "душова"), ("кухня", "вітальня", "зал", "їдальня", "кухня-вітальня"),
+        ("гардеробна", "гардероб"), ("передпокій", "прихожа", "покій", "тамбур"), ("спальня", "спальний", "дитяча"), ("пральня", "постірочна"),
+        ("технічне", "котельня", "бойлерна", "техприміщення"), ("комора", "кладова", "інвентарна")]
+
+
+GENERIC = {"кімна", "примі", "зона", "блок", "власн", "велик", "малий", "наша", "окрем"}  # words that say nothing of which room it is
+
+
+def stems(name):
+    """A name cut to what is compared: word stems, with the words of one meaning brought to one."""
+    out = set()
+    for word in re.findall(r"[\w-]+", (name or "").lower()):
+        for piece in [word] + word.split("-"):
+            group = next((g for g in SAME if any(piece[:5] == other[:5] for other in g)), None)
+            out.add(group[0][:5] if group else piece[:5])
+    return out - GENERIC if out - GENERIC else out
+
+
+def match(picture, name, taken=()):
+    """The room of a plan that a spoken name means: what a person tied before, else the room whose name says the same.
+    Among several rooms of one name, the first not yet `taken` (two children's rooms are named one after the other)."""
+    remembered = recall(picture, name)
+    if remembered: return remembered
+    known = stored(picture, lenient=True) or {}; said = stems(name); best = []
+    for room in known.get("rooms", []):
+        own = stems(room.get("name")); common = said & own
+        if not common: continue
+        # a guessed name is trusted less than a person's: it must say the whole of what was spoken
+        if room.get("guess") and not said <= own and not own <= said: continue
+        best.append((-len(common), room["id"] in taken, known["rooms"].index(room), room["id"]))
+    return sorted(best)[0][3] if best else None
+
+
+def name_room(picture, room, name=None, number=None):
+    """A person says what a room is. Their word stands until they change it."""
+    known = stored(picture, lenient=True)
+    if not known: raise ValueError("this plan has not been read")
+    target = next((r for r in known["rooms"] if r["id"] == room), None)
+    if not target: raise ValueError("there is no such room on this plan")
+    if name is not None: target["name"] = str(name).strip()[:40] or None; target["guess"] = False
+    if number is not None: target["number"] = re.sub(r"[^\w-]", "", str(number))[:4] or None
+    place(picture).write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8"); return target
 
 
 def plain(name):

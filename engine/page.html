@@ -96,6 +96,15 @@
   .plan polygon.used { fill: rgba(255,214,10,.16); stroke: rgba(200,150,0,.8); }
   .plan polygon.on { fill: rgba(255,214,10,.5); stroke: #c79a00; stroke-width: 4; }
   .plan.picking polygon { stroke: #0a84ff; stroke-width: 3; }
+  .pin { position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; background: #111; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0; pointer-events: none; }
+  .pin.guess { background: #fff; color: #222; box-shadow: inset 0 0 0 1.5px #888; }
+  .pin.none { background: var(--bad); }
+  .pin.still { position: static; transform: none; flex: none; }
+  .plan polygon.hot { fill: rgba(10,132,255,.35); stroke-width: 4; }
+  .zone { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .zone input { flex: 1; height: 34px; }
+  .zone input.guess { color: var(--muted); font-style: italic; }
+  .zone small { flex: none; width: 92px; color: var(--subtle); font-size: 11px; }
   .card.mark { cursor: pointer; }
   .card.mark.on { outline: 2px solid var(--brand); }
   .card.mark.wait .what small { color: var(--bad); }
@@ -458,10 +467,13 @@ function drawPlans() {
     if (p.rooms.length < 3) return "";
     const mine = marks.filter((m) => m.asset === p.asset).sort((a, b) => a.from - b.from), picked = mine.find((m) => m.id === marked), used = new Set(mine.map((m) => m.room));
     return `<div class="planGrid"><div class="plan${picked ? " picking" : ""}"><img src="${pic(p.file)}" alt="План"><svg viewBox="0 0 1 1" preserveAspectRatio="none">${p.rooms.map((r) =>
-      `<polygon points="${r.shape.map((q) => q.join(",")).join(" ")}" data-room="${r.id}" data-plan="${p.asset}" class="${picked && picked.room === r.id ? "on" : used.has(r.id) ? "used" : ""}"><title>${picked ? "Це вона" : "Спершу оберіть момент зі списку"}</title></polygon>`).join("")}</svg></div>
-      <div><p class="hint" style="margin:0 0 10px">${picked ? `Клацніть на плані кімнату, про яку мовець каже «${esc(picked.name || "…")}».` : "Оберіть момент у списку, потім клацніть його кімнату на плані. Назву я запам'ятаю для наступних відео з цим планом."}</p>
+      `<polygon points="${r.shape.map((q) => q.join(",")).join(" ")}" data-room="${r.id}" data-plan="${p.asset}" class="${picked && picked.room === r.id ? "on" : used.has(r.id) ? "used" : ""}"><title>${esc(r.name || "без назви")}</title></polygon>`).join("")}</svg>${p.rooms.map((r) =>
+      `<span class="pin${r.name ? (r.guess ? " guess" : "") : " none"}" data-pin="${r.id}" style="left:${(100 * r.at[0]).toFixed(1)}%;top:${(100 * r.at[1]).toFixed(1)}%" title="${esc(r.name || "без назви")}">${p.rooms.indexOf(r) + 1}</span>`).join("")}</div>
+      <div><h2>Зони плану</h2><p class="hint" style="margin:0 0 10px">Що це за кімнати. Здогадки рушія написані курсивом: виправте хибні й допишіть порожні. Назви лишаються з цим планом назавжди, і моменти з відео прив'язуються до них самі.</p>
+      ${p.rooms.map((r) => `<div class="zone" data-zone-row="${r.id}"><span class="pin still${r.name ? (r.guess ? " guess" : "") : " none"}">${p.rooms.indexOf(r) + 1}</span><input type="text" maxlength="40" value="${esc(r.name || "")}" placeholder="що це за кімната?" class="${r.guess ? "guess" : ""}" data-zone="${r.id}" data-plan="${p.asset}" aria-label="Назва зони ${r.id}"><small>${r.name ? (r.guess ? "здогадка" : "ваша назва") : "не впізнано"}</small></div>`).join("")}
+      <h2 style="margin-top:18px">Моменти у відео</h2><p class="hint" style="margin:0 0 10px">${picked ? `Клацніть на плані кімнату, про яку мовець каже «${esc(picked.name || "…")}».` : "Коли мовець називає кімнату, вона підсвічується. Якщо момент прив'язано не туди, оберіть його і клацніть потрібну кімнату на плані."}</p>
       ${mine.map((m) => { const piece = words.slice(m.from, m.to + 1).filter((w) => w.kept), text = piece.map((w) => w.text).join(" "), at = piece.length ? piece[0].at : null;
-        return `<div class="card mark${m.id === marked ? " on" : ""}${m.room ? "" : " wait"}" data-mark="${m.id}"><div class="what"><b>${esc(m.name || "без назви")}</b> · ${esc(text.length > 70 ? text.slice(0, 70) + "…" : text)}<small>${m.room ? "кімнату обрано" : "кімнату ще не обрано — у відео не підсвітиться"}</small></div>${at != null ? `<button class="jump" data-seek="${at}">▶</button>` : ""}<button class="quiet" data-unmark="${m.id}" aria-label="Прибрати">✕</button></div>`; }).join("")}
+        return `<div class="card mark${m.id === marked ? " on" : ""}${m.room ? "" : " wait"}" data-mark="${m.id}"><div class="what"><b>${esc(m.name || "без назви")}</b> · ${esc(text.length > 70 ? text.slice(0, 70) + "…" : text)}<small>${m.room ? "→ " + esc((p.rooms.find((r) => r.id === m.room) || {}).name || "зона без назви") + (m.by === "user" ? "" : " · сама") : "немає зони з такою назвою — у відео не підсвітиться"}</small></div>${at != null ? `<button class="jump" data-seek="${at}">▶</button>` : ""}<button class="quiet" data-unmark="${m.id}" aria-label="Прибрати">✕</button></div>`; }).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 14px"><button data-rooms="1" ${state.busy ? "disabled" : ""}>${state.busy === "rooms" ? "Шукаю…" : mine.length ? "Знайти моменти заново" : "Знайти моменти в тексті"}</button><button data-mark-new="${p.asset}">Додати з виділеного на стрічці</button></div></div></div>`;
   }).join("");
 }
@@ -499,6 +511,11 @@ async function saveWord(input) {
   await edit({ text: { word: id, to } });
 }
 
+document.addEventListener("change", async (e) => {
+  const input = e.target.closest && e.target.closest("input[data-zone]");
+  if (input) await edit({ zone: { asset: input.dataset.plan, room: input.dataset.zone, name: input.value } });
+});
+document.addEventListener("focusin", (e) => { const input = e.target.closest && e.target.closest("input[data-zone]"); document.querySelectorAll(".plan polygon.hot").forEach((x) => x.classList.remove("hot")); if (input) { const shape = document.querySelector(`polygon[data-room="${input.dataset.zone}"][data-plan="${input.dataset.plan}"]`); if (shape) shape.classList.add("hot"); } });
 document.addEventListener("click", async (e) => {
   if (e.target.closest("[data-tab-go]")) { tab = e.target.closest("[data-tab-go]").dataset.tabGo; try { localStorage.setItem("reel-tab", tab); } catch {} drawTabs(); return; }
   const room = e.target.closest("polygon[data-room]"), markCard = e.target.closest("[data-mark]");

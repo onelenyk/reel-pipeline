@@ -10,7 +10,8 @@ spoken of), `engine/project.py` `set_mark`, `lit` (tying the two and timing them
 |---|---|---|
 | Where the rooms are | a network that marks walls, doors and windows, then plain geometry | no, runs on this machine |
 | When a room is spoken of, and what it is called | the AI, from the words alone | a quick text question |
-| Which room that is | a person, by one click; remembered for the plan | no |
+| What each room is | rules and local OCR propose, a person corrects once per plan | no |
+| Which room a moment means | the room's name | no |
 
 The third part was tried with the AI and given up: see `lab/plans/which_room.py`.
 
@@ -37,13 +38,33 @@ Outdoors (a terrace, a carport), where there are no walls for the reader to see:
 Each room is kept as an outline in shares of the picture's width and height, with its share of the floor, the rooms its doors
 open to, its windows and the fixtures the reader saw in it.
 
+## Saying what each room is
+
+Done once, when the plan is read, by `describe` in `engine/plan.py`, with nothing paid for:
+
+- the number printed in the room is read by Tesseract (`read_numbers`); a number it cannot read is left out;
+- a name is guessed from what stands in the room, its size, its windows and where its doors lead: a toilet or a bath is a
+  bathroom, a small windowless room with closets a wardrobe, the largest room the kitchen-living room, a middle-sized room
+  with a window a bedroom (with a bathroom of its own, the owners' bedroom), a room with the door to the outside the hall;
+  outdoors, black ink means cars and so a carport, faint lines a terrace.
+
+A guess is marked as one and a room nothing can be said of stays unnamed. On the page the person corrects the wrong guesses
+and fills in the empty ones (`name_room`); their word stays with the plan. On the three plans tried the guesses named 23 of
+29 rooms, none of them wrongly after one rule was tightened; that is three plans, not a measure.
+
+A moment of the video ("постірочна") then takes its room by name, with no click and no AI (`match`): names are compared by
+word stems, words of one meaning count as one (`SAME`: постірочна and пральня, паркінг and навіс), and words that say nothing
+of which room it is are ignored (`GENERIC`). Of several rooms of one name, each next moment takes the next room. A person's
+own tie of a moment is never changed by this.
+
 ## What is kept, and where
 
 `rooms/<first 20 hex digits of the picture's SHA-1>.json`, so that the same plan in another video is known at once:
 
 ```json
-{"format": 6, "reader": "cubicasa",
- "rooms": [{"id": "r1", "at": [0.31, 0.24], "shape": [[0.24, 0.13], ...], "share": 0.14, "doors": ["r2", "r5"], "windows": 2, "things": ["closet"]}],
+{"format": 7, "reader": "cubicasa",
+ "rooms": [{"id": "r1", "at": [0.31, 0.24], "shape": [[0.24, 0.13], ...], "share": 0.14, "doors": ["r2", "r5"], "windows": 2, "things": ["closet"],
+            "number": "06", "kind": "bedroom", "name": "Спальня", "guess": true}],
  "names": {"техні примі": "r13"}}
 ```
 
@@ -79,6 +100,7 @@ nothing else changes. `lab/plans/drawing_only.py` is a start on a reader with no
 - `./reel rooms media/kit/shelest-plan-1.jpg` - reads one plan and writes a picture to look at in `out/`.
 - `./reel run lab/plans/score.py plans/cubicasa 20` - scores the finder against plans marked by people.
 - `./reel page rooms IMG_7824` - the page: picking a room by a click.
+- `./reel page zones IMG_7824` - the page: naming a zone.
 
 ## How it looks in the video
 

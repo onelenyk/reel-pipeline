@@ -227,3 +227,14 @@ class Spelling(unittest.TestCase):
         heard = [{"text": t, "start": i, "end": i + 0.5, "confidence": 0.9} for i, t in enumerate("будинку в Джівілич, ми попадаємо вперед покій.".split())]
         words = spelled(heard, ["G-Village", "передпокій"], known={letters("Джівілич"): "G-Village"})
         self.assertEqual(" ".join(w["text"] for w in words), "будинку в G-Village, ми попадаємо в передпокій.")
+
+
+class Names(unittest.TestCase):
+    def test_words_of_one_meaning_are_one_name(self):
+        from engine.plan import stems
+        self.assertEqual(stems("постірочна"), stems("Пральня"))
+        self.assertEqual(stems("гардеробну кімнату") & stems("Гардеробна"), {"гарде"})
+        self.assertTrue(stems("паркінг на два автомобілі") & stems("Навіс"))
+        self.assertFalse(stems("технічне приміщення") & stems("Пральня"))
+        self.assertFalse(stems("дитячі кімнати") & stems("Ванна кімната"))
+        self.assertTrue(stems("дитячі кімнати") <= stems("Спальня") and stems("блок господарів") <= stems("Спальня господарів"))

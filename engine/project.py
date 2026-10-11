@@ -189,8 +189,27 @@ def place_marks(folder, asset_id, moments):
     doc["marks"] = [m for m in doc["marks"] if m["asset"] != asset_id or m.get("by") == "user"]
     for m in moments:
         if any(m["from"] <= k["to"] and k["from"] <= m["to"] for k in doc["marks"] if k["asset"] == asset_id): continue
-        doc["marks"].append({"id": f"m{max([int(x['id'][1:]) for x in doc['marks']] + [0]) + 1}", "asset": asset_id, "room": plan.recall(asset["file"], m["name"]), "from": m["from"], "to": m["to"], "name": m["name"], "by": "ai"})
-    save(folder, doc); return doc
+        doc["marks"].append({"id": f"m{max([int(x['id'][1:]) for x in doc['marks']] + [0]) + 1}", "asset": asset_id, "room": None, "from": m["from"], "to": m["to"], "name": m["name"], "by": "ai"})
+    tie(doc); save(folder, doc); return doc
+
+
+def tie(doc):
+    """Moments nobody tied take the room whose name says what was spoken. A person's own ties are not touched."""
+    from . import plan
+    files = {a["id"]: a["file"] for a in doc["assets"]}
+    for asset_id in {m["asset"] for m in doc["marks"]}:
+        taken = [m["room"] for m in doc["marks"] if m["asset"] == asset_id and m.get("by") == "user" and m["room"]]
+        for m in sorted((m for m in doc["marks"] if m["asset"] == asset_id and m.get("by") != "user"), key=lambda m: m["from"]):
+            m["room"] = plan.match(files[asset_id], m["name"], taken) if asset_id in files and m.get("name") else None
+            if m["room"]: taken.append(m["room"])
+
+
+def name_zone(folder, asset_id, room, name=None, number=None):
+    """A person names a room of a plan; the moments that were waiting for that name are tied at once."""
+    from . import plan
+    doc = load(folder); asset = next((a for a in doc["assets"] if a["id"] == asset_id), None)
+    if not asset: raise ValueError("there is no such picture")
+    plan.name_room(asset["file"], room, name, number); tie(doc); save(folder, doc)
 
 
 def set_mark(folder, mark_id=None, asset=None, room=None, first=None, last=None, name=None):

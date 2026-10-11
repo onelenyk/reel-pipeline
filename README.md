@@ -31,7 +31,7 @@ The web page (in Ukrainian) shows the pipeline step by step as it runs and plays
 - **choose pictures**: every request for material and every picture beat opens a chooser with the project's own pictures, upload from the device, and a search of openly licensed pictures on the internet (labelled as illustrations, with credits to copy into the post);
 - **add your own beats** over a range of words: a picture on top, a picture behind the speaker, a title, a zoom;
 - **set the style** (accent colour, subtitle size and place, word-by-word or all at once, title glow, picture layout, loudness), **save it under a name**, apply it to another video, or make it the default for new ones;
-- **light up rooms on a floor plan**: the plan is read, the AI lists the moments a room is spoken of, and a click on the plan says which room each one is (remembered for that plan; see `docs/plans.md`);
+- **light up rooms on a floor plan**: the plan is read and each room gets a guessed name to correct once; the AI lists the moments a room is spoken of and each takes its room by name (see `docs/plans.md`);
 - upload a new take, and render.
 
 It listens on this machine only. `./reel test` runs the engine's tests (no video or network needed).
@@ -68,7 +68,7 @@ Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output
 
 ## Three kinds of check
 
-- `./reel test` after any change to `engine/`: 24 tests, under a second.
-- `./reel page player|timeline|ask|rooms [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
+- `./reel test` after any change to `engine/`: 27 tests, under a second.
+- `./reel page player|timeline|ask|rooms|zones [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
 - `./reel e2e` before trusting the whole: about eight minutes.
 

@@ -47,8 +47,8 @@ def summary(name):
                    assets=[{"id": a["id"], "file": Path(a["file"]).name, "credit": a.get("credit")} for a in doc["assets"]],
                    needs=[{**n, "file": Path(assets[n["asset"]]["file"]).name if n.get("asset") in assets else None, "credit": assets.get(n.get("asset"), {}).get("credit")} for n in doc["needs"]],
                    credits=[a["credit"] for a in doc["assets"] if a.get("credit") and a["id"] in used],
-                   marks=doc["marks"], plans=[{"asset": a, "file": Path(assets[a]["file"]).name, "read": plans.stored(assets[a]["file"]) is not None,
-                                               "rooms": [{"id": r["id"], "shape": r["shape"], "at": r["at"]} for r in project.rooms_of(assets[a]["file"])]} for a in project.plan_assets(doc) if a in assets])
+                   marks=doc["marks"], plans=[{"asset": a, "file": Path(assets[a]["file"]).name, "read": plans.stored(assets[a]["file"], lenient=True) is not None,
+                                               "rooms": [{"id": r["id"], "shape": r["shape"], "at": r["at"], "name": r.get("name"), "number": r.get("number"), "guess": bool(r.get("guess")), "outdoors": bool(r.get("outdoors"))} for r in project.rooms_of(assets[a]["file"])]} for a in project.plan_assets(doc) if a in assets])
     return out
 
 
@@ -199,6 +199,8 @@ class Handler(BaseHTTPRequestHandler):
                 elif "beat_picture" in change: project.change_beat(folder, change["beat_picture"]["beat"], asset=change["beat_picture"].get("asset"))
                 elif "mark" in change:
                     m = change["mark"]; project.set_mark(folder, m.get("id"), m.get("asset"), m.get("room"), m.get("from"), m.get("to"), m.get("name"))
+                elif "zone" in change:
+                    z = change["zone"]; project.name_zone(folder, z.get("asset"), z.get("room"), z.get("name"), z.get("number"))
                 elif "remove_mark" in change: project.remove_mark(folder, change["remove_mark"])
                 elif "remove_beat" in change: project.change_beat(folder, change["remove_beat"], remove=True)
                 elif "drop" in change: project.drop(folder, int(change["drop"][0]), int(change["drop"][1]), restore=bool(change.get("restore")))
