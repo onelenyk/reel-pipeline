@@ -87,7 +87,19 @@ function drawFull(beat, t) {
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = a * 0.38; ctx.drawImage(image, W / 2 - (image.width * cover) / 2, H / 2 - (image.height * cover) / 2, image.width * cover, image.height * cover); ctx.globalAlpha = a;
   }
-  ctx.drawImage(image, W / 2 - (image.width * k) / 2, (fits ? H / 2 : H * 0.36) - (image.height * k) / 2, image.width * k, image.height * k);
+  const left = W / 2 - (image.width * k) / 2, top = (fits ? H / 2 : H * 0.36) - (image.height * k) / 2;
+  ctx.drawImage(image, left, top, image.width * k, image.height * k);
+  // The room being spoken of lights up on the plan: the accent colour laid over it, with a firm outline
+  for (const mark of beat.marks ?? []) {
+    const lit = presence(t, mark.start, mark.end, 0.3, 0.2);
+    if (lit <= 0) continue;
+    ctx.beginPath();
+    mark.shape.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](left + x * image.width * k, top + y * image.height * k));
+    ctx.closePath();
+    ctx.globalAlpha = a * lit * 0.42; ctx.fillStyle = ACCENT; ctx.fill();
+    ctx.globalAlpha = a * lit; ctx.strokeStyle = ACCENT; ctx.lineWidth = 7; ctx.lineJoin = "round"; ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 10; ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
   ctx.restore();
 }
 

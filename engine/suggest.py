@@ -3,7 +3,8 @@
 Everything it returns is a suggestion. Emphasis and beats are accepted by default (they are easy to see and undo);
 changes to words are never applied until a person accepts them, because the model guesses names it cannot know.
 """
-import json, os, re
+from pathlib import Path
+import base64, json, os, re
 import requests
 
 PROMPT = """Ти монтажер коротких вертикальних відео про нерухомість. Нижче розшифровка одного дубля, де людина говорить у камеру; слова пронумеровані.
@@ -41,14 +42,17 @@ REVIEW = """Ти редактор відео про нерухомість. Ни
 """
 
 
-def ask(prompt, think=False):
+def ask(prompt, think=False, picture=None):
     """One question to the model, answered as JSON. Thinking costs seconds; it is for the questions where a quick answer is often wrong."""
-    body = {"model": "deepseek-flash", "thinking": {"type": "enabled" if think else "disabled"}, "response_format": {"type": "json_object"}, "max_tokens": 32000 if think else 8000,
+    body = {"model": "deepseek-flash", "thinking": {"type": "enabled" if think else "disabled"}, "response_format": {"type": "json_object"}, "max_tokens": 64000 if picture else 32000 if think else 8000,
             "messages": [{"role": "user", "content": prompt}]}
+    if picture: body["messages"][0]["content"] = [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(picture).read_bytes()).decode()}}]
     if not think: body["temperature"] = 0.3
     response = requests.post("https://api.deepseek.com/chat/completions", timeout=300, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"}, json=body)
     response.raise_for_status()
-    return json.loads(response.json()["choices"][0]["message"]["content"])
+    answer = response.json()["choices"][0]["message"]["content"]
+    if not answer.strip(): raise RuntimeError("the AI thought until its allowance ran out and gave no answer")
+    return json.loads(answer)
 
 
 def review(words):
@@ -101,6 +105,32 @@ def edit(words, kept, first, last, request):
         elif kind == "text" and ok(o.get("word")) and isinstance(o.get("to"), str) and o["to"].strip(): ops.append({"op": kind, "word": o["word"], "to": o["to"].strip()[:40]})
         elif kind == "emphasis" and ok(o.get("word")): ops.append({"op": kind, "word": o["word"], "on": bool(o.get("on", True))})
     return {"say": raw.get("say").strip()[:300] if isinstance(raw.get("say"), str) and raw.get("say").strip() else ("Зроблено." if ops else "Нічого не змінено."), "ops": ops}
+
+
+MARK = """The picture is the floor plan shown in a short video about a house. Each room is shaded and carries a tag: r1, r2, ...
+The plan may also carry the architect's own room numbers; ignore them, answer with the r-tags only.
+Below is what the speaker says while the plan is on screen. Every word has its number in square brackets.
+Find the moments when the speaker talks about one particular room of this plan, and say which room it is: judge by the furniture
+and fittings drawn in it, by the doors (the entrance hall has the door to the outside) and by the order of the walk: a tour starts
+at the entrance and goes from room to room next door. Decide briskly; do not deliberate at length.
+Reply with JSON only: {"marks":[{"room":"r4","from":<number of the first word about this room>,"to":<number of the last word about it>,"name":"<the room's name as the speaker says it>"}]}
+A room that is not on the plan, or is not shaded (a terrace, a carport), gets no mark. If you cannot tell which room is meant, give no mark for it.
+The speaker's words:
+"""
+
+
+def mark(picture, rooms, words, spans):
+    """Which room of a plan the speaker talks about, and when. `spans` are the word ranges during which the plan is shown."""
+    if not enabled() or not rooms: return []
+    known = {r["id"] for r in rooms}; shown = {i for a, b in spans for i in range(a, b + 1)}
+    raw = ask(MARK + " ".join(f"[{i}]{words[i]['text']}" for i in sorted(shown)), think=True, picture=picture)
+    marks = []
+    for m in raw.get("marks", []) if isinstance(raw, dict) and isinstance(raw.get("marks"), list) else []:
+        if not isinstance(m, dict) or m.get("room") not in known: continue
+        first, last = m.get("from"), m.get("to")
+        if not all(isinstance(i, int) and not isinstance(i, bool) and i in shown for i in (first, last)) or last < first: continue
+        marks.append({"room": m["room"], "from": first, "to": last, "name": m["name"].strip()[:40] if isinstance(m.get("name"), str) else None, "by": "ai"})
+    return marks
 
 
 def enabled():

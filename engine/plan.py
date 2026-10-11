@@ -143,8 +143,12 @@ def draw(picture, result, out):
     colour = cv2.imread(str(picture)); h, w = colour.shape[:2]; shade = colour.copy()
     tints = [(60, 60, 255), (255, 140, 40), (90, 180, 30), (0, 160, 240), (220, 70, 170), (190, 180, 0), (150, 100, 60), (120, 60, 200)]
     for i, r in enumerate(result["rooms"]): cv2.fillPoly(shade, [(np.array(r["shape"]) * (w, h)).astype(np.int32)], tints[i % 8])
-    seen = cv2.addWeighted(shade, 0.45, colour, 0.55, 0)
+    seen = cv2.addWeighted(shade, 0.22, colour, 0.78, 0)
     for i, r in enumerate(result["rooms"]):
         cv2.polylines(seen, [(np.array(r["shape"]) * (w, h)).astype(np.int32)], True, tints[i % 8], 2)
-        cv2.putText(seen, r["id"], (int(r["at"][0] * w) - 10, int(r["at"][1] * h) - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 2)
+        # the tag stands at the room's widest place, on a white plate, so that it reads on any plan
+        mask = np.zeros((h, w), np.uint8); cv2.fillPoly(mask, [(np.array(r["shape"]) * (w, h)).astype(np.int32)], 1); deep = cv2.distanceTransform(mask, cv2.DIST_L2, 3)
+        y, x = np.unravel_index(deep.argmax(), deep.shape); size = max(0.5, w / 1500); (tw, th), _ = cv2.getTextSize(r["id"], cv2.FONT_HERSHEY_SIMPLEX, size, 2)
+        cv2.rectangle(seen, (x - tw // 2 - 4, y - th // 2 - 5), (x + tw // 2 + 4, y + th // 2 + 5), (255, 255, 255), -1)
+        cv2.putText(seen, r["id"], (x - tw // 2, y + th // 2), cv2.FONT_HERSHEY_SIMPLEX, size, (0, 0, 200), 2)
     cv2.imwrite(str(out), seen)

@@ -69,7 +69,7 @@ def load(folder):
     doc = json.loads((Path(folder) / "project.json").read_text(encoding="utf-8"))
     if doc.get("format") != FORMAT: raise ValueError(f"project format {doc.get('format')} is not supported")
     doc["style"] = clean_style(doc.get("style"))  # also upgrades projects made before styles existed
-    for key in ("emphasis", "corrections", "beats", "needs", "assets", "cuts"): doc.setdefault(key, [])
+    for key in ("emphasis", "corrections", "beats", "needs", "assets", "cuts", "marks"): doc.setdefault(key, [])
     return doc
 
 
@@ -118,6 +118,7 @@ def resolve(doc):
         start = at(inside[0]["start"])
         end = min(total, max(at(inside[-1]["end"]), start + MIN_BEAT[b["kind"]]))
         beats.append({"id": b["id"], "kind": b["kind"], "start": start, "end": end, "source_start": inside[0]["start"], "text": b.get("text"), "file": asset["file"] if asset else None})
+        if b["kind"] == "full": beats[-1]["marks"] = lit(doc, asset, kept_ids, at, start, end)
     # A title and a picture share the top of the frame: the title leaves as the picture arrives
     pictures = [b for b in beats if b["kind"] in PICTURED]
     for title in (b for b in beats if b["kind"] == "title"):
@@ -140,6 +141,25 @@ def resolve(doc):
 
 
 # ---------- changes to a project ----------
+def lit(doc, asset, kept_ids, at, start, end):
+    """The rooms of a plan lit while it is on screen: each from the first word about it until the next room, or until the plan leaves."""
+    rooms = {r["id"]: r for r in rooms_of(asset["file"])}; marks = []
+    for m in sorted(doc.get("marks", []), key=lambda m: m["from"]):
+        said = [w for w in doc["words"][m["from"]:m["to"] + 1] if w["id"] in kept_ids]
+        if m.get("asset") != asset["id"] or m["room"] not in rooms or not said: continue
+        begin = at(said[0]["start"])
+        if not start - 0.05 <= begin < end - 0.4: continue
+        if marks: marks[-1]["end"] = min(marks[-1]["end"], begin)
+        marks.append({"id": m["id"], "start": max(start, begin), "end": end, "shape": rooms[m["room"]]["shape"]})
+    return marks
+
+
+def rooms_of(file):
+    """The rooms found on a picture, if it is a plan that has been read (engine/plan.py keeps them beside the picture)."""
+    kept = Path(file).with_suffix(".rooms.json")
+    return json.loads(kept.read_text())["rooms"] if kept.exists() else []
+
+
 def keep_asset(folder, doc, file, kind="photo", name=None, credit=None):
     """Copies material into the project and registers it."""
     folder = Path(folder); (folder / "assets").mkdir(exist_ok=True)

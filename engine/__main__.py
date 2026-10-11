@@ -7,6 +7,7 @@
   beat PROJECT KIND FROM TO [FILE|TEXT]   add your own beat over the words FROM..TO: backdrop, cutaway (with a picture), title (with a text), zoom
   unbeat PROJECT ID           remove a beat
   replan PROJECT              ask the AI for the montage again, keeping the words and the cuts
+  mark PROJECT                find the rooms on the project's plans and ask the AI which one is spoken of, and when
   rooms PICTURE               find the rooms of a floor plan; writes PICTURE.rooms.json and a picture to look at in out/
   show PROJECT                what the project holds: the text, the beats and the open requests
   serve [PORT]                the web page: watch the pipeline, edit the text, answer requests, render
@@ -58,6 +59,27 @@ def rooms(picture):
     seen.parent.mkdir(exist_ok=True); plan.draw(picture, found, seen); say(f"{len(found['rooms'])} rooms; look at {seen}")
 
 
+def mark(folder):
+    """Rooms lit on the plans: the outlines come from the plan reader, the moments from the AI."""
+    from . import plan
+    doc = project.load(folder); kept = project.kept_ids(doc) if hasattr(project, "kept_ids") else {w["id"] for s in doc["edit"]["segments"] for w in doc["words"][s["from"]:s["to"] + 1]}
+    filled = {n["id"]: n["asset"] for n in doc["needs"] if n.get("status") == "filled" and n.get("asset")}; shown = {}
+    for b in doc["beats"]:
+        asset = b.get("asset") or filled.get(b.get("need"))
+        if b["kind"] == "full" and b.get("accepted") and asset: shown.setdefault(asset, []).append((b["from"], b["to"]))
+    report = []
+    for asset in (a for a in doc["assets"] if a["id"] in shown):
+        found = plan.outline(asset["file"])["rooms"]
+        if len(found) < 3: report.append({"picture": asset["id"], "rooms": len(found), "note": "not a plan"}); continue
+        tagged = HOME / "out" / f"{Path(folder).name}.{asset['id']}.rooms.jpg"; tagged.parent.mkdir(exist_ok=True); plan.draw(asset["file"], {"rooms": found}, tagged)
+        spans = [(a, b) for a, b in shown[asset["id"]]]; words = [{**w, "text": w["text"] if w["id"] in kept else "…"} for w in doc["words"]]
+        marks = [m for m in suggest.mark(tagged, found, words, spans) if m["from"] in kept]
+        doc["marks"] = [m for m in doc["marks"] if m.get("asset") != asset["id"] or m.get("by") != "ai"]
+        for m in marks: doc["marks"].append({"id": f"m{max([int(x['id'][1:]) for x in doc['marks']] + [0]) + 1}", "asset": asset["id"], **m})
+        report.append({"picture": asset["id"], "rooms": len(found), "look": str(tagged), "marks": [f"{m['room']} {m['name']}: " + " ".join(w["text"] for w in doc["words"][m["from"]:m["to"] + 1])[:60] for m in marks]})
+    project.save(folder, doc); say(report)
+
+
 def replan(folder):
     """Asks the AI for the montage again, for a project that already has its words. The text, the cuts and the pictures stay."""
     doc = project.load(folder); kept = set()
@@ -107,6 +129,6 @@ def serve(port="8787"):
 
 
 if __name__ == "__main__":
-    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "replan": replan, "rooms": rooms, "serve": serve}
+    commands = {"new": new, "render": lambda folder: say(render.render(folder)), "fill": fill, "drop": drop, "beat": beat, "unbeat": unbeat, "show": show, "replan": replan, "rooms": rooms, "mark": mark, "serve": serve}
     if len(sys.argv) < 2 or sys.argv[1] not in commands or (len(sys.argv) < 3 and sys.argv[1] != "serve"): sys.exit(__doc__)
     commands[sys.argv[1]](*sys.argv[2:])
