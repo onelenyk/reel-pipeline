@@ -79,6 +79,32 @@ def last_voiced(wav):
     return float((loud[-1] + 1) * 0.02) if len(loud) else 0.0
 
 
+HOLE = 0.7   # seconds of speech with no words on it that are worth listening to again
+
+
+def unheard(wav, words, model, language):
+    """Words the recogniser left out. Of a phrase said twice it often writes one telling and puts its words on the first,
+    so the failed attempt stays in the video and the good one is cut as a pause. Every stretch where a voice sounds and no
+    word stands is listened to again on its own, with nothing before it to make it look like repetition."""
+    from types import SimpleNamespace
+    from faster_whisper.audio import decode_audio
+    from faster_whisper.vad import VadOptions, get_speech_timestamps
+    audio = decode_audio(str(wav), sampling_rate=16000); found = []
+    for voiced in get_speech_timestamps(audio, VadOptions(min_silence_duration_ms=250)):
+        a, b = voiced["start"] / 16000, voiced["end"] / 16000; holes = []; at = a
+        for w in sorted((w for w in words if w.end > a and w.start < b), key=lambda w: w.start):
+            if w.start - 0.1 - at >= HOLE: holes.append((at, w.start - 0.1))
+            # a word stretched far beyond what its letters take covers speech that was left out: it counts only as long as a word can be
+            at = max(at, min(w.end, w.start + LONGEST + PER_LETTER * len(re.sub(r"[^\w]", "", w.word))) + 0.1)
+        if b - at >= HOLE: holes.append((at, b))
+        for low, high in holes:
+            start = max(0.0, low - 0.15); clip = audio[int(start * 16000):int((high + 0.15) * 16000)]
+            segments, _ = model.transcribe(clip, word_timestamps=True, language=language, beam_size=5, condition_on_previous_text=False, vad_filter=False)
+            found += [SimpleNamespace(word=w.word, start=w.start + start, end=w.end + start, probability=w.probability) for s in segments for w in (s.words or [])
+                      if w.probability >= 0.4 and low - 0.2 <= w.start + start and w.end + start <= high + 0.3]
+    return found
+
+
 def transcribe(video, model_name="large-v3-turbo"):
     with tempfile.TemporaryDirectory() as tmp:
         wav = Path(tmp) / "speech.wav"
@@ -87,6 +113,7 @@ def transcribe(video, model_name="large-v3-turbo"):
         # repetition, and a failed attempt said again is exactly what must be seen to be cut (lab/speech/verbatim.py)
         segments, meta = recogniser(model_name).transcribe(str(wav), word_timestamps=True, vad_filter=True, beam_size=5)
         raw = [w for s in segments for w in (s.words or [])]
+        raw = sorted(raw + unheard(wav, raw, recogniser(model_name), meta.language), key=lambda w: w.start)
         voiced_until = last_voiced(wav)
     # The recogniser invents a polite sign-off in the silence after the speech ("Дякую за перегляд!"), squeezed
     # into no time at all. Words with no duration, and words that begin where the sound has already stopped, are not speech.

@@ -3,7 +3,7 @@
 Plain standard-library HTTP: this is a tool for one person on a trusted machine. It listens inside the container;
 the launcher publishes it on 127.0.0.1 only.
 """
-import json, re, tempfile, threading, traceback
+import json, re, tempfile, threading, time, traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -51,9 +51,17 @@ def background(name, what, work):
     threading.Thread(target=run, daemon=True).start()
 
 
+def steps_of(status):
+    """The pipeline's steps as recorded. On a shared folder a file being replaced can for a moment read as empty: it is read again."""
+    for attempt in range(4):
+        try: return json.loads(status.read_text(encoding="utf-8")) if status.exists() else []
+        except ValueError: time.sleep(0.05)
+    return []
+
+
 def summary(name):
     folder = ROOT / name; status = folder / "status.json"
-    out = {"name": name, "busy": busy.get(name), "steps": json.loads(status.read_text(encoding="utf-8")) if status.exists() else [], "has_render": (folder / "render.mp4").exists(),
+    out = {"name": name, "busy": busy.get(name), "steps": steps_of(status), "has_render": (folder / "render.mp4").exists(),
            "render_version": int((folder / "render.mp4").stat().st_mtime) if (folder / "render.mp4").exists() else 0}
     if (folder / "project.json").exists():
         doc = project.load(folder); kept = set()

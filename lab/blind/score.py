@@ -7,7 +7,7 @@ A line's words are found by when it was spoken, so the result does not depend on
 """
 import difflib, json, re, sys, time
 from pathlib import Path
-from engine import speech, suggest
+from engine import project, speech, suggest
 
 WORK = Path(__file__).parent / "work"; fresh = "fresh" in sys.argv; only = [a for a in sys.argv[1:] if a != "fresh"]
 
@@ -17,6 +17,7 @@ def close(a, b): return sum(m.size for m in difflib.SequenceMatcher(None, a, b).
 def stem(word): return re.sub(r"[^\w]", "", word.lower())[:5]
 
 
+sound, audible, clipped = [0, 0, 0, 0], [], []
 unheard, kinds, damaged, rows, heard_all, rooms_all, numbers_all, mistakes = [], {}, [], [], [], [0, 0], [0, 0], []
 for truth_file in sorted(WORK.glob("*.truth.json")):
     s = json.loads(truth_file.read_text(encoding="utf-8"))
@@ -42,6 +43,13 @@ for truth_file in sorted(WORK.glob("*.truth.json")):
     share = []
     for n in range(len(lines)):
         mine = [i for i, o in enumerate(owner) if o == n]; share.append((sum(i in gone for i in mine) / len(mine)) if mine else None)
+    # what the viewer would hear: the stretches of the take that stay, laid against when each line was spoken
+    facts = {"seconds": s["seconds"], "width": 1080, "height": 1920, "fps": 30, "hdr": False, "has_audio": True}
+    spans = project.resolve(project.new("take.wav", facts, {"language": "uk", "words": words}, {"beats": [], "needs": [], "emphasis": [], "corrections": []}, cuts=cuts))["spans"]
+    for line in lines:
+        stays = sum(max(0.0, min(b, line["end"]) - max(a, line["start"])) for a, b in spans) / max(0.01, line["end"] - line["start"])
+        if not line["keep"]: sound[1] += 1; sound[0] += stays < 0.3; audible.extend([(s["name"], line["kind"], f"{stays:.0%}", line["text"])] if stays >= 0.3 else [])
+        else: sound[3] += 1; sound[2] += stays > 0.7; clipped.extend([(s["name"], f"{stays:.0%}", line["text"])] if stays <= 0.7 else [])
     caught = missed = 0; notes = []
     for n, line in enumerate(lines):
         show = lambda k: " ".join(w["text"] for i, w in enumerate(words) if owner[i] == k)
@@ -73,5 +81,7 @@ report = ["# Takes with a known right answer", "", f"{len(rows)} takes, heard {s
 report += [f"| {kind} | {a} | {b} |" for kind, (a, b) in sorted(kinds.items())]
 report += ["", "| Take | Voice | Seconds | Heard | Cut right | Rooms | Figures | Notes |", "|---|---|---|---|---|---|---|---|"] + rows
 report += ["", f"Failed attempts the recogniser left out of the text (they stay in the sound): {len(unheard)}.", ""] + [f"- {n}, {kind}: {text}" for n, kind, text in unheard]
+report += ["", "## What the viewer hears", "", f"Of {sound[1]} failed attempts and asides, {sound[0]} are gone from the sound; of {sound[3]} lines that should stay, {sound[2]} are whole.", "", "Still heard:", ""]
+report += [f"- {n}, {kind}, {part} of it: {text}" for n, kind, part, text in audible] + ["", "Lost or clipped:", ""] + [f"- {n}, {part} left: {text}" for n, part, text in clipped]
 report += ["", "## Left by mistake", ""] + [f"- {n}, {kind}: {text}" for n, kind, text in mistakes] + ["", "## Damaged", ""] + [f"- {n}, {part} cut: {text}" for n, part, text in damaged]
 Path("/work/out/blind.md").write_text("\n".join(report) + "\n", encoding="utf-8"); print("\n".join(report[:9 + len(kinds)]))
