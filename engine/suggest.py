@@ -3,7 +3,7 @@
 Everything it returns is a suggestion. Emphasis and beats are accepted by default (they are easy to see and undo);
 changes to words are never applied until a person accepts them, because the model guesses names it cannot know.
 """
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import base64, difflib, hashlib, json, os, re, time
 import requests
@@ -126,7 +126,14 @@ def review(words, fresh=False, starts=()):
         # one answer that fails (the model thought until its allowance ran out) does not stop the review: the others vote
         try: return clean_cuts(ask(prompt, think=True, sample=n, fresh=fresh), len(words))
         except RuntimeError as error: return error
-    with ThreadPoolExecutor(VOTERS) as pool: answers = list(pool.map(answer, range(VOTERS)))
+    # The slowest of the three answers takes several times longer than the others. When the first two say the same, word for
+    # word and reason for reason, the third cannot change the vote and is not waited for (it still comes, and is kept).
+    pool = ThreadPoolExecutor(VOTERS); asked = {pool.submit(answer, n): n for n in range(VOTERS)}; got = {}
+    said = lambda cuts: sorted((i, c["why"]) for c in cuts for i in range(c["from"], c["to"] + 1))
+    for done in as_completed(asked):
+        got[asked[done]] = done.result(); good = [a for a in got.values() if not isinstance(a, Exception)]
+        if len(good) == 2 and len(got) < VOTERS and said(good[0]) == said(good[1]): break
+    pool.shutdown(wait=False); answers = [got[n] for n in sorted(got)]
     failed = [a for a in answers if isinstance(a, Exception)]; answers = [a for a in answers if not isinstance(a, Exception)]
     if len(answers) < 2: raise failed[0]
     return merged([c for c in vote(answers) if c["why"] != "garble" or empty(words, c)], restarts(words))
