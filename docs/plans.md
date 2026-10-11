@@ -57,6 +57,26 @@ word stems, words of one meaning count as one (`SAME`: постірочна and 
 of which room it is are ignored (`GENERIC`). Of several rooms of one name, each next moment takes the next room. A person's
 own tie of a moment is never changed by this.
 
+## Correcting the rooms by hand
+
+On the page's Plan tab (`engine/plan.py` `add_room`, `reshape_room`, `remove_room`):
+
+- **Add a room**: drag a rectangle or tap its corners. Where the drawing lies on rooms already found, the new room is the part
+  of them it covers (so its sides along walls are the walls) and those rooms give that part up; on empty paper it is taken as drawn.
+- **Move its corners**: the pencil beside a room. Corners drag, the smaller point on a side becomes a new corner, a double tap
+  removes one, arrow keys move the last corner by one pixel of the picture (ten with Shift). The outline is kept exactly as given.
+- **Look closer**: entering the pencil frames that room; a pinch or the buttons zoom, empty space drags the plan.
+- **Remove a room**. Its area does not go back to the room it was carved from: move that room's corners if it should.
+
+After any of these the moments are tied again by name and the plan inserts are remade.
+
+## The plan follows the walk
+
+`lay_plans` in `engine/project.py`: the AI lists the moments rooms are spoken of anywhere in the text; over each run of tied
+moments (`TOUR_GAP` words apart at most) the plan is laid as one insert, holding `TOUR_HOLD` words at most on one room and
+stepping aside for a picture of something else. These inserts are marked `"by": "plan"` and remade whenever moments or rooms
+change; an insert a person made is never touched.
+
 ## What is kept, and where
 
 `rooms/<first 20 hex digits of the picture's SHA-1>.json`, so that the same plan in another video is known at once:
@@ -89,7 +109,7 @@ nothing else changes. `lab/plans/drawing_only.py` is a start on a reader with no
 
 - The thresholds above were set on three plans of two house types. Plans of another drawing style may need others.
 - On a blurred plan (a frame cut from a video) half of the room numbers are not found, and rooms that share a space stay joined.
-- A place outdoors takes the shape of what is drawn there (cars and their shadow), not of the slab meant. A person cannot yet draw a place by hand.
+- A place outdoors takes the shape of what is drawn there (cars and their shadow), not of the slab meant; it can be redrawn by hand.
 - One name is remembered for one room: "гардеробна" said of three rooms has to be clicked each time, and a moment cannot yet
   light two rooms.
 - A picture that is not a plan is told apart only by having fewer than three rooms.
@@ -100,7 +120,7 @@ nothing else changes. `lab/plans/drawing_only.py` is a start on a reader with no
 - `./reel rooms media/kit/shelest-plan-1.jpg` - reads one plan and writes a picture to look at in `out/`.
 - `./reel run lab/plans/score.py plans/cubicasa 20` - scores the finder against plans marked by people.
 - `./reel page rooms IMG_7824` - the page: picking a room by a click.
-- `./reel page zones IMG_7824` - the page: naming a zone.
+- `./reel page zones|draw-zone|reshape-zone IMG_7824` - the page: naming a zone, drawing one, moving its corners.
 
 ## How it looks in the video
 

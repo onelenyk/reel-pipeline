@@ -250,13 +250,14 @@ def tie(doc):
             near = where.get(m["room"], near)
 
 
-def change_zones(folder, asset_id, add=None, name=None, remove=None):
+def change_zones(folder, asset_id, add=None, name=None, remove=None, reshape=None):
     """A person draws a room on a plan or removes one; the moments are tied again to what is there now."""
     from . import plan
     doc = load(folder); asset = next((a for a in doc["assets"] if a["id"] == asset_id), None)
     if not asset: raise ValueError("there is no such picture")
     made = plan.add_room(asset["file"], add, name) if add else None
     if remove: plan.remove_room(asset["file"], remove)
+    if reshape: plan.reshape_room(asset["file"], reshape["room"], reshape["shape"])
     there = {r["id"] for r in rooms_of(asset["file"])}
     for m in doc["marks"]:
         if m["asset"] == asset_id and m["room"] not in there: m["room"] = None; m["by"] = "ai"   # its room is gone: it looks for one again

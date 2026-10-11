@@ -380,6 +380,22 @@ def add_room(picture, shape, name=None):
     known["rooms"].append(room); place(picture).write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8"); return room
 
 
+def reshape_room(picture, room, shape):
+    """A person moves a room's corners or adds some. The outline is taken as given: they are looking at the plan."""
+    import cv2, numpy as np
+    known = stored(picture, lenient=True)
+    if not known: raise ValueError("this plan has not been read")
+    target = next((r for r in known["rooms"] if r["id"] == room), None)
+    if not target: raise ValueError("there is no such room on this plan")
+    points = [[round(min(1.0, max(0.0, float(x))), 4), round(min(1.0, max(0.0, float(y))), 4)] for x, y in shape][:80]
+    if len(points) < 3: raise ValueError("a room needs at least three corners")
+    h, w = cv2.imread(str(picture)).shape[:2]; mask = np.zeros((h, w), np.uint8); cv2.fillPoly(mask, [(np.array(points) * (w, h)).astype(np.int32)], 1)
+    if mask.sum() < 0.0008 * h * w: raise ValueError("the room is too small")
+    deep = cv2.distanceTransform(mask, cv2.DIST_L2, 3); y, x = np.unravel_index(deep.argmax(), deep.shape)
+    target.update(shape=points, at=[round(x / w, 4), round(y / h, 4)], shaped="user")
+    place(picture).write_text(json.dumps(known, ensure_ascii=False), encoding="utf-8"); return target
+
+
 def remove_room(picture, room):
     known = stored(picture, lenient=True)
     if not known: raise ValueError("this plan has not been read")

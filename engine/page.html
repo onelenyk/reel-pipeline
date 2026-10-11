@@ -89,21 +89,31 @@
   #beats .card button { height: 32px; padding: 0 10px; }
   @media (min-width: 1100px) { .planGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; } .planGrid > div:first-child { position: sticky; top: 60px; } .planGrid .plan { max-width: none; } }
   .plan { position: relative; background: #fff; border-radius: 12px; overflow: hidden; margin-bottom: 10px; max-width: 560px; }
-  .plan img { display: block; width: 100%; }
+  .plan img { display: block; width: 100%; user-select: none; }
+  .planInner { position: relative; transform-origin: 0 0; --k: 1; }
+  .zoomer { position: absolute; right: 8px; top: 8px; display: flex; gap: 4px; z-index: 3; }
+  .zoomer button { width: 32px; height: 32px; padding: 0; background: rgba(17,17,17,.8); color: #fff; border-radius: 8px; }
   .plan svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .plan polygon { fill: transparent; stroke: rgba(10,132,255,.55); stroke-width: 2; vector-effect: non-scaling-stroke; cursor: pointer; }
+  .plan polygon { fill: transparent; stroke: rgba(10,132,255,.55); stroke-width: calc(2px / var(--k)); vector-effect: non-scaling-stroke; cursor: pointer; }
   .plan polygon:hover { fill: rgba(10,132,255,.22); }
   .plan polygon.used { fill: rgba(255,214,10,.16); stroke: rgba(200,150,0,.8); }
-  .plan polygon.on { fill: rgba(255,214,10,.5); stroke: #c79a00; stroke-width: 4; }
-  .plan.picking polygon { stroke: #0a84ff; stroke-width: 3; }
-  .pin { position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; background: #111; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0; pointer-events: none; }
+  .plan polygon.on { fill: rgba(255,214,10,.5); stroke: #c79a00; stroke-width: calc(4px / var(--k)); }
+  .plan.picking polygon { stroke: #0a84ff; stroke-width: calc(3px / var(--k)); }
+  .pin { position: absolute; transform: translate(-50%, -50%) scale(calc(1 / var(--k))); width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; background: #111; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0; pointer-events: none; }
   .pin.guess { background: #fff; color: #222; box-shadow: inset 0 0 0 1.5px #888; }
   .pin.none { background: var(--bad); }
   .pin.still { position: static; transform: none; flex: none; }
-  .plan polygon.hot { fill: rgba(10,132,255,.35); stroke-width: 4; }
+
+  .plan polygon.hot { fill: rgba(10,132,255,.35); stroke-width: calc(4px / var(--k)); }
   .plan.drawing { cursor: crosshair; outline: 2px solid var(--brand); } .plan.drawing polygon { pointer-events: none; }
-  .plan .sketch { fill: rgba(255,214,10,.35); stroke: #c79a00; stroke-width: 3; vector-effect: non-scaling-stroke; pointer-events: none; }
-  .plan .corner { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 5px; background: #c79a00; border: 2px solid #fff; pointer-events: none; }
+  .plan .sketch { fill: rgba(255,214,10,.35); stroke: #c79a00; stroke-width: calc(3px / var(--k)); vector-effect: non-scaling-stroke; pointer-events: none; }
+  .plan .corner { position: absolute; width: 10px; height: 10px; transform: translate(-50%, -50%) scale(calc(1 / var(--k))); border-radius: 5px; background: #c79a00; border: 2px solid #fff; pointer-events: none; }
+  .plan.reshaping polygon { pointer-events: none; } .plan.reshaping polygon:not(.editing) { opacity: .35; }
+  .plan polygon.editing { fill: rgba(255,214,10,.3); stroke: #c79a00; stroke-width: calc(3px / var(--k)); }
+  .plan .handle.last { background: var(--brand); }
+  .plan .handle { position: absolute; width: 16px; height: 16px; transform: translate(-50%, -50%) scale(calc(1 / var(--k))); border-radius: 8px; background: #fff; border: 3px solid #c79a00; cursor: grab; touch-action: none; z-index: 2; }
+  .plan .mid { position: absolute; width: 12px; height: 12px; transform: translate(-50%, -50%) scale(calc(1 / var(--k))); border-radius: 6px; background: rgba(199,154,0,.55); border: 2px solid #fff; cursor: copy; touch-action: none; z-index: 1; }
+  .zone.on input { outline: 2px solid var(--brand); }
   .zone { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
   .zone input { flex: 1; height: 34px; }
   .zone input.guess { color: var(--muted); font-style: italic; }
@@ -215,6 +225,7 @@ const HINT = {
 const ACCENTS = ["#ffd60a", "#ffffff", "#30d158", "#0a84ff", "#ff453a", "#ff9f0a", "#bf5af2"];
 let name = new URLSearchParams(location.search).get("p"), state = null, styles = [], mode = "play", from = null, shown = 0, edited = false;
 let drawn = "", editing = null, range = null, picker = null, marked = null;
+let reshape = null; // a room whose corners are being moved: { asset, room, points, drag }
 let sketch = null;  // a room being drawn on a plan: { asset, points: [[x, y], ...], from, to }
 let tab = "text"; try { tab = localStorage.getItem("reel-tab") || "text"; } catch {}
 function drawTabs() {
@@ -401,7 +412,7 @@ function draw(force) {
   if (!state) return;
   drawSteps(); drawTabs();
   // Everything below is rebuilt only when the project itself changed, so typing in a field is never interrupted
-  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.busy, marked, sketch && sketch.asset]);
+  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.busy, marked, sketch && sketch.asset, reshape && reshape.room]);
   if (!force && signature === drawn) return;
   if (editing !== null && !force) return;
   drawn = signature; lit = null; drawLine();
@@ -462,7 +473,7 @@ function draw(force) {
 
 // ---------- choosing a picture: from the project's own, from the device, or from the internet ----------
 // ---------- rooms on a plan: the AI finds when a room is spoken of, a click on the plan says which room it is ----------
-function drawPlans() {
+function drawPlans() { requestAnimationFrame(() => setView(view.k, view.x, view.y));
   const plans = state.plans || [], marks = state.marks || [], words = state.words;
   $("planBox").style.display = plans.length ? "" : "none";
   if (marked && !marks.some((m) => m.id === marked)) marked = null;
@@ -470,15 +481,17 @@ function drawPlans() {
     if (!p.read) return `<div class="card"><img src="${pic(p.file)}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px"><div class="what">Якщо це планування, я знайду на ньому кімнати<small>а в тексті — моменти, коли про них ідеться</small></div><button data-rooms="1" ${state.busy ? "disabled" : ""}>${state.busy === "rooms" ? "Шукаю…" : "Знайти кімнати"}</button></div>`;
     if (p.rooms.length < 3) return "";
     const mine = marks.filter((m) => m.asset === p.asset).sort((a, b) => a.from - b.from), picked = mine.find((m) => m.id === marked), used = new Set(mine.map((m) => m.room));
-    const drawing = sketch && sketch.asset === p.asset;
-    return `<div class="planGrid"><div><div class="plan${picked ? " picking" : ""}${drawing ? " drawing" : ""}" data-plan-box="${p.asset}"><img src="${pic(p.file)}" alt="План"><svg viewBox="0 0 1 1" preserveAspectRatio="none">${p.rooms.map((r) =>
-      `<polygon points="${r.shape.map((q) => q.join(",")).join(" ")}" data-room="${r.id}" data-plan="${p.asset}" class="${picked && picked.room === r.id ? "on" : used.has(r.id) ? "used" : ""}"><title>${esc(r.name || "без назви")}</title></polygon>`).join("")}</svg>${p.rooms.map((r) =>
-      `<span class="pin${r.name ? (r.guess ? " guess" : "") : " none"}" data-pin="${r.id}" style="left:${(100 * r.at[0]).toFixed(1)}%;top:${(100 * r.at[1]).toFixed(1)}%" title="${esc(r.name || "без назви")}">${p.rooms.indexOf(r) + 1}</span>`).join("")}<span id="sketchLayer"></span></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">${drawing
-        ? `<button class="primary" data-sketch-done="1">Готово</button><button class="quiet" data-sketch-no="1">Скасувати</button><span class="hint" style="margin:0;flex:1 1 200px">Протягніть прямокутник або клацайте кути кімнати по черзі. Точність біля стін не потрібна: зона сама ляже по стінах.</span>`
+    const drawing = sketch && sketch.asset === p.asset, shaping = reshape && reshape.asset === p.asset ? reshape : null;
+    return `<div class="planGrid"><div><div class="plan${picked ? " picking" : ""}${drawing ? " drawing" : ""}${shaping ? " reshaping" : ""}" data-plan-box="${p.asset}"><div class="planInner"><img src="${pic(p.file)}" alt="План" draggable="false"><svg viewBox="0 0 1 1" preserveAspectRatio="none">${p.rooms.map((r) =>
+      `<polygon points="${r.shape.map((q) => q.join(",")).join(" ")}" data-room="${r.id}" data-plan="${p.asset}" class="${shaping && shaping.room === r.id ? "editing" : picked && picked.room === r.id ? "on" : used.has(r.id) ? "used" : ""}"><title>${esc(r.name || "без назви")}</title></polygon>`).join("")}</svg>${p.rooms.map((r) =>
+      `<span class="pin${r.name ? (r.guess ? " guess" : "") : " none"}" data-pin="${r.id}" style="left:${(100 * r.at[0]).toFixed(1)}%;top:${(100 * r.at[1]).toFixed(1)}%" title="${esc(r.name || "без назви")}">${p.rooms.indexOf(r) + 1}</span>`).join("")}<span id="sketchLayer"></span></div><div class="zoomer"><button data-zoom="out" aria-label="Віддалити план">−</button><button data-zoom="in" aria-label="Наблизити план">+</button><button data-zoom="fit" aria-label="Увесь план">⤢</button></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">${shaping
+        ? `<button class="primary" data-reshape-done="1">Готово</button><button class="quiet" data-reshape-no="1">Скасувати</button><span class="hint" style="margin:0;flex:1 1 200px">Тягніть білі кути; менша точка посеред сторони додає новий кут, подвійний дотик прибирає. Щипок або + наближає, порожнє місце тягне план, стрілки зсувають останній кут на піксель.</span>`
+        : drawing
+        ? `<button class="primary" data-sketch-done="1">Готово</button><button class="quiet" data-sketch-no="1">Скасувати</button><span class="hint" style="margin:0;flex:1 1 200px">Протягніть прямокутник або клацайте кути кімнати по черзі. Точність біля стін не потрібна: зона сама ляже по стінах. Щипок або + наближає план.</span>`
         : `<button data-sketch="${p.asset}">Додати зону</button><span class="hint" style="margin:0;flex:1 1 200px">Якщо кімнати бракує або вона злилася з сусідньою, намалюйте її поверх плану.</span>`}</div></div>
       <div><h2>Зони плану</h2><p class="hint" style="margin:0 0 10px">Що це за кімнати. Здогадки рушія написані курсивом: виправте хибні й допишіть порожні. Назви лишаються з цим планом назавжди, і моменти з відео прив'язуються до них самі.</p>
-      ${p.rooms.map((r) => `<div class="zone" data-zone-row="${r.id}"><span class="pin still${r.name ? (r.guess ? " guess" : "") : " none"}">${p.rooms.indexOf(r) + 1}</span><input type="text" maxlength="40" value="${esc(r.name || "")}" placeholder="що це за кімната?" class="${r.guess ? "guess" : ""}" data-zone="${r.id}" data-plan="${p.asset}" aria-label="Назва зони ${r.id}"><small>${r.by === "user" ? "ваша зона" : r.name ? (r.guess ? "здогадка" : "ваша назва") : "не впізнано"}</small><button class="quiet" data-zone-remove="${r.id}" data-plan="${p.asset}" aria-label="Видалити зону ${p.rooms.indexOf(r) + 1}">✕</button></div>`).join("")}
+      ${p.rooms.map((r) => `<div class="zone${shaping && shaping.room === r.id ? " on" : ""}" data-zone-row="${r.id}"><span class="pin still${r.name ? (r.guess ? " guess" : "") : " none"}">${p.rooms.indexOf(r) + 1}</span><input type="text" maxlength="40" value="${esc(r.name || "")}" placeholder="що це за кімната?" class="${r.guess ? "guess" : ""}" data-zone="${r.id}" data-plan="${p.asset}" aria-label="Назва зони ${r.id}"><small>${r.by === "user" ? "ваша зона" : r.name ? (r.guess ? "здогадка" : "ваша назва") : "не впізнано"}</small><button class="quiet" data-reshape="${r.id}" data-plan="${p.asset}" aria-label="Змінити межі зони ${p.rooms.indexOf(r) + 1}" title="Змінити межі">✎</button><button class="quiet" data-zone-remove="${r.id}" data-plan="${p.asset}" aria-label="Видалити зону ${p.rooms.indexOf(r) + 1}" title="Видалити зону">✕</button></div>`).join("")}
       <h2 style="margin-top:18px">Моменти у відео</h2><p class="hint" style="margin:0 0 10px">${picked ? `Клацніть на плані кімнату, про яку мовець каже «${esc(picked.name || "…")}».` : "Коли мовець називає кімнату, вона підсвічується. Якщо момент прив'язано не туди, оберіть його і клацніть потрібну кімнату на плані."}</p>
       ${mine.map((m) => { const piece = words.slice(m.from, m.to + 1).filter((w) => w.kept), text = piece.map((w) => w.text).join(" "), at = piece.length ? piece[0].at : null;
         return `<div class="card mark${m.id === marked ? " on" : ""}${m.room ? "" : " wait"}" data-mark="${m.id}"><div class="what"><b>${esc(m.name || "без назви")}</b> · ${esc(text.length > 70 ? text.slice(0, 70) + "…" : text)}<small>${m.room ? "→ " + esc((p.rooms.find((r) => r.id === m.room) || {}).name || "зона без назви") + (m.by === "user" ? "" : " · сама") : "немає зони з такою назвою — у відео не підсвітиться"}</small></div>${at != null ? `<button class="jump" data-seek="${at}">▶</button>` : ""}<button class="quiet" data-unmark="${m.id}" aria-label="Прибрати">✕</button></div>`; }).join("")}
@@ -486,8 +499,62 @@ function drawPlans() {
   }).join("");
 }
 
+// ---------- looking closer at a plan ----------
+let view = { k: 1, x: 0, y: 0 };   // how far in, and which part of the plan is at the top left (shares of the plan)
+function setView(k, x, y) {
+  k = Math.max(1, Math.min(12, k)); view = { k, x: Math.max(0, Math.min(1 - 1 / k, x)), y: Math.max(0, Math.min(1 - 1 / k, y)) };
+  document.querySelectorAll(".planInner").forEach((inner) => { inner.style.transform = `scale(${view.k}) translate(${-100 * view.x}%, ${-100 * view.y}%)`; inner.style.setProperty("--k", view.k); });
+}
+const zoomAt = (factor, fx, fy) => { const k = Math.max(1, Math.min(12, view.k * factor)); setView(k, fx - (fx - view.x) * view.k / k, fy - (fy - view.y) * view.k / k); };   // the place under the pointer stays under it
+const frame = (points) => { const xs = points.map((q) => q[0]), ys = points.map((q) => q[1]), w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys), k = Math.min(8, 0.6 / Math.max(w, h, 0.05));
+  setView(k, (Math.min(...xs) + Math.max(...xs)) / 2 - 0.5 / k, (Math.min(...ys) + Math.max(...ys)) / 2 - 0.5 / k); };
+let pan = null;
+document.addEventListener("wheel", (e) => {
+  const box = e.target.closest && e.target.closest(".plan"); if (!box) return;
+  const at = planPoint(e, box);
+  if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.01), at[0], at[1]); }                      // a pinch on a trackpad, or Ctrl with the wheel
+  else if (view.k > 1) { e.preventDefault(); const r = box.getBoundingClientRect(); setView(view.k, view.x + e.deltaX / r.width / view.k, view.y + e.deltaY / r.height / view.k); }
+}, { passive: false });
+document.addEventListener("pointerdown", (e) => {
+  const box = e.target.closest && e.target.closest(".plan"); if (!box || view.k <= 1 || sketch || e.target.closest("[data-corner], [data-mid], .zoomer")) return;
+  pan = { x: e.clientX, y: e.clientY, from: { ...view }, r: box.getBoundingClientRect(), moved: false };
+});
+document.addEventListener("pointermove", (e) => { if (pan) { const dx = e.clientX - pan.x, dy = e.clientY - pan.y; if (Math.abs(dx) + Math.abs(dy) > 4) pan.moved = true; setView(view.k, pan.from.x - dx / pan.r.width / view.k, pan.from.y - dy / pan.r.height / view.k); } });
+document.addEventListener("pointerup", () => { if (pan) setTimeout(() => (pan = null), 0); });
+
+// ---------- moving the corners of a room ----------
+function drawReshape() {
+  const layer = $("sketchLayer"), shape = reshape && document.querySelector(`.plan.reshaping polygon[data-room="${reshape.room}"]`);
+  if (!reshape || !layer || !shape) return;
+  const p = reshape.points; shape.setAttribute("points", p.map((q) => q.join(",")).join(" "));
+  layer.innerHTML = p.map((q, i) => { const n = p[(i + 1) % p.length]; return `<span class="mid" data-mid="${i}" style="left:${50 * (q[0] + n[0])}%;top:${50 * (q[1] + n[1])}%"></span>`; }).join("")
+    + p.map((q, i) => `<span class="handle${i === reshape.last ? " last" : ""}" data-corner="${i}" style="left:${100 * q[0]}%;top:${100 * q[1]}%"></span>`).join("");
+}
+document.addEventListener("pointerdown", (e) => {
+  if (!reshape) return;
+  const corner = e.target.closest && e.target.closest("[data-corner]"), mid = e.target.closest && e.target.closest("[data-mid]"), box = document.querySelector(".plan.reshaping");
+  if (!box || (!corner && !mid)) return;
+  if (mid) { const i = +mid.dataset.mid; reshape.points.splice(i + 1, 0, planPoint(e, box)); reshape.drag = i + 1; }   // a new corner, already in the hand
+  else reshape.drag = +corner.dataset.corner;
+  reshape.last = reshape.drag; e.preventDefault(); drawReshape();
+});
+document.addEventListener("pointermove", (e) => { if (reshape && reshape.drag != null) { reshape.points[reshape.drag] = planPoint(e, document.querySelector(".plan.reshaping")).map((v) => +v.toFixed(4)); drawReshape(); } });
+document.addEventListener("pointerup", () => { if (reshape) reshape.drag = null; });
+document.addEventListener("dblclick", (e) => { const corner = reshape && e.target.closest && e.target.closest("[data-corner]"); if (corner && reshape.points.length > 3) { reshape.points.splice(+corner.dataset.corner, 1); drawReshape(); } });
+document.addEventListener("keydown", (e) => {
+  if (!reshape) return;
+  if (e.key === "Escape") { reshape = null; setView(1, 0, 0); draw(true); return; }
+  const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (step && reshape.last != null && !(e.target.closest && e.target.closest("input, textarea"))) {
+    // one pixel of the picture at a time, ten with Shift
+    const image = document.querySelector(".plan.reshaping img"), by = e.shiftKey ? 10 : 1, q = reshape.points[reshape.last];
+    reshape.points[reshape.last] = [+Math.max(0, Math.min(1, q[0] + step[0] * by / image.naturalWidth)).toFixed(4), +Math.max(0, Math.min(1, q[1] + step[1] * by / image.naturalHeight)).toFixed(4)];
+    e.preventDefault(); e.stopImmediatePropagation(); drawReshape();
+  }
+}, true);
+
 // ---------- drawing a room on a plan ----------
-const planPoint = (e, box) => { const r = box.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
+const planPoint = (e, box) => { const r = (box.querySelector(".planInner") || box).getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
 function drawSketch() {
   const layer = $("sketchLayer"), svg = document.querySelector(".plan.drawing svg");
   document.querySelectorAll(".plan .sketch").forEach((x) => x.remove());
@@ -554,7 +621,16 @@ document.addEventListener("change", async (e) => {
 });
 document.addEventListener("focusin", (e) => { const input = e.target.closest && e.target.closest("input[data-zone]"); document.querySelectorAll(".plan polygon.hot").forEach((x) => x.classList.remove("hot")); if (input) { const shape = document.querySelector(`polygon[data-room="${input.dataset.zone}"][data-plan="${input.dataset.plan}"]`); if (shape) shape.classList.add("hot"); } });
 document.addEventListener("click", async (e) => {
-  if (e.target.closest("[data-sketch]")) { sketch = { asset: e.target.closest("[data-sketch]").dataset.sketch, points: [] }; marked = null; draw(true); return; }
+  if (e.target.closest("[data-reshape]")) {
+    const b = e.target.closest("[data-reshape]"), room = ((state.plans.find((p) => p.asset === b.dataset.plan) || {}).rooms || []).find((r) => r.id === b.dataset.reshape);
+    if (room) { reshape = { asset: b.dataset.plan, room: room.id, points: room.shape.map((q) => [...q]), drag: null, last: null }; sketch = null; marked = null; draw(true); frame(reshape.points); drawReshape(); } return;
+  }
+  if (e.target.closest("[data-reshape-no]")) { reshape = null; setView(1, 0, 0); draw(true); return; }
+  if (e.target.closest("[data-reshape-done]")) { const done = reshape; reshape = null; setView(1, 0, 0); await edit({ zone_shape: { asset: done.asset, room: done.room, shape: done.points } }); return; }
+  if (e.target.closest("[data-zoom]")) { const how = e.target.closest("[data-zoom]").dataset.zoom; if (how === "fit") setView(1, 0, 0); else zoomAt(how === "in" ? 1.6 : 1 / 1.6, view.x + 0.5 / view.k, view.y + 0.5 / view.k); return; }
+  if (pan && pan.moved) return;   // the plan was being moved, not tapped
+  if (reshape && e.target.closest(".plan.reshaping")) return;
+  if (e.target.closest("[data-sketch]")) { sketch = { asset: e.target.closest("[data-sketch]").dataset.sketch, points: [] }; marked = null; reshape = null; draw(true); return; }
   if (e.target.closest("[data-sketch-no]")) { sketch = null; draw(true); return; }
   if (e.target.closest("[data-sketch-done]")) { await finishSketch(sketch.points); return; }
   if (e.target.closest("[data-zone-remove]")) { const b = e.target.closest("[data-zone-remove]"); await edit({ zone_remove: { asset: b.dataset.plan, room: b.dataset.zoneRemove } }); return; }

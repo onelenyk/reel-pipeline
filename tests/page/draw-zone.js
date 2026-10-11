@@ -9,8 +9,8 @@ if (old) { old.parentElement.querySelector("[data-zone-remove]").click(); await 
 const start = zones();
 document.querySelector("[data-sketch]").click();
 checks.push(["the plan goes into drawing", await until(() => document.querySelector(".plan.drawing"))]);
-const box = document.querySelector(".plan.drawing"), r = box.getBoundingClientRect();
-const ev = (type, x, y) => box.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: r.left + x * r.width, clientY: r.top + y * r.height }));
+const box = document.querySelector(".plan.drawing"), rect = () => box.querySelector(".planInner").getBoundingClientRect();
+const ev = (type, x, y) => box.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: rect().left + x * rect().width, clientY: rect().top + y * rect().height }));
 ev("pointerdown", 0.49, 0.64); ev("pointermove", 0.54, 0.7);
 checks.push(["a rectangle follows the pointer", !!document.querySelector(".plan .sketch")]);
 ev("pointermove", 0.578, 0.75); ev("pointerup", 0.578, 0.75);

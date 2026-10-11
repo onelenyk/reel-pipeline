@@ -201,6 +201,8 @@ class Handler(BaseHTTPRequestHandler):
                     m = change["mark"]; project.set_mark(folder, m.get("id"), m.get("asset"), m.get("room"), m.get("from"), m.get("to"), m.get("name"))
                 elif "zone_add" in change:
                     z = change["zone_add"]; project.change_zones(folder, z.get("asset"), add=z.get("shape"), name=z.get("name"))
+                elif "zone_shape" in change:
+                    z = change["zone_shape"]; project.change_zones(folder, z.get("asset"), reshape={"room": z.get("room"), "shape": z.get("shape")})
                 elif "zone_remove" in change:
                     z = change["zone_remove"]; project.change_zones(folder, z.get("asset"), remove=z.get("room"))
                 elif "zone" in change:

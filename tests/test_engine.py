@@ -270,6 +270,12 @@ class DrawnRoom(unittest.TestCase):
         self.assertTrue(made.get("outdoors")); self.assertAlmostEqual(self.area(made), 42 * 160, delta=0.15 * 42 * 160)
         self.plan.remove_room(self.picture, made["id"]); self.assertEqual([r["id"] for r in self.plan.stored(self.picture)["rooms"]], ["r1"])
 
+    def test_corners_moved_by_hand_are_kept_as_given(self):
+        shape = [[0.1, 0.15], [0.5, 0.15], [0.5, 0.5], [0.9, 0.5], [0.9, 0.85], [0.1, 0.85]]
+        room = self.plan.reshape_room(self.picture, "r1", shape)
+        self.assertEqual(room["shape"], shape); self.assertEqual(self.plan.stored(self.picture)["rooms"][0]["shape"], shape)
+        self.assertRaises(ValueError, self.plan.reshape_room, self.picture, "r1", [[0.1, 0.1], [0.2, 0.2]])
+
 
 class Tour(unittest.TestCase):
     def test_the_plan_is_laid_over_each_walk_through_its_rooms(self):

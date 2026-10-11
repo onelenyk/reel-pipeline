@@ -68,7 +68,7 @@ Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output
 
 ## Three kinds of check
 
-- `./reel test` after any change to `engine/`: 27 tests, under a second.
-- `./reel page player|timeline|ask|rooms|zones [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
+- `./reel test` after any change to `engine/`: 32 tests, under a second.
+- `./reel page player|timeline|ask|rooms|zones|draw-zone|reshape-zone [PROJECT]` after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
 - `./reel e2e` before trusting the whole: about eight minutes.
 
