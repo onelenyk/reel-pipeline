@@ -8,7 +8,8 @@ const listed = document.querySelectorAll(".card.mark").length;
 checks.push(["moments listed", listed >= 5]);
 checks.push(["all wait for a room", document.querySelectorAll(".card.mark.wait").length === listed]);
 click(document.querySelector('polygon[data-room="r13"]'));
-checks.push(["a room click without a moment explains itself", await until(() => document.querySelector("#error .error"))]);
+checks.push(["a room click without a moment opens its corners", await until(() => document.querySelectorAll(".plan .handle").length >= 3)]);
+click(document.querySelector("[data-reshape-no]")); await until(() => !document.querySelector(".plan.reshaping"));
 const pick = async (word, room) => {
   const card = [...document.querySelectorAll(".card.mark")].find((c) => c.textContent.includes(word)); click(card.querySelector(".what"));
   await until(() => document.querySelector(".plan.picking")); click(document.querySelector(`polygon[data-room="${room}"]`));
