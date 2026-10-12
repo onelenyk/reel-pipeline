@@ -7,7 +7,8 @@
 #   ./reel plans-setup                     fetch the plan reader (CubiCasa5k: non-commercial use only), once
 #   ./reel mark projects/IMG_7824        find the plan's rooms and the moments each is spoken of
 #   ./reel run lab/plans/score.py ...      run any script from lab/ or tools/ in the container
-#   ./reel page rooms IMG_7824             a browser scenario from tests/page against the running service (needs Chrome and Node)
+#   ./reel page rooms IMG_7824             a browser scenario from tests/page against the running service (needs Chrome and Node);
+#                                          a project of "-" opens the first screen, the shelf of projects
 #   ./reel test                            the engine's tests
 #   ./reel e2e [WORDS] [--ai] [--fresh]    end to end: generated takes through the real service (see e2e/run.py)
 #   ./reel lab probe /in/IMG_7821.MOV      the experiments from lab/lab.py
@@ -24,7 +25,7 @@ if [ "$1" = "run" ]; then shift; exec docker run --rm --env-file .env -v "$PWD":
 if [ "$1" = "page" ]; then
   # Headless Chrome on this machine opens the page, runs the scenario and leaves a screenshot in out/page
   [ -f "tests/page/$2.js" ] || { echo "reel: scenarios: $(ls tests/page/*.js | xargs -n1 basename | sed 's/\.js$//' | tr '\n' ' ')"; exit 1; }
-  mkdir -p out/page; URL="http://127.0.0.1:${REEL_PORT:-8787}/?p=${3:-IMG_7824}" node tests/page/shot.mjs "${4:-900}" "${5:-1300}" "out/page/$2.png" "tests/page/$2.js"; code=$?
+  mkdir -p out/page; at="?p=${3:-IMG_7824}"; [ "$3" = "-" ] && at=""; URL="http://127.0.0.1:${REEL_PORT:-8787}/$at" node tests/page/shot.mjs "${4:-900}" "${5:-1300}" "out/page/$2.png" "tests/page/$2.js"; code=$?
   pkill -f "user-data-dir=.*/ph-" >/dev/null 2>&1; echo "screenshot: out/page/$2.png"; exit $code
 fi
 if [ "$1" = "test" ]; then exec docker run --rm -v "$PWD":/work --entrypoint python reel -m unittest discover -s tests -v; fi

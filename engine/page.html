@@ -10,8 +10,25 @@
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
   h1 { font-size: 17px; margin: 0 8px 0 0; }
   h2 { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--subtle); margin: 0 0 8px; font-weight: 600; }
-  main { display: grid; gap: 20px; padding: 16px; max-width: 1200px; margin: 0 auto; }
-  @media (min-width: 900px) { main { grid-template-columns: 330px minmax(0, 1fr); align-items: start; } .left { position: sticky; top: 16px; } }
+  h1 a { color: inherit; text-decoration: none; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 16px; max-width: 1200px; margin: 0 auto; }
+  #error { max-width: 1200px; margin: 0 auto; padding: 0 16px; } #error .error { margin: 12px 0 0; }
+  /* the first screen: the projects of a workspace as a shelf of covers */
+  #home { display: none; max-width: 1200px; margin: 0 auto; padding: 20px 16px; }
+  body.home #home { display: block; } body.home main, body.home #pick, body.home #move, body.home #back { display: none !important; }
+  .shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; }
+  .proj { display: block; color: inherit; text-decoration: none; cursor: pointer; min-width: 0; }
+  .proj .cover { position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--panel); overflow: hidden; display: grid; place-items: center; color: var(--subtle); font-size: 12px; text-align: center; padding: 8px; }
+  .proj .cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .proj:hover .cover, .proj:focus-visible .cover { outline: 2px solid var(--brand); }
+  .proj .long { position: absolute; right: 6px; bottom: 6px; background: rgba(0, 0, 0, .7); border-radius: 6px; padding: 1px 6px; font-size: 11px; font-weight: 600; color: var(--fg); }
+  .proj .name { font-size: 13px; font-weight: 600; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .proj .when { font-size: 12px; color: var(--subtle); } .proj .when.bad { color: var(--bad); } .proj .when.busy { color: var(--brand); }
+  .proj.add .cover { border: 2px dashed var(--chip2); background: none; color: var(--muted); font-size: 13px; font-weight: 600; }
+  .proj.add .plus { font-size: 34px; font-weight: 300; line-height: 1; display: block; margin-bottom: 6px; }
+  @media (min-width: 900px) { body:not(.home) main { grid-template-columns: 330px minmax(0, 1fr); align-items: start; } .left { position: sticky; top: 16px; } }
+  /* on a phone the video leaves room for what is under it */
+  @media (max-width: 899px) { #player video, #player .empty { width: auto; max-width: 100%; height: 56vh; margin: 0 auto; } }
   section { margin-bottom: 24px; }
   button, .btn, select, input[type=text] { font: inherit; font-size: 13px; color: var(--fg); background: var(--chip); border: 0; border-radius: 9px; height: 38px; padding: 0 14px; }
   button, .btn, select { font-weight: 600; cursor: pointer; }
@@ -21,7 +38,7 @@
   button.quiet:hover { color: var(--bad); background: none; }
   button:disabled { opacity: .4; cursor: default; }
   input[type=text] { min-width: 0; outline: none; } input[type=text]:focus { box-shadow: 0 0 0 2px var(--brand); }
-  .btn { display: inline-flex; align-items: center; }
+  .btn { display: inline-flex; align-items: center; text-decoration: none; }
   .seg { display: inline-flex; flex-wrap: wrap; background: var(--chip); border-radius: 9px; padding: 3px; }
   .seg button { height: 32px; background: none; color: var(--muted); padding: 0 12px; }
   .seg button.on { background: var(--chip2); color: var(--fg); }
@@ -159,26 +176,33 @@
   .tile.add { display: grid; place-items: center; color: var(--muted); font-size: 12px; text-align: center; padding: 6px; }
 </style>
 <header>
-  <h1>Reel</h1>
+  <h1><a href="?" title="Усі проєкти">Reel</a></h1>
   <select id="space" aria-label="Робочий простір" title="Робочий простір: тут зібрані проєкти однієї теми"></select>
   <span id="spaceNew" style="display:none"><input type="text" id="spaceName" placeholder="назва простору" style="width:11em"> <button id="spaceMake">Створити</button></span>
+  <a class="btn" id="back" href="?">‹ Проєкти</a>
   <select id="pick" aria-label="Проєкт"></select>
   <select id="move" aria-label="Перемістити проєкт" title="Перемістити цей проєкт в інший простір"></select>
   <label class="btn" title="Одне відео, або кілька файлів одразу, якщо ролик знято окремими записами: вони стануть одним відео в порядку зйомки">Нове відео<input type="file" id="take" accept="video/*" multiple></label>
   <span id="top" class="hint" style="margin:0"></span>
 </header>
+<div id="error"></div>
+<div id="home"></div>
 <main>
   <div class="left">
     <div id="status"></div>
     <section>
       <div id="player"></div>
-      <div style="display:flex;gap:8px;margin-top:10px"><button class="primary" id="render" style="flex:1">Зібрати відео</button></div>
+      <div style="display:flex;gap:8px;margin-top:10px"><button class="primary" id="render" style="flex:1">Зібрати відео</button><a class="btn" id="save" download style="display:none;text-decoration:none" title="Зберегти готове відео на цей пристрій">Завантажити</a></div>
       <p class="hint" id="stale"></p>
     </section>
     <details class="fold" id="stepsFold"><summary>Кроки обробки</summary><ul class="steps" id="steps"></ul></details>
+    <details class="fold" id="projFold"><summary>Проєкт</summary>
+      <div style="display:flex;gap:8px"><input type="text" id="title" maxlength="60" style="flex:1" aria-label="Назва проєкту"><button id="titleSave">Зберегти</button></div>
+      <p class="hint">Назва лише для вас: у самому відео її немає.</p>
+      <div id="trashBox" style="margin-top:12px"><button id="trash">Видалити проєкт</button></div>
+    </details>
   </div>
   <div>
-    <div id="error"></div>
     <section id="lineBox">
       <h2>Стрічка</h2>
       <div class="lineTools"><button id="zoomOut" aria-label="Віддалити стрічку">−</button><button id="zoomIn" aria-label="Наблизити стрічку">+</button><button id="zoomFit">Уся</button><span class="where" id="lineWhere"></span></div>
@@ -448,6 +472,8 @@ function drawSteps() {
   const busy = !!state.busy;
   $("render").disabled = busy || !state.words;
   $("render").textContent = busy ? "Працюю…" : "Зібрати відео";
+  $("save").style.display = state.has_render ? "" : "none"; $("save").href = `/video/${name}/render.mp4?v=${state.render_version}`; $("save").download = (state.title || name) + ".mp4";
+  if (drawSteps.title !== state.title) { drawSteps.title = state.title; $("title").value = state.title; document.title = state.title + " — Reel"; }
   const order = ["probe", "transcribe", "join", "review", "suggest", "decorate", "render"], running = state.steps.find((s) => s.state === "running"), failed = state.steps.find((s) => s.state === "failed");
   const done = state.steps.filter((s) => s.state === "done").length, total = Math.max(state.steps.length, 1), clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const kind = failed && !busy ? "failed" : busy ? "running" : state.has_render ? "done" : "idle";
@@ -846,12 +872,35 @@ document.addEventListener("change", async (e) => {
   input.value = "";
 });
 $("pick").addEventListener("change", (e) => { if (e.target.value) location.search = "?p=" + e.target.value; });
+// The project itself: the name it is shown under, and taking it off the shelf
+const saveTitle = async () => {
+  try { await api(`/api/projects/${name}/title`, { method: "POST", body: JSON.stringify({ title: $("title").value }) }); $("title").blur(); tick.now(); } catch (error) { fail(error); }
+};
+$("titleSave").addEventListener("click", saveTitle);
+$("title").addEventListener("keydown", (e) => { if (e.key === "Enter") saveTitle(); });
+const trashAsk = () => { $("trashBox").innerHTML = `<button id="trash">Видалити проєкт</button>`; };
+$("trashBox").addEventListener("click", async (e) => {
+  if (e.target.id === "trash") $("trashBox").innerHTML = `<p class="hint" style="margin:0 0 8px">Видалити «${esc(state.title || name)}»? Проєкт зникне зі списку; його папка переїде в «trash» на цьому комп’ютері.</p><button id="trashYes" style="color:var(--bad)">Так, видалити</button> <button id="trashNo">Скасувати</button>`;
+  else if (e.target.id === "trashNo") trashAsk();
+  else if (e.target.id === "trashYes") { try { await api(`/api/projects/${name}/trash`, { method: "POST" }); location.search = "?"; } catch (error) { fail(error); trashAsk(); } }
+});
+const MONTHS = ["січ.", "лют.", "бер.", "квіт.", "трав.", "черв.", "лип.", "серп.", "вер.", "жовт.", "лист.", "груд."];
+function drawHome(list) {
+  const here = list.filter((p) => p.space === space), signature = JSON.stringify([space, here]);
+  if (signature === drawHome.was) return; drawHome.was = signature;
+  const clock = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`, day = (at) => { const d = new Date(at * 1000); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+  document.title = "Reel";
+  $("home").innerHTML = `<h2>${esc(space)} · ${here.length}</h2><div class="shelf"><label class="proj add" for="take" tabindex="0"><div class="cover"><div><span class="plus">＋</span>Нове відео</div></div><div class="name">&nbsp;</div><div class="when">один файл або кілька</div></label>${
+    here.map((p) => `<a class="proj" href="?p=${encodeURIComponent(p.name)}" data-project="${esc(p.name)}"><div class="cover">${
+      p.has_render ? `<img loading="lazy" alt="" src="/poster/${encodeURIComponent(p.name)}/poster.jpg?v=${p.built}">${p.seconds ? `<span class="long">${clock(p.seconds)}</span>` : ""}` : p.state === "working" ? `<span class="spin"></span>` : p.state === "failed" ? "обробка зупинилась" : "відео ще немає"}</div><div class="name" title="${esc(p.title)}">${esc(p.title)}</div><div class="when${p.state === "failed" ? " bad" : p.state === "working" ? " busy" : ""}">${
+      p.state === "working" ? (p.busy === "pipeline" ? "обробляється…" : "перезбирається…") : p.state === "failed" ? "зупинилось: відкрийте" : p.built ? day(p.built) : "очікує"}</div></a>`).join("")}</div>`;
+}
 // Workspaces: the projects of one subject under one name. The one last looked at is remembered in this browser.
 let space = null, spaceList = [];
 const remember = (value) => { space = value; try { localStorage.setItem("reel-space", value); } catch (error) { /* a private window */ } };
 $("space").addEventListener("change", (e) => {
   if (e.target.value === "+") { $("spaceNew").style.display = ""; $("spaceName").focus(); return; }
-  remember(e.target.value); const first = projects.find((p) => p.space === space); location.search = first ? "?p=" + first.name : "?";
+  remember(e.target.value); if (name) location.search = "?"; else tick.now();
 });
 $("spaceMake").addEventListener("click", async () => {
   const made = $("spaceName").value.trim(); if (!made) return;
@@ -874,9 +923,11 @@ async function tick() {
     if (mine) space = mine.space; else if (!space) { try { space = localStorage.getItem("reel-space"); } catch (error) { /* a private window */ } }
     if (!spaceList.includes(space)) space = (list[0] && list[0].space) || spaceList[0];
     const here = list.filter((p) => p.space === space);
-    if (!name && here.length) name = here[0].name;
+    if (name && !mine) { name = null; state = null; history.replaceState(null, "", "?"); }  // a project that is no longer there: back to the shelf
+    document.body.classList.toggle("home", !name);
+    if (!name) drawHome(list);
     if (document.activeElement !== $("space")) $("space").innerHTML = spaceList.map((s) => `<option value="${esc(s)}"${s === space ? " selected" : ""}>${esc(s)} (${list.filter((p) => p.space === s).length})</option>`).join("") + `<option value="+">＋ Новий простір…</option>`;
-    if (document.activeElement !== $("pick")) $("pick").innerHTML = here.map((p) => `<option value="${esc(p.name)}"${p.name === name ? " selected" : ""}>${esc(p.name)}</option>`).join("") || `<option value="">проєктів ще немає</option>`;
+    if (document.activeElement !== $("pick")) $("pick").innerHTML = here.map((p) => `<option value="${esc(p.name)}"${p.name === name ? " selected" : ""}>${esc(p.title)}</option>`).join("") || `<option value="">проєктів ще немає</option>`;
     if (document.activeElement !== $("move")) { $("move").innerHTML = `<option value="">перемістити в…</option>` + spaceList.filter((s) => s !== space).map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join(""); $("move").style.display = name && spaceList.length > 1 ? "" : "none"; }
     if (name) { const [fresh, saved] = await Promise.all([api(`/api/projects/${name}`), api("/api/styles")]); state = fresh; styles = saved; draw(); }
   } catch (error) { /* the engine is restarting: keep the last picture */ }

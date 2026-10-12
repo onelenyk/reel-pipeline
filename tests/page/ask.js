@@ -1,3 +1,4 @@
+// Careful: this scenario asks the AI to change the project it is run on and does not undo it. Run it on a copy, not on a take being worked on.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms)); const out = [];
 const ok = (label, pass, detail = "") => out.push(`${pass ? "ok  " : "FAIL"} ${label}${pass ? "" : " (" + detail + ")"}`);
 await sleep(2500);

@@ -3,11 +3,11 @@
 Plain standard-library HTTP: this is a tool for one person on a trusted machine. It listens inside the container;
 the launcher publishes it on 127.0.0.1 only.
 """
-import json, re, tempfile, threading, time, traceback
+import json, re, shutil, tempfile, threading, time, traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
-from . import HOME, find, fonts, plan as plans, project, render, speech, styles, suggest
+from . import HOME, find, fonts, media, plan as plans, project, render, speech, styles, suggest
 from .__main__ import ROOT, create, find_rooms, overlays
 
 PAGE = Path(__file__).resolve().parent / "page.html"
@@ -19,15 +19,22 @@ NAME = re.compile(r"^[\w.-]{1,60}$")
 
 
 SPACES = HOME / "workspaces.json"; HOME_SPACE = "Мої відео"   # the workspace of a project that was put in none
+TRASH = HOME / "trash"  # deleted projects are moved here, never erased: a mistake can be taken back by hand
 
 
 def spaces():
-    """The workspaces and which project is in which: {"spaces": [names], "of": {project: name}}. A workspace is only a name
-    projects are gathered under; the projects themselves stay where they are."""
+    """The workspaces, which project is in which, and the names the author gave projects:
+    {"spaces": [names], "of": {project: name}, "titles": {project: title}}. A workspace is only a name projects are
+    gathered under, and a title only a name shown instead of the folder's; the projects themselves stay where they are."""
     try: kept = json.loads(SPACES.read_text(encoding="utf-8"))
     except (OSError, ValueError): kept = {}
     names = [n for n in kept.get("spaces", []) if isinstance(n, str) and n.strip()]; of = {p: s for p, s in kept.get("of", {}).items() if s in names}
-    return {"spaces": [HOME_SPACE] + [n for n in names if n != HOME_SPACE], "of": of}
+    titles = {p: t for p, t in kept.get("titles", {}).items() if isinstance(t, str) and t.strip()}
+    return {"spaces": [HOME_SPACE] + [n for n in names if n != HOME_SPACE], "of": of, "titles": titles}
+
+
+def keep(kept):
+    SPACES.write_text(json.dumps({"spaces": kept["spaces"], "of": kept["of"], "titles": kept["titles"]}, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def set_space(project_name=None, space=None):
@@ -35,10 +42,58 @@ def set_space(project_name=None, space=None):
     space = " ".join(str(space or "").split())[:40]
     if not space: raise ValueError("a workspace needs a name")
     with changing:
-        kept = spaces(); names = kept["spaces"] if space in kept["spaces"] else kept["spaces"] + [space]
+        kept = spaces()
+        if space not in kept["spaces"]: kept["spaces"].append(space)
         if project_name: kept["of"][project_name] = space
-        SPACES.write_text(json.dumps({"spaces": names, "of": kept["of"]}, ensure_ascii=False, indent=1), encoding="utf-8")
+        keep(kept)
     return spaces()
+
+
+def set_title(name, title):
+    """The name a project is shown under. An empty one brings back the name of its folder."""
+    title = " ".join(str(title or "").split())[:60]
+    with changing:
+        kept = spaces(); kept["titles"].pop(name, None)
+        if title and title != name: kept["titles"][name] = title
+        keep(kept)
+    return title or name
+
+
+def trash(name):
+    """Takes a project off the shelf: its folder goes to the trash folder, whole. The raw take stays in the inbox."""
+    with changing:
+        TRASH.mkdir(parents=True, exist_ok=True); shutil.move(str(ROOT / name), str(TRASH / f"{name}-{int(time.time())}"))
+        kept = spaces(); kept["of"].pop(name, None); kept["titles"].pop(name, None); keep(kept)
+
+
+lengths = {}  # (project, when its video was built) → the video's seconds, so the shelf does not measure it each time
+
+
+def shelf():
+    """Every project as the first screen shows it: name, workspace, how long its video is and what state it is in."""
+    names = sorted((p.name for p in ROOT.iterdir() if p.is_dir()), key=lambda n: -(ROOT / n).stat().st_mtime) if ROOT.exists() else []
+    kept = spaces(); out = []
+    for n in names:
+        video = ROOT / n / "render.mp4"; built = int(video.stat().st_mtime) if video.exists() else 0; seconds = None
+        if built:
+            if (n, built) not in lengths:
+                try: lengths[(n, built)] = media.probe(video)["seconds"]
+                except Exception: lengths[(n, built)] = None
+            seconds = lengths[(n, built)]
+        failed = next((s for s in steps_of(ROOT / n / "status.json") if s.get("state") == "failed"), None)
+        state = "working" if busy.get(n) else "failed" if failed else "ready" if built else "waiting"
+        out.append({"name": n, "title": kept["titles"].get(n, n), "busy": busy.get(n), "has_render": bool(built), "built": built, "seconds": seconds, "state": state,
+                    "space": kept["of"].get(n, HOME_SPACE)})
+    return out
+
+
+def poster(folder):
+    """A small picture of the finished video for the shelf, made once for each build."""
+    video = folder / "render.mp4"; picture = folder / "poster.jpg"
+    if video.exists() and (not picture.exists() or picture.stat().st_mtime < video.stat().st_mtime):
+        media.ffmpeg("-ss", "1", "-i", str(video), "-frames:v", "1", "-vf", "scale=270:480", "-q:v", "5", str(folder / "poster.part.jpg"))
+        (folder / "poster.part.jpg").replace(picture)
+    return picture
 
 
 def background(name, what, work):
@@ -61,7 +116,7 @@ def steps_of(status):
 
 def summary(name):
     folder = ROOT / name; status = folder / "status.json"
-    out = {"name": name, "busy": busy.get(name), "steps": steps_of(status), "has_render": (folder / "render.mp4").exists(),
+    out = {"name": name, "title": spaces()["titles"].get(name, name), "busy": busy.get(name), "steps": steps_of(status), "has_render": (folder / "render.mp4").exists(),
            "render_version": int((folder / "render.mp4").stat().st_mtime) if (folder / "render.mp4").exists() else 0}
     if (folder / "project.json").exists():
         doc = project.load(folder); kept = set()
@@ -138,9 +193,7 @@ class Handler(BaseHTTPRequestHandler):
         if parts is None: return self.send({"error": "bad path"}, 400)
         if not parts: return self.send(PAGE.read_bytes(), kind="text/html; charset=utf-8")
         if parts == ["api", "projects"]:
-            names = sorted((p.name for p in ROOT.iterdir() if p.is_dir()), key=lambda n: -(ROOT / n).stat().st_mtime) if ROOT.exists() else []
-            kept = spaces()
-            return self.send([{"name": n, "busy": busy.get(n), "has_render": (ROOT / n / "render.mp4").exists(), "space": kept["of"].get(n, HOME_SPACE)} for n in names])
+            return self.send(shelf())
         if parts == ["api", "spaces"]: return self.send({"spaces": spaces()["spaces"]})
         if parts == ["api", "styles"]: return self.send(styles.listing())
         if parts == ["api", "vocabulary"]: return self.send({"terms": speech.lines()})
@@ -169,6 +222,7 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError: tried = None
                 try: return self.send(render.still(folder, float(query.get("t") or 0), Path(tmp) / "frame.jpg", style=tried if isinstance(tried, dict) else None, demo=query.get("demo")).read_bytes(), kind="image/jpeg")
                 except LookupError as error: return self.send({"error": str(error)}, 404)
+        if len(parts) == 3 and parts[0] == "poster": return self.file(poster(ROOT / parts[1]), "image/jpeg")
         if len(parts) == 3 and parts[0] == "strip":
             folder = ROOT / parts[1]
             picture = folder / f"strip{render.STRIP}.jpg"
@@ -227,9 +281,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(styles.listing())
             if len(parts) < 4 or parts[:2] != ["api", "projects"]: return self.send({"error": "not found"}, 404)
             name, action = parts[2], parts[3]; folder = ROOT / name
-            if action == "retry" and not folder.is_dir(): return self.send({"error": "there is no such project"}, 404)
-            if action != "retry" and not (folder / "project.json").exists(): return self.send({"error": "there is no such project"}, 404)
+            whole = ("retry", "title", "trash")  # what can be done to a project whose pipeline never finished
+            if action in whole and not folder.is_dir(): return self.send({"error": "there is no such project"}, 404)
+            if action == "title": return self.send({"title": set_title(name, json.loads(self.body() or b"{}").get("title"))})
+            if action not in whole and not (folder / "project.json").exists(): return self.send({"error": "there is no such project"}, 404)
             if busy.get(name) and action != "state": return self.send({"error": f"{busy[name]} is still running"}, 409)
+            if action == "trash": trash(name); return self.send({"gone": name})
             if action == "retry":
                 # a pipeline that stopped goes on from the step that failed
                 intake = folder / "intake.json"; several = [Path(v) for v in json.loads(intake.read_text(encoding="utf-8"))] if intake.exists() else []
