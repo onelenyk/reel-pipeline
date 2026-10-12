@@ -73,6 +73,51 @@ def new(source_file, facts, transcript, suggestions, style=None, cuts=(), takes=
     }
 
 
+def as_takes(doc):
+    """The takes a project is made of. One shot as a single file is one take that is the whole of it."""
+    if doc.get("takes"): return doc["takes"]
+    source = doc["sources"][0]
+    return [{"id": "t1", "name": Path(source["file"]).name, "file": source["file"], "start": 0.0, "seconds": source["seconds"], "from": 0, "to": len(doc["words"]) - 1}]
+
+
+def append(doc, words, cuts, name, file, seconds):
+    """The document with one more take at its end: its words, and what the review took out of them. Nothing that was
+    there moves, so the author's work on the earlier takes stays as it is."""
+    had = as_takes(doc); first = len(doc["words"]); start = round(sum(t["seconds"] for t in had), 3)
+    mark = "t" + str(max(int(t["id"][1:]) for t in had) + 1); gone = {i for c in cuts for i in range(c["from"], c["to"] + 1)}
+    more = [{**w, "id": first + i, "source": "s1", "start": round(w["start"] + start, 2), "end": round(min(w["end"], seconds) + start, 2), "take": mark} for i, w in enumerate(words)]
+    kept = {i for s in doc["edit"]["segments"] for i in range(s["from"], s["to"] + 1)} | {first + i for i in range(len(words)) if i not in gone}
+    count = max([int(c["id"][1:]) for c in doc["cuts"] if c["id"][1:].isdigit()] or [0])
+    return {**doc, "takes": had + [{"id": mark, "name": name, "file": file, "start": start, "seconds": seconds, "from": first, "to": first + len(words) - 1}],
+            "words": doc["words"] + more, "edit": {**doc["edit"], "segments": segments_of(i in kept for i in range(first + len(words)))},
+            "cuts": doc["cuts"] + [{**c, "id": f"c{count + n}", "from": c["from"] + first, "to": c["to"] + first} for n, c in enumerate(cuts, 1)]}
+
+
+def retake(doc, order, parts, source_file, facts):
+    """The document after its takes were put in another order, or some of them were taken out. `order` names the takes
+    that stay, `parts` says where each now starts in the joined video and how long it is. Every word keeps its text and
+    its place within its take; what the author and the AI did to a stretch of words (a cut, an insert, a caption, a
+    moment of the plan) goes with the take the stretch begins in, and what was in a take that is gone goes with it."""
+    old = {t["id"]: t for t in as_takes(doc)}; moved, words, takes = {}, [], []
+    for mark, part in zip(order, parts):
+        take = old[mark]; first = len(words)
+        for i in range(take["from"], take["to"] + 1):
+            w = doc["words"][i]; moved[i] = len(words)
+            words.append({**w, "id": len(words), "take": mark, "start": round(w["start"] - take["start"] + part["start"], 2), "end": round(min(w["end"] - take["start"], part["seconds"]) + part["start"], 2)})
+        takes.append({**take, "start": part["start"], "seconds": part["seconds"], "from": first, "to": len(words) - 1})
+    def stretch(item):
+        home = next((t for t in old.values() if t["from"] <= item["from"] <= t["to"]), None)
+        return {**item, "from": moved[item["from"]], "to": moved[min(item["to"], home["to"])]} if home and item["from"] in moved else None
+    def stretches(key): return [made for made in map(stretch, doc.get(key, [])) if made]
+    kept = {moved[i] for s in doc["edit"]["segments"] for i in range(s["from"], s["to"] + 1) if i in moved}
+    beats = stretches("beats"); asked = {b.get("need") for b in beats}; lost = {b.get("need") for b in doc.get("beats", [])} - asked
+    return {**doc, "sources": [{"id": "s1", "file": str(source_file), **facts}], "takes": takes, "words": words,
+            "edit": {**doc["edit"], "segments": segments_of(i in kept for i in range(len(words)))}, "cuts": stretches("cuts"), "beats": beats,
+            "needs": [n for n in doc.get("needs", []) if n["id"] not in lost], "overlays": stretches("overlays"), "marks": stretches("marks"),
+            "emphasis": [{**e, "word": moved[e["word"]]} for e in doc.get("emphasis", []) if e["word"] in moved],
+            "corrections": [{**c, "word": moved[c["word"]]} for c in doc.get("corrections", []) if c["word"] in moved]}
+
+
 def write_whole(path, text):
     """Replaces a file in one step, so a reader never sees it half written (the page polls while the engine writes)."""
     path = Path(path); path.parent.mkdir(parents=True, exist_ok=True)

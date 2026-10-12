@@ -30,6 +30,9 @@
   /* on a phone the video leaves room for what is under it */
   @media (max-width: 899px) { #player video, #player .empty { width: auto; max-width: 100%; height: 56vh; margin: 0 auto; } }
   section { margin-bottom: 24px; }
+  .take { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--panel); border-radius: 10px; margin-bottom: 6px; }
+  .take > b { width: 22px; text-align: center; color: var(--subtle); flex: none; } .take .say { flex: 1; min-width: 0; } .take .say > div:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .take button { height: 32px; padding: 0 10px; flex: none; }
   button, .btn, select, input[type=text] { font: inherit; font-size: 13px; color: var(--fg); background: var(--chip); border: 0; border-radius: 9px; height: 38px; padding: 0 14px; }
   button, .btn, select { font-weight: 600; cursor: pointer; }
   button:hover, .btn:hover { background: var(--chip2); }
@@ -235,6 +238,7 @@
     <section><h2>Вставки</h2><div id="beats"></div></section>
     <section><h2>Накладки</h2><p class="hint" style="margin:0 0 10px">Числа, що набігають, наліпки й списки поверх мовця та перебивки між темами: з'являються на слові, про яке йдеться. Текст можна виправити просто тут.</p><div id="overlays"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button id="decorate">Придумати накладки заново (AI)</button></div></section>
+    <section><h2>Записи</h2><p class="hint" style="margin:0 0 10px">Файли, з яких складено відео, у порядку показу. Запис можна пересунути, прибрати або додати ще один: вирізане, вставки й накладки переїдуть разом зі своїм записом.</p><div id="takes"></div></section>
     </div>
     <div class="tab" data-tab="plan">
     <section id="planBox"><h2>Кімнати на плані</h2><div id="plans"></div></section>
@@ -253,7 +257,7 @@
 <div id="picker"></div>
 <script>
 const $ = (id) => document.getElementById(id);
-const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", join: "Зводжу записи в одне відео", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", decorate: "AI додає накладки", render: "Збираю відео" };
+const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", join: "Зводжу записи в одне відео", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", decorate: "AI додає накладки", render: "Збираю відео", takes: "Складаю записи" };
 const KIND = { full: "Картинка на весь кадр", title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
 const NOTE = { strip: "готую стрічку кадрів", preparing: "готуюсь", "building the video": "кодую" };
 const HINT = {
@@ -271,6 +275,7 @@ let reshape = null; // a room whose corners are being moved: { asset, room, poin
 let sketch = null;  // a room being drawn on a plan: { asset, points: [[x, y], ...], from, to }
 let tab = "text"; try { tab = localStorage.getItem("reel-tab") || "text"; } catch {}
 let fontsLoaded = "";
+let takeOrder = null; // the takes in an order the author is trying, not yet applied: [take id, ...]
 function loadFonts() {
   const wanted = [...new Set([...(state.fonts || []), state.style && state.style.font].filter((f) => f && f !== "Inter"))], key = wanted.join("|");
   if (!wanted.length || key === fontsLoaded) return;
@@ -481,13 +486,13 @@ function drawSteps() {
   const number = running ? state.steps.filter((s) => order.indexOf(s.step) <= order.indexOf(running.step)).length : 0;
   $("status").innerHTML = `<div class="status ${kind}"><span class="spin"></span><div style="flex:1;min-width:0"><div class="big">${
     kind === "running" ? (running ? `Крок ${number} з ${total}: ${STEP[running.step] || running.step}` : "Починаю…") : kind === "failed" ? `Зупинилось: ${STEP[failed.step] || failed.step}` : kind === "done" ? "Відео готове" : "Очікую відео"}</div><div class="sub">${
-    kind === "running" ? esc(running && running.note ? NOTE[running.note] || "вирізаю мовця з фону" : state.busy === "decorate" ? "AI придумує накладки" : state.busy === "rooms" ? "шукаю кімнати на плані й у тексті" : state.busy === "render" ? "перезбираю з вашими змінами" : "обробка нового відео") : kind === "failed" ? esc(failed.error) + (failed.step !== "render" ? ` <button id="retry" style="margin-left:8px">Спробувати ще раз</button>` : "") : kind === "done" ? (edited ? "є зміни, яких ще немає у відео" : "усі кроки пройдені") : ""}</div>${
+    kind === "running" ? esc(running && running.note ? NOTE[running.note] || "вирізаю мовця з фону" : state.busy === "decorate" ? "AI придумує накладки" : state.busy === "rooms" ? "шукаю кімнати на плані й у тексті" : state.busy === "render" ? "перезбираю з вашими змінами" : state.busy === "takes" ? "складаю записи в новому порядку" : state.busy === "take" ? "додаю запис: розпізнаю мову, шукаю невдалі дублі" : "обробка нового відео") : kind === "failed" ? esc(failed.error) + (failed.step !== "render" && failed.step !== "takes" ? ` <button id="retry" style="margin-left:8px">Спробувати ще раз</button>` : "") : kind === "done" ? (edited ? "є зміни, яких ще немає у відео" : "усі кроки пройдені") : ""}</div>${
     kind === "running" && total > 1 ? `<div class="bar"><i style="width:${Math.round(100 * (done + 0.5) / total)}%"></i></div>` : ""}</div>${
     kind === "running" && running ? `<span class="clock">${clock(Math.max(0, Date.now() / 1000 - running.at))}</span>` : ""}</div>`;
   document.title = kind === "running" ? `⏳ ${running ? STEP[running.step] : "Працюю"} · Reel` : kind === "failed" ? "⚠ Помилка · Reel" : "Reel";
   $("steps").innerHTML = state.steps.map((s) => `<li class="${s.state}"><span class="dot"></span>${STEP[s.step] || s.step}<span class="note">${
     s.state === "done" ? s.seconds + " с" : s.state === "failed" ? esc(s.error) : s.state === "running" ? esc(NOTE[s.note] || (s.note ? "вирізаю мовця з фону" : "триває")) + ` · ${Math.max(0, Math.round(Date.now() / 1000 - s.at))} с` : ""}</span></li>`).join("")
-    + (state.takes && state.takes.length ? `<li class="done"><span class="dot"></span>Зібрано з ${state.takes.length} записів<span class="note">${state.takes.map((t) => esc(t.name) + " " + Math.round(t.seconds) + " с").join(" · ")}</span></li>` : "");
+    + (state.takes && state.takes.length > 1 ? `<li class="done"><span class="dot"></span>Зібрано з ${state.takes.length} записів<span class="note">${state.takes.map((t) => esc(t.name) + " " + Math.round(t.seconds) + " с").join(" · ")}</span></li>` : "");
   $("stale").textContent = edited && state.has_render && !busy ? "Є зміни, яких ще немає у відео. У плеєрі на паузі видно, як вони виглядатимуть; щоб отримати відео, натисніть «Зібрати відео»." : "";
   if (state.has_render && shown !== state.render_version) {
     const old = video(), place = old ? old.currentTime : 0;
@@ -503,10 +508,10 @@ function draw(force) {
   if (!state) return;
   drawSteps(); drawTabs();
   // Everything below is rebuilt only when the project itself changed, so typing in a field is never interrupted
-  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.overlays, state.busy, marked, more, sketch && sketch.asset, reshape && reshape.room]);
+  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.overlays, state.busy, state.takes, takeOrder, marked, more, sketch && sketch.asset, reshape && reshape.room]);
   if (!force && signature === drawn) return;
   if (editing !== null && !force) return;
-  drawn = signature; lit = null; drawLine();
+  drawn = signature; lit = null; drawLine(); drawTakes();
   $("top").textContent = state.source ? `${state.source.width}×${state.source.height}, ${state.source.seconds.toFixed(1)} с сирого → ${state.seconds.toFixed(1)} с у ролику` : "";
   if (!state.words) { drawLine(); for (const id of ["needs", "words", "beats", "fixes", "style", "beatMenu"]) $(id).innerHTML = ""; return; }
   const words = state.words, phrase = (b) => words.slice(b.from, b.to + 1).map((w) => w.text).join(" ");
@@ -865,6 +870,7 @@ document.addEventListener("change", async (e) => {
     } catch (error) { fail(error); }
     input.value = ""; return;
   }
+  if (input.id === "takeMore") { await act(`/api/projects/${name}/take-add/${safeName(file)}`, { method: "POST", body: file }); input.value = ""; return; }
   if (input.id === "ownPhoto") { const fresh = await act(`/api/projects/${name}/assets/${safeName(file)}`, { method: "POST", body: file }); if (fresh && picker) choose(fresh.added); }
   else if (input.id === "take") {
     try { $("top").textContent = "Вивантажую…"; const made = await api(`/api/new/${safeName(file)}?space=${encodeURIComponent(space || "")}`, { method: "POST", body: file }); location.search = "?p=" + made.project; } catch (error) { fail(error); }
@@ -883,6 +889,24 @@ $("trashBox").addEventListener("click", async (e) => {
   if (e.target.id === "trash") $("trashBox").innerHTML = `<p class="hint" style="margin:0 0 8px">Видалити «${esc(state.title || name)}»? Проєкт зникне зі списку; його папка переїде в «trash» на цьому комп’ютері.</p><button id="trashYes" style="color:var(--bad)">Так, видалити</button> <button id="trashNo">Скасувати</button>`;
   else if (e.target.id === "trashNo") trashAsk();
   else if (e.target.id === "trashYes") { try { await api(`/api/projects/${name}/trash`, { method: "POST" }); location.search = "?"; } catch (error) { fail(error); trashAsk(); } }
+});
+// The takes a video is made of: each is named by its first words, since file names say little
+function drawTakes() {
+  const all = state.takes || [], by = Object.fromEntries(all.map((t) => [t.id, t])), order = (takeOrder || all.map((t) => t.id)).filter((id) => by[id]), off = state.busy ? " disabled" : "";
+  const says = (t) => state.words.slice(t.from, Math.min(t.to + 1, t.from + 8)).map((w) => w.text).join(" ");
+  $("takes").innerHTML = order.map((id, n) => `<div class="take" data-take="${id}"><b>${n + 1}</b><div class="say"><div>${esc(says(by[id]))}…</div><div class="hint" style="margin:0">${Math.round(by[id].seconds)} с</div></div>
+    <button data-move="-1" aria-label="Запис ${n + 1}: раніше"${n === 0 ? " disabled" : off}>↑</button><button data-move="1" aria-label="Запис ${n + 1}: пізніше"${n === order.length - 1 ? " disabled" : off}>↓</button><button class="quiet" data-move="0" aria-label="Запис ${n + 1}: прибрати"${order.length === 1 ? " disabled" : off}>✕</button></div>`).join("")
+    + (takeOrder ? `<p class="hint" style="margin:8px 0">${order.length < all.length ? `Прибрано записів: ${all.length - order.length}. Разом із записом зникне все, що в ньому зроблено. ` : ""}Зміни ще не застосовано: відео буде складено й зібрано заново.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="primary" id="takesGo"${off}>Застосувати</button><button id="takesNo">Скасувати</button></div>`
+      : `<label class="btn" style="margin-top:4px${state.busy ? ";opacity:.4;pointer-events:none" : ""}" title="Ще один файл стане останнім записом; потім його можна пересунути">＋ Додати запис<input type="file" id="takeMore" accept="video/*"></label>`);
+}
+document.addEventListener("click", async (e) => {
+  const row = e.target.closest && e.target.closest(".take"), move = e.target.dataset && e.target.dataset.move;
+  if (row && move !== undefined && state) {
+    const order = takeOrder || state.takes.map((t) => t.id), i = order.indexOf(row.dataset.take), next = [...order];
+    if (+move === 0) next.splice(i, 1); else { next.splice(i, 1); next.splice(i + +move, 0, order[i]); }
+    takeOrder = next.join() === state.takes.map((t) => t.id).join() ? null : next; draw(true);
+  } else if (e.target.id === "takesNo") { takeOrder = null; draw(true); }
+  else if (e.target.id === "takesGo") { const order = takeOrder; takeOrder = null; await act(`/api/projects/${name}/takes`, { method: "POST", body: JSON.stringify({ order }) }); }
 });
 const MONTHS = ["січ.", "лют.", "бер.", "квіт.", "трав.", "черв.", "лип.", "серп.", "вер.", "жовт.", "лист.", "груд."];
 function drawHome(list) {

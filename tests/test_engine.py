@@ -225,6 +225,42 @@ class Takes(unittest.TestCase):
         self.assertEqual(len(line["spans"]), 2); self.assertLessEqual(line["spans"][0][1], 1.2); self.assertGreaterEqual(line["spans"][1][0], 1.2)
         del doc["takes"]; self.assertEqual(len(project.resolve(doc)["spans"]), 1)   # the same words as one take run on
 
+    def two(self):
+        said = [{"text": t, "start": i * 0.4, "end": i * 0.4 + 0.35, "confidence": 0.9, "take": "t1" if i < 3 else "t2"} for i, t in enumerate("Це перший запис. А це другий.".split())]
+        parts = [{"id": "t1", "name": "a.mov", "file": "a.mov", "start": 0, "seconds": 1.2, "from": 0, "to": 2}, {"id": "t2", "name": "b.mov", "file": "b.mov", "start": 1.2, "seconds": 1.4, "from": 3, "to": 5}]
+        doc = project.new("x.mp4", self.FACTS, {"language": "uk", "words": said}, {"beats": [{"id": "b1", "kind": "title", "from": 1, "to": 2, "need": None, "text": "Перший", "accepted": True}], "needs": [], "emphasis": [{"word": 5, "by": "ai", "accepted": True}], "corrections": []},
+                          cuts=[{"id": "c1", "from": 3, "to": 3, "why": "aside", "note": "", "by": "ai"}], takes=parts)
+        doc["overlays"] = [{"id": "o1", "from": 2, "to": 4, "kind": "sticker", "text": "через межу", "accepted": True}]; doc["marks"] = []
+        return doc
+
+    FACTS = {"seconds": 2.6, "width": 1080, "height": 1920, "fps": 30, "hdr": False, "has_audio": True}
+
+    def test_takes_put_in_another_order_carry_their_words_and_everything_done_to_them(self):
+        doc = project.retake(self.two(), ["t2", "t1"], [{"start": 0, "seconds": 1.4}, {"start": 1.4, "seconds": 1.2}], "joined.mp4", self.FACTS)
+        self.assertEqual([w["text"] for w in doc["words"]], "А це другий. Це перший запис.".split()); self.assertEqual([w["id"] for w in doc["words"]], list(range(6)))
+        self.assertEqual(doc["words"][0]["start"], 0.0); self.assertEqual(doc["words"][3]["start"], 1.4)        # each word keeps its place within its take
+        self.assertEqual([(t["id"], t["from"], t["to"]) for t in doc["takes"]], [("t2", 0, 2), ("t1", 3, 5)])
+        self.assertEqual([(c["from"], c["to"]) for c in doc["cuts"]], [(0, 0)]); self.assertEqual(doc["edit"]["segments"], [{"source": "s1", "from": 1, "to": 5}])
+        self.assertEqual([(b["from"], b["to"]) for b in doc["beats"]], [(4, 5)]); self.assertEqual(doc["emphasis"][0]["word"], 2)
+        self.assertEqual([(o["from"], o["to"]) for o in doc["overlays"]], [(5, 5)])                                  # a stretch over two takes stays with the one it began in
+        self.assertEqual(doc["sources"][0]["file"], "joined.mp4"); project.resolve(doc)
+
+    def test_a_take_taken_out_takes_its_words_and_what_was_done_to_them(self):
+        doc = project.retake(self.two(), ["t2"], [{"start": 0, "seconds": 1.4}], "joined.mp4", self.FACTS)
+        self.assertEqual([w["text"] for w in doc["words"]], "А це другий.".split()); self.assertEqual(doc["beats"], []); self.assertEqual(doc["overlays"], [])
+        self.assertEqual([(c["from"], c["to"]) for c in doc["cuts"]], [(0, 0)]); self.assertEqual(doc["emphasis"][0]["word"], 2)
+
+    def test_one_more_take_goes_to_the_end_and_moves_nothing(self):
+        was = self.two(); new = [{"text": t, "start": i * 0.4, "end": i * 0.4 + 0.35, "confidence": 0.9} for i, t in enumerate("Ой. І третій.".split())]
+        doc = project.append(was, new, [{"id": "c1", "from": 0, "to": 0, "why": "aside", "note": "", "by": "ai"}], "c.mov", "c.mov", 1.3)
+        self.assertEqual(doc["words"][:6], was["words"]); self.assertEqual([w["id"] for w in doc["words"]], list(range(9))); self.assertEqual(doc["words"][6]["start"], 2.6)
+        self.assertEqual([(t["id"], t["from"], t["to"]) for t in doc["takes"]][-1], ("t3", 6, 8)); self.assertEqual([c["id"] for c in doc["cuts"]], ["c1", "c2"])
+        self.assertEqual(doc["edit"]["segments"], [{"source": "s1", "from": 0, "to": 2}, {"source": "s1", "from": 4, "to": 5}, {"source": "s1", "from": 7, "to": 8}])
+
+    def test_a_project_shot_as_one_file_is_one_take(self):
+        doc = self.two(); del doc["takes"]
+        self.assertEqual([(t["id"], t["from"], t["to"], t["file"]) for t in project.as_takes(doc)], [("t1", 0, 5, "x.mp4")])
+
     def test_the_review_is_told_where_each_file_starts_and_one_take_is_asked_about_as_before(self):
         asked = []; was = (suggest.ask, suggest.enabled); self.addCleanup(lambda: (setattr(suggest, "ask", was[0]), setattr(suggest, "enabled", was[1])))
         suggest.enabled = lambda: True; suggest.ask = lambda prompt, **k: asked.append(prompt) or {"cuts": []}

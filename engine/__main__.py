@@ -63,6 +63,27 @@ def create(videos, folder):
     kept.unlink(missing_ok=True); return took
 
 
+def retake(folder, order=None, add=None, name=None):
+    """Changes what a finished project is made of: its takes in another order, without some of them, or with one more
+    file at the end. A new take is recognised and reviewed on its own; the takes are then joined again, and everything
+    done to the words follows them to their new places."""
+    folder = Path(folder); project.progress(folder, "takes", "running"); started = time.time()
+    try:
+        doc = project.load(folder)
+        if add:
+            facts = usable(add); transcript = heard(speech.transcribe(add))
+            doc = project.append(doc, transcript["words"], suggest.review(transcript["words"]), name or Path(add).name, str(add), facts["seconds"])
+        had = {t["id"]: t for t in project.as_takes(doc)}; order = list(order or had)
+        if not order or len(set(order)) != len(order) or any(mark not in had for mark in order): raise ValueError("the takes asked for are not the takes of this project")
+        files = [Path(had[mark]["file"]) for mark in order]
+        for file in files:
+            if not file.exists(): raise ValueError(f"the take {file.name} is no longer where it was kept: it cannot be joined again")
+        made, parts = takes.join(files, [usable(f) for f in files], folder)
+        project.save(folder, project.retake(doc, order, parts, made, usable(made)))
+    except Exception as error: project.progress(folder, "takes", "failed", error=str(error)[-300:]); raise
+    project.progress(folder, "takes", "done", seconds=round(time.time() - started, 1))
+
+
 def usable(video):
     """The facts about a take, or the reason it cannot be used, in words a person can act on."""
     try: facts = media.probe(video)

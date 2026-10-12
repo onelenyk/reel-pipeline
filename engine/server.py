@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 from . import HOME, find, fonts, media, plan as plans, project, render, speech, styles, suggest
-from .__main__ import ROOT, create, find_rooms, overlays
+from .__main__ import ROOT, create, find_rooms, overlays, retake
 
 PAGE = Path(__file__).resolve().parent / "page.html"
 INBOX = HOME / "media"
@@ -125,7 +125,7 @@ def summary(name):
         fixed = {c["word"]: c["text"] for c in doc["corrections"] if c["accepted"]}
         plan = project.resolve(doc); at = {w["id"]: w["start"] for line in plan["lines"] for w in line["words"]}  # where each word is in the finished video
         assets = {a["id"]: a for a in doc["assets"]}; used = {n.get("asset") for n in doc["needs"]} | {b.get("asset") for b in doc["beats"]}
-        out.update(source=doc["sources"][0], takes=[{"name": t["name"], "seconds": t["seconds"]} for t in doc.get("takes", [])], language=doc["language"],
+        out.update(source=doc["sources"][0], takes=[{"id": t["id"], "name": t["name"], "seconds": t["seconds"], "from": t["from"], "to": t["to"]} for t in project.as_takes(doc)], language=doc["language"],
                    words=[{"id": w["id"], "text": fixed.get(w["id"], w["text"]), "heard": w["text"], "fixed": w["id"] in fixed, "start": w["start"], "at": at.get(w["id"]), "kept": w["id"] in kept,
                            "hot": w["id"] in hot, "unsure": w["confidence"] < 0.5} for w in doc["words"]],
                    corrections=doc["corrections"], cuts=doc["cuts"], kinds={b["id"]: b["kind"] for b in plan["beats"]}, seconds=plan["seconds"], style=doc["style"],
@@ -296,6 +296,18 @@ class Handler(BaseHTTPRequestHandler):
             if action == "render": background(name, "render", lambda: render.render(folder)); return self.send(summary(name))
             if action == "decorate": background(name, "decorate", lambda: overlays(folder, fresh=True)); return self.send(summary(name))
             if action == "rooms": background(name, "rooms", lambda: find_rooms(folder)); return self.send(summary(name))
+            if action == "takes":
+                # the takes in another order, or without some of them; then the video is built again
+                order = json.loads(self.body() or b"{}").get("order"); known = [t["id"] for t in project.as_takes(project.load(folder))]
+                if not isinstance(order, list) or not order or len(set(order)) != len(order) or any(o not in known for o in order): return self.send({"error": "these are not the takes of this project"}, 400)
+                if order == known: return self.send(summary(name))
+                background(name, "takes", lambda: (retake(folder, order=order), render.render(folder))); return self.send(summary(name))
+            if action == "take-add" and len(parts) == 5:
+                # one more file for a project that is already made: it becomes its last take
+                suffix = Path(parts[4]).suffix or ".mov"; tmp = self.upload(suffix); count = 1
+                while (INBOX / f"{name}.more{count}{suffix}").exists(): count += 1
+                INBOX.mkdir(parents=True, exist_ok=True); video = INBOX / f"{name}.more{count}{suffix}"; tmp.replace(video)
+                background(name, "take", lambda: (retake(folder, add=video, name=parts[4]), render.render(folder))); return self.send(summary(name))
             if action == "ask":
                 # The author marked a stretch and said what is wrong with it; the AI answers with changes, which are applied
                 asked = json.loads(self.body() or b"{}"); doc = project.load(folder); count = len(doc["words"])
