@@ -25,6 +25,9 @@
   .proj .name { font-size: 13px; font-weight: 600; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .proj .when { font-size: 12px; color: var(--subtle); } .proj .when.bad { color: var(--bad); } .proj .when.busy { color: var(--brand); }
   .proj.add .cover { border: 2px dashed var(--chip2); background: none; color: var(--muted); font-size: 13px; font-weight: 600; }
+  .spaceBox { max-width: 640px; padding: 4px 0 8px; } .spaceBox .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; } .spaceBox .row > span:first-child { width: 150px; color: var(--muted); font-size: 13px; }
+  .spaceBox img.logo { height: 48px; max-width: 160px; object-fit: contain; background: repeating-conic-gradient(#2c2c2e 0 25%, #1c1c1e 0 50%) 0 0 / 12px 12px; border-radius: 6px; padding: 4px; }
+  .spaceBox textarea { width: 100%; min-height: 110px; margin-top: 6px; }
   .proj.add .plus { font-size: 34px; font-weight: 300; line-height: 1; display: block; margin-bottom: 6px; }
   @media (min-width: 900px) { body:not(.home) main { grid-template-columns: 330px minmax(0, 1fr); align-items: start; } .left { position: sticky; top: 16px; } }
   /* on a phone the video leaves room for what is under it */
@@ -246,7 +249,7 @@
     <div class="tab" data-tab="gallery"><p class="hint" style="margin:0 0 12px">Усе оздоблення, яке вміє відео, на кадрах цього проєкту. Дотик до картинки вибирає цей варіант.</p><div id="gallery"></div></div>
     <div class="tab" data-tab="style">
     <section><h2>Стиль</h2><div id="style"></div></section>
-    <section><h2>Словник</h2>
+    <section><h2 id="vocabHead">Словник</h2>
       <p class="hint">Назви об'єктів, сіл і терміни, по одному в рядку. Після розпізнавання нового відео схожі слова замінюються на ці. Якщо розпізнавач чує назву зовсім інакше, допишіть через «=», як саме: «G-Village = Джівілич». Виправлені вами назви додаються сюди самі, разом із тим, як їх було почуто.</p>
       <textarea id="vocab" aria-label="Словник"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button id="vocabSave">Зберегти словник</button><span class="hint" id="vocabSaid" style="margin:0"></span></div>
@@ -576,6 +579,8 @@ function draw(force) {
     <div class="row"><span>Число</span>${seg("number", [["big", "Велике"], ["badge", "Значок"], ["card", "Картка"]])}</div>
     <div class="row"><span>Перебивка</span>${seg("breaks", [["slide", "Шторка"], ["flash", "Спалах"], ["bar", "Смуга"]])}</div>
     <div class="row"><span>Маршрут на плані</span>${seg("navigator", [["arrow", "Стрілка"], ["steps", "Сліди"], ["off", "Без маршруту"]])}</div>
+    <div class="row"><span>Логотип</span>${seg("logo", [["corner", "У куті"], ["end", "Наприкінці"], ["both", "І там, і там"], ["off", "Без логотипа"]])}</div>
+    ${state.logo ? "" : `<p class="hint" style="margin:-4px 0 10px">У простору «${esc(state.space)}» ще немає логотипа: його додають на екрані проєктів, у «Налаштуваннях простору».</p>`}
     <div class="row"><span>Звуки появи</span>${seg("sounds", [["off", "Без звуків"], ["quiet", "Тихо"], ["normal", "Чутно"]])}</div>
     <div class="row"><span>Слова</span>${seg("karaoke", [[true, "Загоряються по черзі"], [false, "Усі одразу"]])}</div>
     <div class="row"><span>Титр</span>${seg("title_glow", [[true, "Зі світінням"], [false, "Без світіння"]])}</div>
@@ -818,7 +823,7 @@ document.addEventListener("click", async (e) => {
   else if (d.seek !== undefined) seek(+d.seek);
   else if (t.id === "askGo") askAi();
   else if (t.id === "zoomIn") setZoom(zoom * 2); else if (t.id === "zoomOut") setZoom(zoom / 2); else if (t.id === "zoomFit") setZoom(1);
-  else if (t.id === "vocabSave") { try { const saved = await api("/api/vocabulary", { method: "POST", body: JSON.stringify({ terms: $("vocab").value.split("\n") }) }); $("vocab").value = saved.terms.join("\n"); $("vocabSaid").textContent = `Збережено: ${saved.terms.length}. Діє для нових відео.`; } catch (error) { fail(error); } }
+  else if (t.id === "vocabSave") { try { const saved = await api("/api/vocabulary", { method: "POST", body: JSON.stringify({ terms: $("vocab").value.split("\n"), space: state.space }) }); $("vocab").value = saved.terms.join("\n"); $("vocabSaid").textContent = `Збережено: ${saved.terms.length}. Діє для нових відео.`; } catch (error) { fail(error); } }
   else if (t.id === "askNo") { sel = null; said = ""; drawSel(); drawAsk(); }
   else if (t.id === "askCut") { const picked = selWords(); sel = null; said = ""; drawAsk(); if (picked) edit({ drop: picked }); }
   else if (d.cut) edit({ drop: d.cut.split("-").map(Number), restore: !!d.back });
@@ -908,19 +913,54 @@ document.addEventListener("click", async (e) => {
   } else if (e.target.id === "takesNo") { takeOrder = null; draw(true); }
   else if (e.target.id === "takesGo") { const order = takeOrder; takeOrder = null; await act(`/api/projects/${name}/takes`, { method: "POST", body: JSON.stringify({ order }) }); }
 });
+// The workspace's own settings, on the shelf
+const spaceAct = async (body) => { try { $("error").innerHTML = ""; const done = await api("/api/space", { method: "POST", body: JSON.stringify({ space, ...body }) }); return done; } catch (error) { fail(error); return null; } };
+document.addEventListener("toggle", (e) => { if (e.target.id === "spaceFold") spaceOpen = e.target.open; }, true);
+document.addEventListener("click", async (e) => {
+  const id = e.target.id;
+  if (id === "spaceRename") { const done = await spaceAct({ rename: $("spaceTitle").value }); if (done) { remember(done.space); vocabOf = null; tick.now(); } }
+  else if (id === "logoRemove") { if (await spaceAct({ logo: null })) { drawHome.stamp = Date.now(); tick.now(); } }
+  else if (id === "spaceVocabSave") { try { const saved = await api("/api/vocabulary", { method: "POST", body: JSON.stringify({ terms: $("spaceVocab").value.split("\n"), space }) }); $("spaceVocab").value = saved.terms.join("\n"); $("spaceVocabSaid").textContent = `Збережено: ${saved.terms.length}. Діє для нових відео цього простору.`; } catch (error) { fail(error); } }
+  else if (id === "spaceRemove") $("spaceDrop").innerHTML = `<p class="hint" style="margin:0 0 8px">Видалити простір «${esc(space)}»? Його проєкти не зникнуть: вони перейдуть у «${esc(spaceList[0])}». Логотип і словник простору переїдуть у «trash».</p><button id="spaceRemoveYes" style="color:var(--bad)">Так, видалити</button> <button id="spaceRemoveNo">Скасувати</button>`;
+  else if (id === "spaceRemoveNo") $("spaceDrop").innerHTML = `<button id="spaceRemove">Видалити простір</button>`;
+  else if (id === "spaceRemoveYes") { if (await spaceAct({ remove: true })) { remember(spaceList[0]); vocabOf = null; tick.now(); } }
+});
+document.addEventListener("change", async (e) => {
+  if (e.target.id === "spaceStyle") { if (await spaceAct({ style: e.target.value })) tick.now(); }
+  else if (e.target.id === "logoFile" && e.target.files[0]) {
+    const file = e.target.files[0];
+    try { await api(`/api/space-logo?space=${encodeURIComponent(space)}&file=${encodeURIComponent(safeName(file))}`, { method: "POST", body: file }); drawHome.stamp = Date.now(); tick.now(); } catch (error) { fail(error); }
+  }
+});
 const MONTHS = ["січ.", "лют.", "бер.", "квіт.", "трав.", "черв.", "лип.", "серп.", "вер.", "жовт.", "лист.", "груд."];
 function drawHome(list) {
-  const here = list.filter((p) => p.space === space), signature = JSON.stringify([space, here]);
-  if (signature === drawHome.was) return; drawHome.was = signature;
+  const here = list.filter((p) => p.space === space), signature = JSON.stringify([space, here]), mine = JSON.stringify([space, spaceSettings[space], styles.map((x) => [x.id, x.name, x.default]), spaceList, drawHome.stamp]);
+  if (!$("homeShelf")) $("home").innerHTML = `<div id="homeSettings"></div><div id="homeShelf"></div>`;
   const clock = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`, day = (at) => { const d = new Date(at * 1000); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
   document.title = "Reel";
-  $("home").innerHTML = `<h2>${esc(space)} · ${here.length}</h2><div class="shelf"><label class="proj add" for="take" tabindex="0"><div class="cover"><div><span class="plus">＋</span>Нове відео</div></div><div class="name">&nbsp;</div><div class="when">один файл або кілька</div></label>${
+  const own = spaceSettings[space] || {}, first = space === spaceList[0];
+  const settings = `<details class="fold" id="spaceFold"${spaceOpen ? " open" : ""}><summary>Налаштування простору</summary><div class="spaceBox">
+    <div class="row"><span>Назва</span>${first ? `<span class="hint" style="margin:0">Перший простір; його назва не змінюється.</span>` : `<input type="text" id="spaceTitle" maxlength="40" value="${esc(space)}" style="flex:1;min-width:8em"><button id="spaceRename">Перейменувати</button>`}</div>
+    <div class="row"><span>Логотип</span>${own.logo ? `<img class="logo" alt="Логотип" src="/space-logo?space=${encodeURIComponent(space)}&v=${drawHome.stamp || 0}">` : `<span class="hint" style="margin:0">ще немає</span>`}
+      <label class="btn">${own.logo ? "Замінити" : "Додати"}<input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp"></label>${own.logo ? `<button class="quiet" id="logoRemove">Прибрати</button>` : ""}</div>
+    <p class="hint" style="margin:-4px 0 12px">Найкраще PNG із прозорим тлом. Логотип показується у відео всіх проєктів простору; де саме, обирається в стилі проєкту.</p>
+    <div class="row"><span>Стиль нових відео</span><select id="spaceStyle"><option value="">загальний${styles.find((x) => x.default) ? ` («${esc(styles.find((x) => x.default).name)}»)` : ""}</option>${styles.map((x) => `<option value="${esc(x.id)}"${own.style === x.id ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>
+    ${styles.length ? "" : `<p class="hint" style="margin:-4px 0 12px">Збережених стилів ще немає: стиль зберігають у проєкті, у вкладці «Стиль».</p>`}
+    <div><span class="hint" style="margin:0">Словник: назви об’єктів, сіл і терміни цього замовника, по одному в рядку; «G-Village = Джівілич», якщо розпізнавач чує інакше.</span><textarea id="spaceVocab" aria-label="Словник простору"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button id="spaceVocabSave">Зберегти словник</button><span class="hint" id="spaceVocabSaid" style="margin:0"></span></div></div>
+    ${first ? "" : `<div id="spaceDrop" style="margin-top:16px"><button id="spaceRemove">Видалити простір</button></div>`}
+  </div></details>`;
+  // the settings are rebuilt only when they change, so a vocabulary being typed is not lost while a video is processed
+  if (mine !== drawHome.mine) { drawHome.mine = mine; $("homeSettings").innerHTML = settings; }
+  if (signature === drawHome.was) return; drawHome.was = signature;
+  $("homeShelf").innerHTML = `<h2>${esc(space)} · ${here.length}</h2><div class="shelf"><label class="proj add" for="take" tabindex="0"><div class="cover"><div><span class="plus">＋</span>Нове відео</div></div><div class="name">&nbsp;</div><div class="when">один файл або кілька</div></label>${
     here.map((p) => `<a class="proj" href="?p=${encodeURIComponent(p.name)}" data-project="${esc(p.name)}"><div class="cover">${
       p.has_render ? `<img loading="lazy" alt="" src="/poster/${encodeURIComponent(p.name)}/poster.jpg?v=${p.built}">${p.seconds ? `<span class="long">${clock(p.seconds)}</span>` : ""}` : p.state === "working" ? `<span class="spin"></span>` : p.state === "failed" ? "обробка зупинилась" : "відео ще немає"}</div><div class="name" title="${esc(p.title)}">${esc(p.title)}</div><div class="when${p.state === "failed" ? " bad" : p.state === "working" ? " busy" : ""}">${
       p.state === "working" ? (p.busy === "pipeline" ? "обробляється…" : "перезбирається…") : p.state === "failed" ? "зупинилось: відкрийте" : p.built ? day(p.built) : "очікує"}</div></a>`).join("")}</div>`;
+  if (vocabOf !== space + "|spaceVocab" || !$("spaceVocab").value) loadVocab(space, "spaceVocab");
 }
 // Workspaces: the projects of one subject under one name. The one last looked at is remembered in this browser.
-let space = null, spaceList = [];
+let space = null, spaceList = [], spaceSettings = {}, spaceOpen = false;
 const remember = (value) => { space = value; try { localStorage.setItem("reel-space", value); } catch (error) { /* a private window */ } };
 $("space").addEventListener("change", (e) => {
   if (e.target.value === "+") { $("spaceNew").style.display = ""; $("spaceName").focus(); return; }
@@ -936,12 +976,14 @@ $("move").addEventListener("change", async (e) => {
 });
 let projects = [];
 
-api("/api/vocabulary").then((v) => { $("vocab").value = v.terms.join("\n"); }).catch(() => {});
+// The vocabulary is the workspace's: the one of the open project, or on the shelf the one looked at
+let vocabOf = null;
+const loadVocab = (where, box) => { vocabOf = where + "|" + box; api(`/api/vocabulary?space=${encodeURIComponent(where)}`).then((v) => { $(box).value = v.terms.join("\n"); }).catch(() => {}); };
 window.addEventListener("resize", () => { if (state) drawLine(); });
 
 async function tick() {
   try {
-    const [list, known] = await Promise.all([api("/api/projects"), api("/api/spaces")]); projects = list; spaceList = known.spaces;
+    const [list, known] = await Promise.all([api("/api/projects"), api("/api/spaces")]); projects = list; spaceList = known.spaces; spaceSettings = known.settings || {};
     // the workspace is the one of the project being looked at; with no project, the one last looked at
     const mine = list.find((p) => p.name === name);
     if (mine) space = mine.space; else if (!space) { try { space = localStorage.getItem("reel-space"); } catch (error) { /* a private window */ } }
@@ -949,11 +991,12 @@ async function tick() {
     const here = list.filter((p) => p.space === space);
     if (name && !mine) { name = null; state = null; history.replaceState(null, "", "?"); }  // a project that is no longer there: back to the shelf
     document.body.classList.toggle("home", !name);
-    if (!name) drawHome(list);
+    if (!name) { styles = await api("/api/styles"); drawHome(list); }
     if (document.activeElement !== $("space")) $("space").innerHTML = spaceList.map((s) => `<option value="${esc(s)}"${s === space ? " selected" : ""}>${esc(s)} (${list.filter((p) => p.space === s).length})</option>`).join("") + `<option value="+">＋ Новий простір…</option>`;
     if (document.activeElement !== $("pick")) $("pick").innerHTML = here.map((p) => `<option value="${esc(p.name)}"${p.name === name ? " selected" : ""}>${esc(p.title)}</option>`).join("") || `<option value="">проєктів ще немає</option>`;
     if (document.activeElement !== $("move")) { $("move").innerHTML = `<option value="">перемістити в…</option>` + spaceList.filter((s) => s !== space).map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join(""); $("move").style.display = name && spaceList.length > 1 ? "" : "none"; }
-    if (name) { const [fresh, saved] = await Promise.all([api(`/api/projects/${name}`), api("/api/styles")]); state = fresh; styles = saved; draw(); }
+    if (name) { const [fresh, saved] = await Promise.all([api(`/api/projects/${name}`), api("/api/styles")]); state = fresh; styles = saved; draw();
+      if (vocabOf !== state.space + "|vocab") { loadVocab(state.space, "vocab"); $("vocabHead").textContent = `Словник простору «${state.space}»`; } }
   } catch (error) { /* the engine is restarting: keep the last picture */ }
   clearTimeout(tick.timer); tick.timer = setTimeout(tick, state && state.busy ? 1000 : 2500);
 }

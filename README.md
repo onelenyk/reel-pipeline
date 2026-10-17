@@ -73,7 +73,7 @@ Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output
 
 - One take, or several files that are one video (`./reel new A.mov B.mov`, or several files chosen at once on the page): each is recognised on its own, they are brought to one form and joined in the order they were shot; a take that says again what the one before said replaces it.
 - The takes of a finished project can be put in another order, taken out, or one more added (the «Монтаж» tab, «Записи»): the takes are joined again and every cut, insert, caption and plan moment follows its take (`project.retake`). A take added later is reviewed on its own, so it is not compared with the earlier ones.
-- Projects are gathered in workspaces; a workspace is a name, kept in `workspaces.json` with the names the author gave projects. The page opens on the shelf of a workspace's projects; a deleted project's folder is moved to `trash/`, not erased.
+- Projects are gathered in workspaces, one for each client (`engine/spaces.py`). A workspace shares a logo (in the corner, over the last seconds, or both: the project's style says which), the style its new videos start with, and its own vocabulary; it can be renamed and taken away (its projects go back to the first one). All this is set on the shelf the page opens on, kept in `workspaces.json` and `spaces/<name>/`. A deleted project's folder is moved to `trash/`, not erased.
 - A pipeline that stopped (no connection, no money on the AI account) goes on from the step that failed: the button on the page, or `POST /api/projects/NAME/retry`.
 - `./reel usage` says what was asked of the AI by day and what is left on the account.
 

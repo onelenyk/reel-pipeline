@@ -13,8 +13,8 @@ MIN_BEAT = {"title": 2.6, "cutaway": 2.5, "backdrop": 2.5, "full": 2.5, "zoom": 
 
 
 # ---------- style: how the graphics and the sound of a video are finished; saved styles are reused across videos ----------
-STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "sounds": "quiet", "navigator": "arrow", "subtitle": "outline", "sticker": "paper", "number": "big", "breaks": "slide", "level": -15}
-CHOICES = {"subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge", "polaroid", "circle", "mix"), "sounds": ("off", "quiet", "normal"), "navigator": ("arrow", "steps", "off"),
+STYLE = {"name": "Жовтий акцент", "accent": "#ffd60a", "font": "Inter", "caps": False, "subtitle_size": "m", "subtitle_place": "low", "karaoke": True, "title_glow": True, "picture": "card", "rhythm": True, "sounds": "quiet", "navigator": "arrow", "subtitle": "outline", "sticker": "paper", "number": "big", "breaks": "slide", "logo": "corner", "level": -15}
+CHOICES = {"logo": ("corner", "end", "both", "off"), "subtitle_size": ("s", "m", "l"), "subtitle_place": ("low", "middle"), "picture": ("card", "edge", "polaroid", "circle", "mix"), "sounds": ("off", "quiet", "normal"), "navigator": ("arrow", "steps", "off"),
            "subtitle": ("outline", "plate", "shadow"), "sticker": ("paper", "pill", "tag", "outline"), "number": ("big", "badge", "card"), "breaks": ("slide", "flash", "bar")}
 # Ready-made looks: each is a whole style, put on with one touch and changed further by hand
 PRESETS = [

@@ -1,7 +1,7 @@
 """Builds the finished video from a project document: ffmpeg cuts, colours, frames and mixes; the Node renderer draws."""
 import hashlib, json, subprocess, tempfile, time
 from pathlib import Path
-from . import fonts, matte, media, project, sounds
+from . import fonts, matte, media, project, sounds, spaces
 
 RENDERER = Path(__file__).resolve().parent.parent / "renderer" / "render.mjs"
 ZOOM = 0.12   # how much closer a zoom beat comes
@@ -18,6 +18,37 @@ def render(folder):
     except Exception as error:
         project.progress(folder, "render", "failed", error=str(error)[-300:]); raise
     project.progress(folder, "render", "done", seconds=result["took_seconds"]); return result
+
+
+# The workspace's logo: small in a corner the whole time, or large over the last seconds, or both. It lies under
+# everything that is drawn, so a caption or a picture on the whole frame is never hidden by it.
+CORNER = (220, 120)   # the box the small logo fits in, near the upper left corner, clear of the phone's own buttons
+BIG = (620, 420)      # the box of the large one, in the middle of the darkened frame
+END = 2.5             # seconds of the large one at the end
+
+
+def logo_graph(index, last, look, seconds, at=None):
+    """The filters that lay the logo (ffmpeg input `index`) over the stream `last`; returns (filters, new last).
+    With `at`, for one still frame at that second: what is on screen then, without moving in."""
+    tail = max(0.0, seconds - END); corner, end = look in ("corner", "both"), look in ("end", "both")
+    if at is not None: corner, end = corner and not (end and at >= tail), end and at >= tail
+    if not corner and not end: return [], last
+    out, a, b = [], f"{index}:v", f"{index}:v"
+    if corner and end: out.append(f"[{index}:v]split[logo_a][logo_b]"); a, b = "logo_a", "logo_b"
+    if corner:
+        when = f":enable='lt(t,{tail:.3f})'" if end and at is None else ""
+        out += [f"[{a}]scale={CORNER[0]}:{CORNER[1]}:force_original_aspect_ratio=decrease,format=rgba,colorchannelmixer=aa=0.92[logo_small]", f"[{last}][logo_small]overlay=56:150{when}[logo_1]"]; last = "logo_1"
+    if end:
+        when = f":enable='gte(t,{tail:.3f})'" if at is None else ""; rise = f",fade=t=in:st={tail:.3f}:d=0.4:alpha=1" if at is None else ""
+        out += [f"[{b}]scale={BIG[0]}:{BIG[1]}:force_original_aspect_ratio=decrease,format=rgba{rise}[logo_big]", f"[{last}]drawbox=c=black@0.55:t=fill{when}[logo_dark]",
+                f"[logo_dark][logo_big]overlay=(W-w)/2:(H-h)/2{when}[logo_2]"]; last = "logo_2"
+    return out, last
+
+
+def logo_of(folder, doc):
+    """The logo this project's video shows, and how; None when its workspace has none or the style leaves it out."""
+    look = doc["style"].get("logo", "corner"); file = spaces.logo(spaces.space_of(Path(folder).name))
+    return (file, look) if file and look != "off" else None
 
 
 STRIP = 48  # frames in the strip under the timeline
@@ -79,8 +110,9 @@ def still(folder, t, out, style=None, demo=None):
         covered = any(b["kind"] == "full" and b["start"] + 0.3 <= t <= b["end"] - 0.3 for b in timeline["beats"])
         if covered: media.ffmpeg("-f", "lavfi", "-i", f"color=c=black:s={width}x{height}", "-i", str(layer), "-filter_complex", "[0][1]overlay,scale=540:-2", "-frames:v", "1", "-q:v", "4", str(out))
         else:
-            media.ffmpeg("-ss", f"{at:.3f}", "-i", source["file"], "-i", str(layer), "-filter_complex",
-                         f"[0:v]{media.tone_filter(source['hdr'])},scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}[v];[v][1]overlay,scale=540:-2", "-frames:v", "1", "-q:v", "4", str(out))
+            shown = logo_of(folder, doc); extra, under = (logo_graph(2, "v", shown[1], timeline["seconds"], at=t)) if shown else ([], "v")
+            media.ffmpeg("-ss", f"{at:.3f}", "-i", source["file"], "-i", str(layer), *(["-i", str(shown[0])] if extra else []), "-filter_complex",
+                         ";".join([f"[0:v]{media.tone_filter(source['hdr'])},scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}[v]", *extra, f"[{under}][1]overlay,scale=540:-2"]), "-frames:v", "1", "-q:v", "4", str(out))
     return out
 
 
@@ -125,6 +157,10 @@ def build(folder):
         z = "1+" + "+".join([f"{ZOOM}*(clip((in_time-{b['start']:.3f})/{RAMP},0,1)-clip((in_time-{b['end']:.3f})/{RAMP},0,1))" for b in zooms] +
                             [f"{PUNCH}*gte(in_time,{a - 0.001:.3f})*lt(in_time,{b - 0.001:.3f})" for a, b in punches])
         graph.append(f"[{last}]zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih*0.42-(ih/zoom*0.42)':d=1:s={width}x{height}:fps={fps}[zoomed]"); last = "zoomed"
+    shown = logo_of(folder, doc)
+    if shown:
+        inputs += ["-loop", "1", "-framerate", str(fps), "-t", f"{timeline['seconds']:.3f}", "-i", str(shown[0])]
+        extra, last = logo_graph(inputs.count("-i") - 1, last, shown[1], timeline["seconds"]); graph += extra
     level = doc["style"]["level"]
     dip = "*".join(f"clip(abs(t-{edge:.3f})/{FADE},0,1)" for a, b in timeline["spans"][:60] for edge in (a, b))
     audio = f"volume='{dip}':eval=frame,aselect='{keep}',asetpts=N/SR/TB,highpass=f=80," + ("arnndn=m=/opt/rnnoise/std.rnnn," if doc.get("audio", {}).get("denoise") == "light" else "") + f"loudnorm=I={level + 1.5}:TP=-1.5:LRA=7,aresample=48000"

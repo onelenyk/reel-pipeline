@@ -1,7 +1,7 @@
 """Tests of the engine's logic: no video, no network. Run in the container:  ./reel test"""
 import json, tempfile, unittest
 from pathlib import Path
-from engine import project, styles, suggest
+from engine import project, speech, styles, suggest
 
 
 def words(*texts, step=0.5):
@@ -212,6 +212,34 @@ class Vote(unittest.TestCase):
         agreed = vote([[cut(5, 9), cut(20, 22, "aside")], [cut(5, 9)], [cut(5, 10), cut(20, 22, "aside")]])
         self.assertEqual([(c["from"], c["to"], c["why"]) for c in agreed], [(5, 9, "retake"), (20, 22, "aside")])
         self.assertEqual(vote([[cut(5, 9)], [], []]), [])
+
+
+class Spaces(unittest.TestCase):
+    """A workspace is a client: its projects share a vocabulary, a logo and the style new videos start with."""
+
+    def setUp(self):
+        from engine import spaces
+        self.home = Path(tempfile.mkdtemp()); was = (spaces.HOME, spaces.SPACES, spaces.TRASH, styles.ROOT, styles.DEFAULT, speech.VOCABULARY)
+        spaces.HOME, spaces.SPACES, spaces.TRASH = self.home, self.home / "workspaces.json", self.home / "trash"
+        styles.ROOT, styles.DEFAULT, speech.VOCABULARY = self.home / "styles", self.home / "styles" / "default.txt", self.home / "vocabulary.txt"
+        def back(): spaces.HOME, spaces.SPACES, spaces.TRASH, styles.ROOT, styles.DEFAULT, speech.VOCABULARY = was
+        self.addCleanup(back); self.spaces, self.styles = spaces, styles
+
+    def test_each_workspace_has_its_own_vocabulary_style_and_logo_and_they_follow_a_new_name(self):
+        sp = self.spaces; sp.set_space("p1", "Замовник"); speech.set_vocabulary(["Тестовий Двір"], sp.book("Замовник"))
+        self.assertEqual(speech.vocabulary(sp.book(sp.space_of("p1")))[0], "Тестовий Двір"); self.assertNotIn("Тестовий Двір", speech.vocabulary())
+        key = self.styles.save("Свій", {"accent": "#ff0000"}); sp.set_style("Замовник", key)
+        self.assertEqual(sp.style_for("p1")["accent"], "#ff0000"); self.assertIsNone(sp.style_for("p2"))   # a project elsewhere gets the common default
+        logo = self.home / "in.png"; logo.write_bytes(b"png"); sp.set_logo("Замовник", logo, ".png"); self.assertTrue(sp.logo("Замовник").exists())
+        sp.rename("Замовник", "Новий замовник")
+        self.assertEqual(sp.space_of("p1"), "Новий замовник"); self.assertEqual(sp.style_for("p1")["accent"], "#ff0000")
+        self.assertEqual(speech.vocabulary(sp.book("Новий замовник"))[0], "Тестовий Двір"); self.assertIsNotNone(sp.logo("Новий замовник"))
+
+    def test_a_workspace_taken_away_gives_its_projects_back_to_the_first(self):
+        sp = self.spaces; sp.set_space("p1", "Замовник"); sp.remove("Замовник")
+        self.assertEqual(sp.space_of("p1"), sp.HOME_SPACE); self.assertEqual(sp.spaces()["spaces"], [sp.HOME_SPACE])
+        with self.assertRaises(ValueError): sp.remove(sp.HOME_SPACE)
+        with self.assertRaises(ValueError): sp.rename(sp.HOME_SPACE, "Інша назва")
 
 
 class Takes(unittest.TestCase):

@@ -14,47 +14,49 @@ VOCABULARY = HOME / "vocabulary.txt"
 SEED = ["котеджне містечко", "передпокій", "кухня-вітальня", "гардеробна", "санвузол", "пральня", "тераса", "навіс", "бомбосховище", "панорамні вікна"]
 
 
-def lines():
-    """The vocabulary as written: a term to a line, optionally with the ways it is misheard, "G-Village = Джівілич, Джі Вілідж"."""
-    if not VOCABULARY.exists(): return list(SEED)
-    return [line.strip() for line in VOCABULARY.read_text(encoding="utf-8").splitlines() if line.strip()][:80]
+def lines(book=None):
+    """The vocabulary as written: a term to a line, optionally with the ways it is misheard, "G-Village = Джівілич, Джі Вілідж".
+    `book` is the file of one workspace's vocabulary; without it, the first workspace's."""
+    book = Path(book or VOCABULARY)
+    if not book.exists(): return list(SEED)
+    return [line.strip() for line in book.read_text(encoding="utf-8").splitlines() if line.strip()][:80]
 
 
-def vocabulary(): return [line.split("=")[0].strip() for line in lines() if line.split("=")[0].strip()]
+def vocabulary(book=None): return [line.split("=")[0].strip() for line in lines(book) if line.split("=")[0].strip()]
 
 
-def misheard():
+def misheard(book=None):
     """What the recogniser writes instead of a term, as people have corrected it: heard (letters only) -> term."""
-    return {letters(h): line.split("=")[0].strip() for line in lines() if "=" in line for h in line.split("=", 1)[1].split(",") if letters(h)}
+    return {letters(h): line.split("=")[0].strip() for line in lines(book) if "=" in line for h in line.split("=", 1)[1].split(",") if letters(h)}
 
 
-def primer():
+def primer(book=None):
     """The vocabulary as an opening the recogniser continues from. Written as sentences: a bare list of words makes it drop full stops."""
-    terms = vocabulary()
+    terms = vocabulary(book)
     return ("Розповідь про нерухомість. У ній звучать слова: " + ", ".join(terms)[:600] + ". Далі сама розповідь.") if terms else None
 
 
-def set_vocabulary(terms):
+def set_vocabulary(terms, book=None):
     clean, seen = [], set()
     for term in terms:
         term = re.sub(r"\s+", " ", str(term)).strip(" ,.;")[:120]
         key = term.split("=")[0].strip().lower()
         if key and key not in seen: seen.add(key); clean.append(term)
-    VOCABULARY.parent.mkdir(parents=True, exist_ok=True); VOCABULARY.write_text("\n".join(clean[:80]) + "\n", encoding="utf-8"); return clean[:80]
+    book = Path(book or VOCABULARY); book.parent.mkdir(parents=True, exist_ok=True); book.write_text("\n".join(clean[:80]) + "\n", encoding="utf-8"); return clean[:80]
 
 
-def learn(term, heard=None):
+def learn(term, heard=None, book=None):
     """A corrected word that looks like a name (a capital letter or Latin letters) is remembered for the next videos,
     together with what the recogniser wrote instead of it: next time that is respelled without anyone's help."""
     term = term.strip(" ,.;!?«»\"")
     if not (len(term) >= 3 and (term[0].isupper() or re.search("[A-Za-z]", term))): return
-    kept = lines(); heard = (heard or "").strip(" ,.;!?«»\"")
+    kept = lines(book); heard = (heard or "").strip(" ,.;!?«»\"")
     for i, line in enumerate(kept):
         if line.split("=")[0].strip().lower() == term.lower():
-            if heard and letters(heard) != letters(term) and letters(heard) not in misheard(): kept[i] = line + (", " if "=" in line else " = ") + heard
+            if heard and letters(heard) != letters(term) and letters(heard) not in misheard(book): kept[i] = line + (", " if "=" in line else " = ") + heard
             break
     else: kept.append(term + (f" = {heard}" if heard and letters(heard) != letters(term) else ""))
-    set_vocabulary(kept)
+    set_vocabulary(kept, book)
 
 
 _models, _loading = {}, threading.Lock()
@@ -105,7 +107,7 @@ def unheard(wav, words, model, language):
     return found
 
 
-def transcribe(video, model_name="large-v3-turbo"):
+def transcribe(video, model_name="large-v3-turbo", book=None):
     with tempfile.TemporaryDirectory() as tmp:
         wav = Path(tmp) / "speech.wav"
         ffmpeg("-i", str(video), "-vn", "-ac", "1", "-ar", "16000", str(wav))
@@ -135,7 +137,7 @@ def transcribe(video, model_name="large-v3-turbo"):
         # A word stretched far beyond what its letters take hides speech the recogniser left out: the word keeps its start
         longest = LONGEST + PER_LETTER * len(re.sub(r"[^\w]", "", word["text"]))
         if word["end"] - word["start"] > longest: word["end"] = round(word["start"] + longest, 2); word["confidence"] = min(word["confidence"], 0.4)
-    return {"language": meta.language, "words": spelled(words, vocabulary())}
+    return {"language": meta.language, "words": spelled(words, vocabulary(book), misheard(book))}
 
 
 LONGEST, PER_LETTER = 0.45, 0.11  # seconds: what a word may last, however slowly it is said

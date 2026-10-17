@@ -3,11 +3,11 @@
 Plain standard-library HTTP: this is a tool for one person on a trusted machine. It listens inside the container;
 the launcher publishes it on 127.0.0.1 only.
 """
-import json, re, shutil, tempfile, threading, time, traceback
+import json, re, tempfile, threading, time, traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
-from . import HOME, find, fonts, media, plan as plans, project, render, speech, styles, suggest
+from . import HOME, find, fonts, media, plan as plans, project, render, spaces as places, speech, styles, suggest
 from .__main__ import ROOT, create, find_rooms, overlays, retake
 
 PAGE = Path(__file__).resolve().parent / "page.html"
@@ -18,52 +18,7 @@ busy = {}  # project name → what is running, so two jobs never write the same 
 NAME = re.compile(r"^[\w.-]{1,60}$")
 
 
-SPACES = HOME / "workspaces.json"; HOME_SPACE = "Мої відео"   # the workspace of a project that was put in none
-TRASH = HOME / "trash"  # deleted projects are moved here, never erased: a mistake can be taken back by hand
-
-
-def spaces():
-    """The workspaces, which project is in which, and the names the author gave projects:
-    {"spaces": [names], "of": {project: name}, "titles": {project: title}}. A workspace is only a name projects are
-    gathered under, and a title only a name shown instead of the folder's; the projects themselves stay where they are."""
-    try: kept = json.loads(SPACES.read_text(encoding="utf-8"))
-    except (OSError, ValueError): kept = {}
-    names = [n for n in kept.get("spaces", []) if isinstance(n, str) and n.strip()]; of = {p: s for p, s in kept.get("of", {}).items() if s in names}
-    titles = {p: t for p, t in kept.get("titles", {}).items() if isinstance(t, str) and t.strip()}
-    return {"spaces": [HOME_SPACE] + [n for n in names if n != HOME_SPACE], "of": of, "titles": titles}
-
-
-def keep(kept):
-    SPACES.write_text(json.dumps({"spaces": kept["spaces"], "of": kept["of"], "titles": kept["titles"]}, ensure_ascii=False, indent=1), encoding="utf-8")
-
-
-def set_space(project_name=None, space=None):
-    """Makes a workspace, and puts a project into it when one is named."""
-    space = " ".join(str(space or "").split())[:40]
-    if not space: raise ValueError("a workspace needs a name")
-    with changing:
-        kept = spaces()
-        if space not in kept["spaces"]: kept["spaces"].append(space)
-        if project_name: kept["of"][project_name] = space
-        keep(kept)
-    return spaces()
-
-
-def set_title(name, title):
-    """The name a project is shown under. An empty one brings back the name of its folder."""
-    title = " ".join(str(title or "").split())[:60]
-    with changing:
-        kept = spaces(); kept["titles"].pop(name, None)
-        if title and title != name: kept["titles"][name] = title
-        keep(kept)
-    return title or name
-
-
-def trash(name):
-    """Takes a project off the shelf: its folder goes to the trash folder, whole. The raw take stays in the inbox."""
-    with changing:
-        TRASH.mkdir(parents=True, exist_ok=True); shutil.move(str(ROOT / name), str(TRASH / f"{name}-{int(time.time())}"))
-        kept = spaces(); kept["of"].pop(name, None); kept["titles"].pop(name, None); keep(kept)
+spaces, set_space, set_title, trash, HOME_SPACE = places.spaces, places.set_space, places.set_title, places.trash, places.HOME_SPACE
 
 
 lengths = {}  # (project, when its video was built) → the video's seconds, so the shelf does not measure it each time
@@ -116,7 +71,8 @@ def steps_of(status):
 
 def summary(name):
     folder = ROOT / name; status = folder / "status.json"
-    out = {"name": name, "title": spaces()["titles"].get(name, name), "busy": busy.get(name), "steps": steps_of(status), "has_render": (folder / "render.mp4").exists(),
+    kept = spaces(); space = kept["of"].get(name, HOME_SPACE)
+    out = {"name": name, "title": kept["titles"].get(name, name), "space": space, "logo": places.logo(space) is not None, "busy": busy.get(name), "steps": steps_of(status), "has_render": (folder / "render.mp4").exists(),
            "render_version": int((folder / "render.mp4").stat().st_mtime) if (folder / "render.mp4").exists() else 0}
     if (folder / "project.json").exists():
         doc = project.load(folder); kept = set()
@@ -194,9 +150,13 @@ class Handler(BaseHTTPRequestHandler):
         if not parts: return self.send(PAGE.read_bytes(), kind="text/html; charset=utf-8")
         if parts == ["api", "projects"]:
             return self.send(shelf())
-        if parts == ["api", "spaces"]: return self.send({"spaces": spaces()["spaces"]})
+        if parts == ["api", "spaces"]:
+            kept = spaces(); return self.send({"spaces": kept["spaces"], "settings": {s: {"style": kept["settings"].get(s, {}).get("style"), "logo": places.logo(s) is not None} for s in kept["spaces"]}})
+        if parts == ["space-logo"]:
+            found = places.logo(query.get("space") or HOME_SPACE)
+            return self.file(found, {".png": "image/png", ".webp": "image/webp"}.get(found.suffix, "image/jpeg")) if found else self.send({"error": "this workspace has no logo"}, 404)
         if parts == ["api", "styles"]: return self.send(styles.listing())
-        if parts == ["api", "vocabulary"]: return self.send({"terms": speech.lines()})
+        if parts == ["api", "vocabulary"]: return self.send({"terms": speech.lines(places.book(query.get("space") or HOME_SPACE))})
         if len(parts) == 3 and parts[:2] == ["api", "projects"]:
             return self.send(summary(parts[2])) if (ROOT / parts[2]).is_dir() else self.send({"error": "there is no such project"}, 404)
         if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "search":
@@ -274,7 +234,24 @@ class Handler(BaseHTTPRequestHandler):
                 if not (ROOT / parts[2]).is_dir(): return self.send({"error": "there is no such project"}, 404)
                 return self.send({"spaces": set_space(parts[2], json.loads(self.body() or b"{}").get("space"))["spaces"]})
             if parts == ["api", "vocabulary"]:
-                terms = json.loads(self.body() or b"{}").get("terms"); return self.send({"terms": speech.set_vocabulary(terms if isinstance(terms, list) else [])})
+                asked = json.loads(self.body() or b"{}"); terms = asked.get("terms")
+                return self.send({"terms": speech.set_vocabulary(terms if isinstance(terms, list) else [], places.book(asked.get("space") or HOME_SPACE))})
+            if parts == ["api", "space"]:
+                # what a workspace shares: its name, the style its new videos start with; or the workspace taken away
+                asked = json.loads(self.body() or b"{}"); space = asked.get("space")
+                try:
+                    if "rename" in asked: space = places.rename(space, asked["rename"])
+                    elif "style" in asked: places.set_style(space, asked["style"] or None)
+                    elif asked.get("remove"): places.remove(space); space = HOME_SPACE
+                    elif "logo" in asked and asked["logo"] is None: places.set_logo(space, None, None)
+                except (KeyError, ValueError) as error: return self.send({"error": str(error)}, 400)
+                return self.send({"space": space})
+            if parts == ["api", "space-logo"]:
+                query = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}; space = query.get("space") or HOME_SPACE; suffix = Path(query.get("file") or "").suffix.lower()
+                if space not in spaces()["spaces"]: return self.send({"error": "there is no such workspace"}, 404)
+                if suffix not in places.LOGOS: return self.send({"error": "a logo is a PNG, JPEG or WebP picture"}, 415)
+                if int(self.headers.get("Content-Length") or 0) > 8 << 20: return self.send({"error": "the picture is too large"}, 413)
+                places.set_logo(space, self.upload(suffix), suffix); return self.send({"space": space})
             if parts[:2] == ["api", "styles"] and len(parts) == 4 and parts[3] in ("default", "delete"):
                 if parts[3] == "delete": styles.remove(parts[2])
                 else: styles.set_default("" if parts[2] == "built-in" else parts[2])
@@ -336,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "edit":
                 change = json.loads(self.body() or b"{}"); doc = project.load(folder)
                 if "text" in change:
-                    heard = doc["words"][int(change["text"]["word"])]; project.set_text(folder, int(change["text"]["word"]), str(change["text"].get("to", ""))); speech.learn(str(change["text"].get("to", "")), heard.get("heard", heard["text"]))
+                    heard = doc["words"][int(change["text"]["word"])]; project.set_text(folder, int(change["text"]["word"]), str(change["text"].get("to", ""))); speech.learn(str(change["text"].get("to", "")), heard.get("heard", heard["text"]), places.book(places.space_of(name)))
                 elif "assign" in change: project.assign(folder, change["assign"]["need"], change["assign"].get("asset"))
                 elif "style" in change: project.set_style(folder, change["style"])
                 elif "apply_style" in change: project.set_style(folder, styles.get(change["apply_style"]))

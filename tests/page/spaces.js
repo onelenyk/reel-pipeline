@@ -11,4 +11,5 @@ const move = document.getElementById("move"); move.value = made; move.dispatchEv
 checks.push(["after the move the header shows the new workspace with this one project", await until(() => space === made && options("pick").length === 1 && options("pick")[0] === name)]);
 const back = document.getElementById("move"); await until(() => options("move").includes(home)); back.value = home; back.dispatchEvent(new Event("change", { bubbles: true }));
 checks.push(["and it can be moved back", await until(() => space === home && options("pick").length > 1)]);
+await api("/api/space", { method: "POST", body: JSON.stringify({ space: made, remove: true }) });   // the workspace made for the check goes again
 return checks.map(([n, ok]) => (ok ? "ok   " : "FAIL ") + n).join("\n");

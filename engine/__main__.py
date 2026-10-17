@@ -16,7 +16,7 @@
 """
 import json, sys, time
 from pathlib import Path
-from . import HOME, media, project, render, speech, styles, suggest, takes
+from . import HOME, media, project, render, spaces, speech, styles, suggest, takes
 
 ROOT = HOME / "projects"
 
@@ -37,6 +37,7 @@ def create(videos, folder):
         took[name] = round(time.time() - started, 1); project.progress(folder, name, "done", seconds=took[name])
         had[name] = {"seconds": took[name], "made": result}; kept.write_text(json.dumps(had, ensure_ascii=False), encoding="utf-8"); return result
     videos = [Path(v) for v in (videos if isinstance(videos, (list, tuple)) else [videos])]; several = len(videos) > 1
+    book = spaces.book(spaces.space_of(folder.name))  # the names this client's videos are about
     for name in ("probe", "transcribe", *(["join"] if several else []), "review", "suggest", "decorate", "render"): project.progress(folder, name, "waiting")
     if (folder / "project.json").exists():
         # the project itself was made before it stopped: only the overlays are left to ask for
@@ -45,7 +46,7 @@ def create(videos, folder):
     if several:
         # A video shot as separate files: each is recognised on its own, then they are joined in the order they were shot
         every = step("probe", lambda: [usable(v) for v in videos]); turn = takes.order(videos, every); videos = [videos[i] for i in turn]; every = [every[i] for i in turn]
-        each = step("transcribe", lambda: [heard(speech.transcribe(v)) for v in videos])
+        each = step("transcribe", lambda: [heard(speech.transcribe(v, book=book)) for v in videos])
         joined = step("join", lambda: (lambda made: {"file": str(made[0]), "parts": made[1]})(takes.join(videos, every, folder)))
         video = Path(joined["file"]); facts = usable(video); words, parts = [], []
         for n, (one, part, original) in enumerate(zip(each, joined["parts"], videos), 1):
@@ -55,10 +56,10 @@ def create(videos, folder):
     else:
         video = videos[0]; parts = None
         facts = step("probe", lambda: usable(video))
-        transcript = step("transcribe", lambda: heard(speech.transcribe(video)))
+        transcript = step("transcribe", lambda: heard(speech.transcribe(video, book=book)))
     cuts = step("review", lambda: suggest.review(transcript["words"], starts=[p["from"] for p in parts[1:]] if parts else ()))
     ideas = step("suggest", lambda: suggest.suggest(transcript["words"], {i for c in cuts for i in range(c["from"], c["to"] + 1)}))
-    project.save(folder, project.new(video, facts, transcript, ideas, styles.default(), cuts, takes=parts))
+    project.save(folder, project.new(video, facts, transcript, ideas, spaces.style_for(folder.name), cuts, takes=parts))
     step("decorate", lambda: bool(overlays(folder)))
     kept.unlink(missing_ok=True); return took
 
@@ -71,7 +72,7 @@ def retake(folder, order=None, add=None, name=None):
     try:
         doc = project.load(folder)
         if add:
-            facts = usable(add); transcript = heard(speech.transcribe(add))
+            facts = usable(add); transcript = heard(speech.transcribe(add, book=spaces.book(spaces.space_of(folder.name))))
             doc = project.append(doc, transcript["words"], suggest.review(transcript["words"]), name or Path(add).name, str(add), facts["seconds"])
         had = {t["id"]: t for t in project.as_takes(doc)}; order = list(order or had)
         if not order or len(set(order)) != len(order) or any(mark not in had for mark in order): raise ValueError("the takes asked for are not the takes of this project")
