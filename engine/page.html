@@ -154,7 +154,8 @@
   .zone { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
   .zone input { flex: 1; height: 34px; }
   input.ov { height: 32px; padding: 0 9px; margin: 0 6px 4px 0; }
-  #gallery h3 { font-size: 14px; margin: 18px 0 8px; } .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+  #gallery h3 { font-size: 13px; margin: 14px 0 6px; } .shots { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+  .shots .shot { flex: 0 0 96px; } #gallery .hint { margin: 2px 0 0; }
   .shot { height: auto; padding: 0 0 8px; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; gap: 6px; align-items: stretch; background: var(--chip); }
   .shot img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; display: block; background: #000; } .shot span { font-size: 12px; padding: 0 8px; }
   .shot.on { outline: 3px solid var(--brand); } .shot.none { display: none; }
@@ -256,9 +257,9 @@
     <div class="tab" data-tab="plan">
     <section id="planBox"><h2>Кімнати на плані</h2><div id="plans"></div></section>
     </div>
-    <div class="tab" data-tab="gallery"><p class="hint" style="margin:0 0 12px">Дотик до кадру обирає цей варіант.</p><div id="gallery"></div></div>
     <div class="tab" data-tab="style">
-    <section><h2>Стиль</h2><div id="style"></div></section>
+    <section><p class="hint" style="margin:0 0 4px">Кожен варіант показано на кадрі цього відео. Дотик обирає.</p><div id="gallery"></div></section>
+    <section><h2>Колір, шрифт і решта</h2><div id="style"></div></section>
     <section><h2>Словник</h2><p class="hint" style="margin:0">Назви, які розпізнавач має писати правильно, спільні для простору: <a id="vocabLink" href="?#settings">словник простору</a>. Назви, які ви виправляєте в тексті, потрапляють туди самі.</p></section>
     </div>
   </div>
@@ -284,7 +285,8 @@ let reshape = null; // a room whose corners are being moved: { asset, room, poin
 let sketch = null;  // a room being drawn on a plan: { asset, points: [[x, y], ...], from, to }
 let tab = "text"; try { tab = localStorage.getItem("reel-tab") || "text"; } catch {}
 let fontsLoaded = "";
-let logoStamp = 0;    // changes when a logo is sent, so the page shows the new one
+let logoStamp = 0;
+let moreOpen = false; // the folded rare choices of the look stay open while they are being changed    // changes when a logo is sent, so the page shows the new one
 let takeOrder = null; // the takes in an order the author is trying, not yet applied: [take id, ...]
 function loadFonts() {
   const wanted = [...new Set([...(state.fonts || []), state.style && state.style.font].filter((f) => f && f !== "Inter"))], key = wanted.join("|");
@@ -298,7 +300,8 @@ function drawTabs() {
   const waiting = (state.marks || []).filter((m) => !m.room).length + plans.filter((p) => !p.read).length;
   const list = [["text", "Текст", (state.corrections || []).filter((c) => c.by === "ai" && !c.accepted).length, true], ["montage", "Монтаж", needs, false]];
   if (plans.length) list.push(["plan", "План", waiting, false]);
-  list.push(["style", "Стиль", 0, false]); list.push(["gallery", "Галерея", 0, false]);
+  list.push(["style", "Вигляд", 0, false]);
+  if (tab === "gallery") tab = "style";   // the gallery was a tab of its own once
   if (!list.some(([id]) => id === tab)) tab = "text";
   $("tabs").innerHTML = list.map(([id, label, count, calm]) => `<button role="tab" data-tab-go="${id}" class="${id === tab ? "on" : ""}" aria-selected="${id === tab}">${label}${count ? `<span class="count${calm ? " calm" : ""}">${count}</span>` : ""}</button>`).join("");
   document.querySelectorAll(".tab").forEach((box) => box.classList.toggle("on", box.dataset.tab === tab));
@@ -308,7 +311,7 @@ function drawTabs() {
 // when the style or the video has changed: each picture is a frame the service draws.
 let galleryKey = "";
 function drawGallery() {
-  if (tab !== "gallery" || !state || !state.style) return;
+  if (tab !== "style" || !state || !state.style) return;
   const key = JSON.stringify([name, state.style, state.render_version, (state.marks || []).length, (state.beats || []).length]);
   if (key === galleryKey) return; galleryKey = key;
   const st = state.style, base = { ...st }; delete base.name;
@@ -319,9 +322,8 @@ function drawGallery() {
     + row("Число", "number", "number", [["big", "Велике"], ["badge", "Значок"], ["card", "Картка"]])
     + row("Вигляд субтитрів", "subtitle", "sticker", [["outline", "З обведенням"], ["plate", "На плашці"], ["shadow", "З тінню"]])
     + row("Перебивка", "breaks", "break", [["slide", "Шторка"], ["flash", "Спалах"], ["bar", "Смуга"]])
-    + `<h3>Список</h3><div class="shots">${tile("Пункти з'являються по черзі", {}, "list", false)}</div>`
     + row("Маршрут на плані", "navigator", "plan", [["arrow", "Стрілка"], ["steps", "Сліди"], ["off", "Без маршруту"]], "Показується, якщо в проєкті є план і мовець переходить між кімнатами.")
-    + row("Картинка зверху", "picture", "picture", [["card", "Картка"], ["edge", "На всю ширину"], ["polaroid", "Полароїд"], ["circle", "Коло"]], "Показується, якщо в проєкті є картинка над мовцем.");
+    + row("Картинка зверху", "picture", "picture", [["card", "Картка"], ["edge", "На всю ширину"], ["polaroid", "Полароїд"], ["circle", "Коло"], ["mix", "По черзі"]], "Показується, якщо в проєкті є картинка над мовцем.");
 }
 
 const api = async (path, options) => {
@@ -575,26 +577,19 @@ function draw(force) {
 
   const st = state.style, seg = (key, options) => `<div class="seg">${options.map(([value, label]) => `<button data-style='${JSON.stringify({ [key]: value })}' class="${st[key] === value ? "on" : ""}">${label}</button>`).join("")}</div>`;
   $("style").innerHTML = `
-    <div class="row" style="align-items:flex-start"><span>Готові стилі</span><div style="display:flex;flex-wrap:wrap;gap:6px">${(state.presets || []).map((p) => `<button data-style='${JSON.stringify(p).replace(/'/g, "&#39;")}' class="${p.name === st.name ? "on" : ""}" style="border-left:6px solid ${p.accent}">${esc(p.name)}</button>`).join("")}</div></div>
     <div class="row"><span>Акцент</span>${ACCENTS.map((c) => `<button class="sw${st.accent === c ? " on" : ""}" style="background:${c}" data-style='${JSON.stringify({ accent: c })}' aria-label="Колір ${c}"></button>`).join("")}<input type="color" id="accent" value="${st.accent}" aria-label="Власний колір"></div>
-    <div class="row"><span>Шрифт</span><select id="fontPick" aria-label="Шрифт" style="font-family:'${esc(st.font)}',system-ui;font-weight:800">${[...new Set([...(state.fonts || ["Inter"]), st.font])].map((f) => `<option value="${esc(f)}" style="font-family:'${esc(f)}',system-ui" ${f === st.font ? "selected" : ""}>${esc(f)}</option>`).join("")}</select>
-      <input type="text" id="fontOther" maxlength="40" placeholder="або назва з Google Fonts" style="flex:1 1 150px" aria-label="Інший шрифт"><button id="fontSet">Взяти</button>${seg("caps", [[false, "Як сказано"], [true, "ВЕЛИКИМИ"]])}</div>
-    <div class="row"><span></span><span class="hint" style="margin:0;width:auto;flex:1">Шрифт завантажується з Google Fonts один раз і лишається на цьому комп'ютері. Не кожен шрифт має українські літери: чого бракує, домальовується звичайним.</span></div>
-    <div class="row"><span>Субтитри</span>${seg("subtitle_size", [["s", "Малі"], ["m", "Середні"], ["l", "Великі"]])}${seg("subtitle_place", [["low", "Внизу"], ["middle", "Посередині"]])}</div>
-    <div class="row"><span>Ритм кадру</span>${seg("rhythm", [[true, "Міняти крупність"], [false, "Один план"]])}</div>
-    <div class="row"><span>Вигляд субтитрів</span>${seg("subtitle", [["outline", "З обведенням"], ["plate", "На плашці"], ["shadow", "З тінню"]])}</div>
-    <div class="row"><span>Наліпка</span>${seg("sticker", [["paper", "Папірець"], ["pill", "Пігулка"], ["tag", "Бирка"], ["outline", "Скло"]])}</div>
-    <div class="row"><span>Число</span>${seg("number", [["big", "Велике"], ["badge", "Значок"], ["card", "Картка"]])}</div>
-    <div class="row"><span>Перебивка</span>${seg("breaks", [["slide", "Шторка"], ["flash", "Спалах"], ["bar", "Смуга"]])}</div>
-    <div class="row"><span>Маршрут на плані</span>${seg("navigator", [["arrow", "Стрілка"], ["steps", "Сліди"], ["off", "Без маршруту"]])}</div>
+    <div class="row"><span>Шрифт</span><select id="fontPick" aria-label="Шрифт" style="font-family:'${esc(st.font)}',system-ui;font-weight:800">${[...new Set([...(state.fonts || ["Inter"]), st.font])].map((f) => `<option value="${esc(f)}" style="font-family:'${esc(f)}',system-ui" ${f === st.font ? "selected" : ""}>${esc(f)}</option>`).join("")}</select>${seg("caps", [[false, "Як сказано"], [true, "ВЕЛИКИМИ"]])}</div>
     <div class="row"><span>Логотип</span>${seg("logo", [["corner", "У куті"], ["end", "Наприкінці"], ["both", "І там, і там"], ["off", "Без логотипа"]])}</div>
-    <div class="row"><span></span><div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">${state.logo ? `<img class="logo" alt="Логотип" src="/space-logo?space=${encodeURIComponent(state.space)}&v=${logoStamp}">` : ""}<label class="btn">${state.logo ? "Замінити логотип" : "Завантажити свій логотип"}<input type="file" id="logoProject" accept="image/png,image/jpeg,image/webp"></label></div></div>
-    <p class="hint" style="margin:-4px 0 10px">Спільний для простору «${esc(state.space)}». Найкраще PNG із прозорим тлом.</p>
-    <div class="row"><span>Звуки появи</span>${seg("sounds", [["off", "Без звуків"], ["quiet", "Тихо"], ["normal", "Чутно"]])}</div>
+    <div class="row"><span></span><div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">${state.logo ? `<img class="logo" alt="Логотип" src="/space-logo?space=${encodeURIComponent(state.space)}&v=${logoStamp}">` : ""}<label class="btn">${state.logo ? "Замінити логотип" : "Завантажити свій логотип"}<input type="file" id="logoProject" accept="image/png,image/jpeg,image/webp"></label><span class="hint" style="margin:0;width:auto">спільний для простору «${esc(state.space)}»; найкраще PNG із прозорим тлом</span></div></div>
+    <details class="fold" id="moreFold"${moreOpen ? " open" : ""}><summary>Більше</summary>
+    <div class="row"><span>Інший шрифт</span><input type="text" id="fontOther" maxlength="40" placeholder="назва з Google Fonts" style="flex:1 1 150px" aria-label="Інший шрифт"><button id="fontSet">Взяти</button></div>
+    <div class="row"><span>Субтитри</span>${seg("subtitle_size", [["s", "Малі"], ["m", "Середні"], ["l", "Великі"]])}${seg("subtitle_place", [["low", "Внизу"], ["middle", "Посередині"]])}</div>
     <div class="row"><span>Слова</span>${seg("karaoke", [[true, "Загоряються по черзі"], [false, "Усі одразу"]])}</div>
     <div class="row"><span>Титр</span>${seg("title_glow", [[true, "Зі світінням"], [false, "Без світіння"]])}</div>
-    <div class="row"><span>Картинка зверху</span>${seg("picture", [["card", "Картка"], ["edge", "На всю ширину"], ["polaroid", "Полароїд"], ["circle", "Коло"], ["mix", "По черзі"]])}</div>
+    <div class="row"><span>Ритм кадру</span>${seg("rhythm", [[true, "Міняти крупність"], [false, "Один план"]])}</div>
+    <div class="row"><span>Звуки появи</span>${seg("sounds", [["off", "Без звуків"], ["quiet", "Тихо"], ["normal", "Чутно"]])}</div>
     <div class="row"><span>Гучність</span><input type="range" id="level" min="-24" max="-10" step="1" value="${st.level}"><span id="levelText" style="width:auto">${st.level} LUFS</span></div>
+    </details>
     <div class="row"><span>Зберегти</span><input type="text" id="styleName" placeholder="Назва стилю" maxlength="40" value="${esc(st.name)}" style="flex:1 1 160px"><button id="styleSave">Зберегти стиль</button></div>
     ${styles.length ? styles.map((s) => `<div class="card"><span class="sw" style="background:${s.accent};flex:none"></span><div class="what">${esc(s.name)}<small>${s.default ? "типовий для нових відео" : ""}</small></div>
       <button data-apply="${esc(s.id)}">Застосувати</button><button data-default="${s.default ? "built-in" : esc(s.id)}">${s.default ? "Не типовий" : "Зробити типовим"}</button><button class="quiet" data-style-delete="${esc(s.id)}">Видалити</button></div>`).join("") : `<p class="hint">Збережених стилів ще немає. Збережений стиль можна застосувати до іншого відео або зробити типовим для нових.</p>`}`;
@@ -933,7 +928,7 @@ document.addEventListener("click", async (e) => {
 });
 // The workspace's own settings, on the shelf
 const spaceAct = async (body) => { try { $("error").innerHTML = ""; const done = await api("/api/space", { method: "POST", body: JSON.stringify({ space, ...body }) }); return done; } catch (error) { fail(error); return null; } };
-document.addEventListener("toggle", (e) => { if (e.target.id === "spaceFold") spaceOpen = e.target.open; }, true);
+document.addEventListener("toggle", (e) => { if (e.target.id === "spaceFold") spaceOpen = e.target.open; if (e.target.id === "moreFold") moreOpen = e.target.open; }, true);
 document.addEventListener("click", async (e) => {
   const id = e.target.id;
   if (id === "spaceRename") { const done = await spaceAct({ rename: $("spaceTitle").value }); if (done) { remember(done.space); vocabOf = null; tick.now(); } }
