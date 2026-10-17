@@ -15,7 +15,15 @@
   #error { max-width: 1200px; margin: 0 auto; padding: 0 16px; } #error .error { margin: 12px 0 0; }
   /* the first screen: the projects of a workspace as a shelf of covers */
   #home { display: none; max-width: 1200px; margin: 0 auto; padding: 20px 16px; }
-  body.home #home { display: block; } body.home main, body.home #pick, body.home #move, body.home #back { display: none !important; }
+  body.home #home { display: block; } body.home main, body.home #crumb, body.home #here { display: none !important; } body:not(.home) #space, body:not(.home) #spaceNew { display: none !important; }
+  .crumb { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 600; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .crumb:hover { color: var(--fg); }
+  .crumb::after { content: "›"; margin-left: 10px; color: var(--subtle); }
+  .here { position: relative; display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+  .here > b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .menu #trash, .menu #trashYes { color: var(--bad); }
+  #menuBtn { width: 38px; padding: 0; font-size: 18px; flex: none; margin-left: auto; }
+  .menu { position: absolute; top: 44px; right: 0; z-index: 20; width: min(340px, calc(100vw - 32px)); background: var(--chip); border-radius: 12px; padding: 14px; box-shadow: 0 12px 40px rgba(0, 0, 0, .6); }
+  .menu input[type=text], .menu select { background: var(--chip2); } .menuLabel { display: block; font-size: 12px; color: var(--subtle); margin: 0 0 6px; } .menu select + div, .menu div + .menuLabel { margin-top: 12px; }
   .shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; }
   .proj { display: block; color: inherit; text-decoration: none; cursor: pointer; min-width: 0; }
   .proj .cover { position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--panel); overflow: hidden; display: grid; place-items: center; color: var(--subtle); font-size: 12px; text-align: center; padding: 8px; }
@@ -185,10 +193,17 @@
   <h1><a href="?" title="Усі проєкти">Reel</a></h1>
   <select id="space" aria-label="Робочий простір" title="Робочий простір: тут зібрані проєкти однієї теми"></select>
   <span id="spaceNew" style="display:none"><input type="text" id="spaceName" placeholder="назва простору" style="width:11em"> <button id="spaceMake">Створити</button></span>
-  <a class="btn" id="back" href="?">‹ Проєкти</a>
-  <select id="pick" aria-label="Проєкт"></select>
-  <select id="move" aria-label="Перемістити проєкт" title="Перемістити цей проєкт в інший простір"></select>
-  <label class="btn" title="Одне відео, або кілька файлів одразу, якщо ролик знято окремими записами: вони стануть одним відео в порядку зйомки">Нове відео<input type="file" id="take" accept="video/*" multiple></label>
+  <a class="crumb" id="crumb" href="?" title="До проєктів цього простору"></a>
+  <span class="here" id="here"><b id="projTitle"></b><button id="menuBtn" aria-label="Дії з проєктом" aria-haspopup="true" aria-expanded="false">⋯</button>
+    <div class="menu" id="menu" hidden>
+      <p class="hint" id="facts" style="margin:0 0 12px"></p>
+      <label class="menuLabel" for="title">Назва</label>
+      <div style="display:flex;gap:8px"><input type="text" id="title" maxlength="60" style="flex:1;min-width:0"><button id="titleSave">Зберегти</button></div>
+      <label class="menuLabel" for="move">Простір</label>
+      <select id="move" style="width:100%"></select>
+      <div id="trashBox" style="margin-top:16px"><button id="trash">Видалити проєкт</button></div>
+    </div></span>
+  <input type="file" id="take" accept="video/*" multiple>
   <span id="top" class="hint" style="margin:0"></span>
 </header>
 <div id="error"></div>
@@ -202,11 +217,6 @@
       <p class="hint" id="stale"></p>
     </section>
     <details class="fold" id="stepsFold"><summary>Кроки обробки</summary><ul class="steps" id="steps"></ul></details>
-    <details class="fold" id="projFold"><summary>Проєкт</summary>
-      <div style="display:flex;gap:8px"><input type="text" id="title" maxlength="60" style="flex:1" aria-label="Назва проєкту"><button id="titleSave">Зберегти</button></div>
-      <p class="hint">Назва лише для вас: у самому відео її немає.</p>
-      <div id="trashBox" style="margin-top:12px"><button id="trash">Видалити проєкт</button></div>
-    </details>
   </div>
   <div>
     <section id="lineBox">
@@ -482,7 +492,8 @@ function drawSteps() {
   $("render").disabled = busy || !state.words;
   $("render").textContent = busy ? "Працюю…" : "Зібрати відео";
   $("save").style.display = state.has_render ? "" : "none"; $("save").href = `/video/${name}/render.mp4?v=${state.render_version}`; $("save").download = (state.title || name) + ".mp4";
-  if (drawSteps.title !== state.title) { drawSteps.title = state.title; $("title").value = state.title; document.title = state.title + " — Reel"; }
+  if (drawSteps.title !== state.title) { drawSteps.title = state.title; $("title").value = state.title; $("projTitle").textContent = state.title; document.title = state.title + " — Reel"; }
+  $("crumb").textContent = state.space;
   const order = ["probe", "transcribe", "join", "review", "suggest", "decorate", "render"], running = state.steps.find((s) => s.state === "running"), failed = state.steps.find((s) => s.state === "failed");
   const done = state.steps.filter((s) => s.state === "done").length, total = Math.max(state.steps.length, 1), clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const kind = failed && !busy ? "failed" : busy ? "running" : state.has_render ? "done" : "idle";
@@ -516,7 +527,7 @@ function draw(force) {
   if (!force && signature === drawn) return;
   if (editing !== null && !force) return;
   drawn = signature; lit = null; drawLine(); drawTakes();
-  $("top").textContent = state.source ? `${state.source.width}×${state.source.height}, ${state.source.seconds.toFixed(1)} с сирого → ${state.seconds.toFixed(1)} с у ролику` : "";
+  $("facts").textContent = state.source ? `${state.source.width}×${state.source.height}, ${state.source.seconds.toFixed(1)} с сирого → ${state.seconds.toFixed(1)} с у ролику` : "";
   if (!state.words) { drawLine(); for (const id of ["needs", "words", "beats", "fixes", "style", "beatMenu"]) $(id).innerHTML = ""; return; }
   const words = state.words, phrase = (b) => words.slice(b.from, b.to + 1).map((w) => w.text).join(" ");
   $("words").innerHTML = words.map((w) => editing === w.id
@@ -888,7 +899,12 @@ document.addEventListener("change", async (e) => {
   }
   input.value = "";
 });
-$("pick").addEventListener("change", (e) => { if (e.target.value) location.search = "?p=" + e.target.value; });
+// The project's menu: opened by its button, closed by a touch outside it or Escape
+const menu = (open) => { $("menu").hidden = !open; $("menuBtn").setAttribute("aria-expanded", String(open)); if (!open) trashAsk(); };
+$("menuBtn").addEventListener("click", () => menu($("menu").hidden));
+document.addEventListener("pointerdown", (e) => { if (!$("menu").hidden && !e.target.closest("#here")) menu(false); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("menu").hidden) menu(false); });
+$("crumb").addEventListener("click", () => { if (state) remember(state.space); });
 // The project itself: the name it is shown under, and taking it off the shelf
 const saveTitle = async () => {
   try { await api(`/api/projects/${name}/title`, { method: "POST", body: JSON.stringify({ title: $("title").value }) }); $("title").blur(); tick.now(); } catch (error) { fail(error); }
@@ -977,7 +993,7 @@ $("spaceMake").addEventListener("click", async () => {
   try { await api("/api/spaces", { method: "POST", body: JSON.stringify({ name: made }) }); remember(made); location.search = "?"; } catch (error) { fail(error); }
 });
 $("move").addEventListener("change", async (e) => {
-  if (!e.target.value || !name) return;
+  if (!e.target.value || !name || e.target.value === space) return;
   try { await api(`/api/projects/${name}/space`, { method: "POST", body: JSON.stringify({ space: e.target.value }) }); remember(e.target.value); tick.now(); } catch (error) { fail(error); }
 });
 let projects = [];
@@ -999,8 +1015,7 @@ async function tick() {
     document.body.classList.toggle("home", !name);
     if (!name) { styles = await api("/api/styles"); drawHome(list); }
     if (document.activeElement !== $("space")) $("space").innerHTML = spaceList.map((s) => `<option value="${esc(s)}"${s === space ? " selected" : ""}>${esc(s)} (${list.filter((p) => p.space === s).length})</option>`).join("") + `<option value="+">＋ Новий простір…</option>`;
-    if (document.activeElement !== $("pick")) $("pick").innerHTML = here.map((p) => `<option value="${esc(p.name)}"${p.name === name ? " selected" : ""}>${esc(p.title)}</option>`).join("") || `<option value="">проєктів ще немає</option>`;
-    if (document.activeElement !== $("move")) { $("move").innerHTML = `<option value="">перемістити в…</option>` + spaceList.filter((s) => s !== space).map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join(""); $("move").style.display = name && spaceList.length > 1 ? "" : "none"; }
+    if (document.activeElement !== $("move")) $("move").innerHTML = spaceList.map((s) => `<option value="${esc(s)}"${s === space ? " selected" : ""}>${esc(s)}</option>`).join("");
     if (name) { const [fresh, saved] = await Promise.all([api(`/api/projects/${name}`), api("/api/styles")]); state = fresh; styles = saved; draw();
       if (vocabOf !== state.space + "|vocab") { loadVocab(state.space, "vocab"); $("vocabHead").textContent = `Словник простору «${state.space}»`; } }
   } catch (error) { /* the engine is restarting: keep the last picture */ }
