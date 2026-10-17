@@ -26,7 +26,7 @@
   .proj .when { font-size: 12px; color: var(--subtle); } .proj .when.bad { color: var(--bad); } .proj .when.busy { color: var(--brand); }
   .proj.add .cover { border: 2px dashed var(--chip2); background: none; color: var(--muted); font-size: 13px; font-weight: 600; }
   .spaceBox { max-width: 640px; padding: 4px 0 8px; } .spaceBox .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; } .spaceBox .row > span:first-child { width: 150px; color: var(--muted); font-size: 13px; }
-  .spaceBox img.logo { height: 48px; max-width: 160px; object-fit: contain; background: repeating-conic-gradient(#2c2c2e 0 25%, #1c1c1e 0 50%) 0 0 / 12px 12px; border-radius: 6px; padding: 4px; }
+  .spaceBox img.logo, .tab img.logo { height: 48px; max-width: 160px; object-fit: contain; background: repeating-conic-gradient(#2c2c2e 0 25%, #1c1c1e 0 50%) 0 0 / 12px 12px; border-radius: 6px; padding: 4px; }
   .spaceBox textarea { width: 100%; min-height: 110px; margin-top: 6px; }
   .proj.add .plus { font-size: 34px; font-weight: 300; line-height: 1; display: block; margin-bottom: 6px; }
   @media (min-width: 900px) { body:not(.home) main { grid-template-columns: 330px minmax(0, 1fr); align-items: start; } .left { position: sticky; top: 16px; } }
@@ -278,6 +278,7 @@ let reshape = null; // a room whose corners are being moved: { asset, room, poin
 let sketch = null;  // a room being drawn on a plan: { asset, points: [[x, y], ...], from, to }
 let tab = "text"; try { tab = localStorage.getItem("reel-tab") || "text"; } catch {}
 let fontsLoaded = "";
+let logoStamp = 0;    // changes when a logo is sent, so the page shows the new one
 let takeOrder = null; // the takes in an order the author is trying, not yet applied: [take id, ...]
 function loadFonts() {
   const wanted = [...new Set([...(state.fonts || []), state.style && state.style.font].filter((f) => f && f !== "Inter"))], key = wanted.join("|");
@@ -511,7 +512,7 @@ function draw(force) {
   if (!state) return;
   drawSteps(); drawTabs();
   // Everything below is rebuilt only when the project itself changed, so typing in a field is never interrupted
-  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.overlays, state.busy, state.takes, takeOrder, marked, more, sketch && sketch.asset, reshape && reshape.room]);
+  const signature = JSON.stringify([state.render_version, state.words, state.needs, state.beats, state.corrections, state.cuts, state.style, state.assets, styles, state.seconds, state.marks, state.plans, state.overlays, state.busy, state.takes, takeOrder, state.logo, logoStamp, marked, more, sketch && sketch.asset, reshape && reshape.room]);
   if (!force && signature === drawn) return;
   if (editing !== null && !force) return;
   drawn = signature; lit = null; drawLine(); drawTakes();
@@ -580,7 +581,8 @@ function draw(force) {
     <div class="row"><span>Перебивка</span>${seg("breaks", [["slide", "Шторка"], ["flash", "Спалах"], ["bar", "Смуга"]])}</div>
     <div class="row"><span>Маршрут на плані</span>${seg("navigator", [["arrow", "Стрілка"], ["steps", "Сліди"], ["off", "Без маршруту"]])}</div>
     <div class="row"><span>Логотип</span>${seg("logo", [["corner", "У куті"], ["end", "Наприкінці"], ["both", "І там, і там"], ["off", "Без логотипа"]])}</div>
-    ${state.logo ? "" : `<p class="hint" style="margin:-4px 0 10px">У простору «${esc(state.space)}» ще немає логотипа: його додають на екрані проєктів, у «Налаштуваннях простору».</p>`}
+    <div class="row"><span></span><div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">${state.logo ? `<img class="logo" alt="Логотип" src="/space-logo?space=${encodeURIComponent(state.space)}&v=${logoStamp}">` : ""}<label class="btn">${state.logo ? "Замінити логотип" : "Завантажити свій логотип"}<input type="file" id="logoProject" accept="image/png,image/jpeg,image/webp"></label></div></div>
+    <p class="hint" style="margin:-4px 0 10px">${state.logo ? `Логотип простору «${esc(state.space)}»: він спільний для всіх його проєктів.` : `Логотип буде спільним для всіх проєктів простору «${esc(state.space)}».`} Найкраще PNG із прозорим тлом.</p>
     <div class="row"><span>Звуки появи</span>${seg("sounds", [["off", "Без звуків"], ["quiet", "Тихо"], ["normal", "Чутно"]])}</div>
     <div class="row"><span>Слова</span>${seg("karaoke", [[true, "Загоряються по черзі"], [false, "Усі одразу"]])}</div>
     <div class="row"><span>Титр</span>${seg("title_glow", [[true, "Зі світінням"], [false, "Без світіння"]])}</div>
@@ -873,6 +875,10 @@ document.addEventListener("change", async (e) => {
       for (const [n, one] of all.entries()) { $("top").textContent = `Вивантажую ${n + 1} з ${all.length}…`; await api(`/api/take/${group}/${String(n + 1).padStart(2, "0")}-${safeName(one)}`, { method: "POST", body: one }); }
       const made = await api(`/api/new-from/${group}?space=${encodeURIComponent(space || "")}`, { method: "POST" }); location.search = "?p=" + made.project;
     } catch (error) { fail(error); }
+    input.value = ""; return;
+  }
+  if (input.id === "logoProject") {
+    try { await api(`/api/space-logo?space=${encodeURIComponent(state.space)}&file=${encodeURIComponent(safeName(file))}`, { method: "POST", body: file }); logoStamp = Date.now(); edited = true; tick.now(); setTimeout(peek, 600); } catch (error) { fail(error); }
     input.value = ""; return;
   }
   if (input.id === "takeMore") { await act(`/api/projects/${name}/take-add/${safeName(file)}`, { method: "POST", body: file }); input.value = ""; return; }
