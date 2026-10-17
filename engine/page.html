@@ -901,7 +901,6 @@ document.addEventListener("pointerdown", (e) => { if (!$("menu").hidden && !e.ta
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("menu").hidden) menu(false); });
 $("crumb").addEventListener("click", () => { if (state) remember(state.space); });
 document.addEventListener("click", (e) => { if (e.target.id === "vocabLink" && state) remember(state.space); });
-if (location.hash === "#settings") { spaceOpen = true; history.replaceState(null, "", location.search || "?"); }  // the way in from a project: the workspace's settings, open
 // The project itself: the name it is shown under, and taking it off the shelf
 const saveTitle = async () => {
   try { await api(`/api/projects/${name}/title`, { method: "POST", body: JSON.stringify({ title: $("title").value }) }); $("title").blur(); tick.now(); } catch (error) { fail(error); }
@@ -980,6 +979,7 @@ function drawHome(list) {
 }
 // Workspaces: the projects of one subject under one name. The one last looked at is remembered in this browser.
 let space = null, spaceList = [], spaceSettings = {}, spaceOpen = false;
+if (location.hash === "#settings") { spaceOpen = true; history.replaceState(null, "", location.search || "?"); }  // the way in from a project: the workspace's settings, open
 const remember = (value) => { space = value; try { localStorage.setItem("reel-space", value); } catch (error) { /* a private window */ } };
 $("space").addEventListener("change", (e) => {
   if (e.target.value === "+") { $("spaceNew").style.display = ""; $("spaceName").focus(); return; }
