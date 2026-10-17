@@ -106,7 +106,12 @@
   .w.unsure { border-bottom: 2px dotted var(--bad); }
   .w.fixed { border-bottom: 2px solid var(--ok); }
   .w.now { background: var(--brand); color: #000; }
-  .w.picked { background: var(--bad); color: #fff; }
+  .w.picked { background: color-mix(in srgb, var(--brand) 30%, var(--chip2)); color: var(--fg); }
+  .wordsBox { position: relative; } .words { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .wordMenu { position: absolute; z-index: 15; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; background: var(--chip); border-radius: 12px; box-shadow: 0 10px 32px rgba(0, 0, 0, .6); max-width: min(560px, calc(100vw - 32px)); }
+  .wordMenu[hidden] { display: none; }
+  .wordMenu button { height: 34px; padding: 0 11px; background: var(--chip2); } .wordMenu button:hover { background: #3a3a3c; }
+  .wordMenu .what { width: 100%; font-size: 12px; color: var(--subtle); margin: 0 2px 2px; } .wordMenu input[type=text] { flex: 1 1 200px; height: 34px; background: var(--chip2); }
   .words input { height: 32px; font-size: 16px; width: 11em; }
   #player { position: relative; }
   #peek { position: absolute; inset: 0; display: none; cursor: pointer; }
@@ -237,11 +242,8 @@
     <div class="tab" data-tab="text">
     <section>
       <h2>Текст</h2>
-      <div class="seg" role="group" aria-label="Що робить дотик до слова">
-        <button data-mode="play" class="on">Слухати</button><button data-mode="hot">Виділяти</button><button data-mode="fix">Виправляти</button><button data-mode="cut">Вирізати</button><button data-mode="beat">Вставка</button>
-      </div>
-      <p class="hint" id="modeHint"></p>
-      <div class="words" id="words"></div>
+      <p class="hint" style="margin:0 0 6px">Дотик до слова відкриває, що з ним зробити. Щоб позначити кілька слів, протягніть по них (на телефоні спершу затримайте палець).</p>
+      <div class="wordsBox"><div class="words" id="words"></div><div class="wordMenu" id="wordMenu" hidden></div></div>
       <div id="beatMenu"></div>
     </section>
     <section id="cutBox"><h2>AI прибрав із відео</h2><div id="cuts"></div></section>
@@ -270,15 +272,10 @@ const $ = (id) => document.getElementById(id);
 const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", join: "Зводжу записи в одне відео", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", decorate: "AI додає накладки", render: "Збираю відео", takes: "Складаю записи" };
 const KIND = { full: "Картинка на весь кадр", title: "Титр", cutaway: "Картинка зверху", backdrop: "Картинка за мовцем", zoom: "Наближення" };
 const NOTE = { strip: "готую стрічку кадрів", preparing: "готуюсь", "building the video": "кодую" };
-const HINT = {
-  play: "Торкніться слова, і відео перейде в це місце. Під час відтворення слово, яке звучить, підсвічується. Пробіл: пауза.",
-  hot: "Торкніться слова, щоб виділити його жовтим або зняти виділення.",
-  fix: "Торкніться слова, щоб виправити його. Enter зберігає, Esc скасовує. Порожнє поле повертає те, що почув розпізнавач.",
-  cut: ["Торкніться першого слова шматка, який треба вирізати. Закреслене слово повертається одним дотиком.", "Тепер торкніться останнього слова цього шматка."],
-  beat: ["Торкніться першого слова, на якому має з'явитись вставка.", "Тепер торкніться останнього слова."],
-};
 const ACCENTS = ["#ffd60a", "#ffffff", "#30d158", "#0a84ff", "#ff453a", "#ff9f0a", "#bf5af2"];
-let name = new URLSearchParams(location.search).get("p"), state = null, styles = [], mode = "play", from = null, shown = 0, edited = false;
+let name = new URLSearchParams(location.search).get("p"), state = null, styles = [], shown = 0, edited = false;
+let pick = null;    // the words the text's menu is open for: [first, last]; one word is [id, id]
+let press = null;   // a press on a word that may become a stretch: { id, x, y, touch, selecting, timer }
 let drawn = "", editing = null, range = null, picker = null, marked = null;
 let more = false;    // the next tap on a room adds it to the chosen moment instead of replacing its room
 let reshape = null; // a room whose corners are being moved: { asset, room, points, drag }
@@ -530,9 +527,9 @@ function draw(force) {
   const words = state.words, phrase = (b) => words.slice(b.from, b.to + 1).map((w) => w.text).join(" ");
   $("words").innerHTML = words.map((w) => editing === w.id
     ? `<input type="text" id="fixInput" value="${esc(w.text)}" maxlength="40" aria-label="Виправлення слова">`
-    : `<span class="w${w.hot ? " hot" : ""}${w.kept ? "" : " cut"}${w.unsure && !w.fixed ? " unsure" : ""}${w.fixed ? " fixed" : ""}${from === w.id || (range && w.id >= range[0] && w.id <= range[1]) ? " picked" : ""}" data-w="${w.id}"${w.fixed ? ` title="почуто: ${esc(w.heard)}"` : ""}>${esc(w.text)}</span>`).join(" ");
+    : `<span class="w${w.hot ? " hot" : ""}${w.kept ? "" : " cut"}${w.unsure && !w.fixed ? " unsure" : ""}${w.fixed ? " fixed" : ""}${(pick && w.id >= pick[0] && w.id <= pick[1]) || (range && w.id >= range[0] && w.id <= range[1]) ? " picked" : ""}" data-w="${w.id}"${w.fixed ? ` title="почуто: ${esc(w.heard)}"` : ""}>${esc(w.text)}</span>`).join(" ");
   if (editing !== null) { const input = $("fixInput"); input.focus(); input.select(); }
-  $("modeHint").textContent = Array.isArray(HINT[mode]) ? HINT[mode][from === null ? 0 : 1] : HINT[mode];
+  drawWordMenu();
   $("beatMenu").innerHTML = range ? `<div class="card" style="margin-top:10px"><div class="what">Що показати на словах «${esc(phrase({ from: range[0], to: range[1] }))}»?</div>
     <button data-new="full">На весь кадр</button><button data-new="cutaway">Картинка зверху</button><button data-new="backdrop">Картинка за мовцем</button><button data-new="zoom">Наближення</button>
     <input type="text" id="titleText" placeholder="Текст титру" maxlength="40" style="flex:1 1 140px"><button data-new="title">Титр</button><button class="quiet" data-new="cancel">Скасувати</button></div>` : "";
@@ -594,6 +591,81 @@ function draw(force) {
     ${styles.length ? styles.map((s) => `<div class="card"><span class="sw" style="background:${s.accent};flex:none"></span><div class="what">${esc(s.name)}<small>${s.default ? "типовий для нових відео" : ""}</small></div>
       <button data-apply="${esc(s.id)}">Застосувати</button><button data-default="${s.default ? "built-in" : esc(s.id)}">${s.default ? "Не типовий" : "Зробити типовим"}</button><button class="quiet" data-style-delete="${esc(s.id)}">Видалити</button></div>`).join("") : `<p class="hint">Збережених стилів ще немає. Збережений стиль можна застосувати до іншого відео або зробити типовим для нових.</p>`}`;
 }
+
+// ---------- the text's menu: what can be done with a word, or with a stretch of words ----------
+const placeOf = (id) => state.words[id].at ?? (state.words.slice(id).find((w) => w.at != null) || {}).at;   // a cut word: where the video goes on
+function openPick(next) {
+  pick = next; editing = null; seek(placeOf(next[0]), false); draw(true);
+}
+function closePick() { if (!pick) return; pick = null; draw(true); }
+function drawWordMenu() {
+  const box = $("wordMenu");
+  if (!pick || !state.words || editing !== null) { box.hidden = true; return; }
+  const [a, b] = pick, some = state.words.slice(a, b + 1), one = a === b, w = state.words[a], kept = some.filter((x) => x.kept).length;
+  const button = (what, label) => `<button data-pick="${what}">${label}</button>`;
+  box.innerHTML = (one ? `<div class="what">«${esc(w.text)}»${w.fixed ? ` · почуто «${esc(w.heard)}»` : ""}</div>` : `<div class="what">${some.length} сл.: «${esc(some.slice(0, 8).map((x) => x.text).join(" "))}${some.length > 8 ? "…" : ""}»</div>`)
+    + button("play", "▶ Слухати")
+    + (one ? button("fix", "✎ Виправити") : "")
+    + (kept ? button("cut", "✂ Вирізати") : "") + (kept < some.length ? button("restore", "↩ Повернути") : "")
+    + (one ? button("hot", w.hot ? "☆ Зняти виділення" : "★ Виділити") : "")
+    + (kept ? button("beat", "＋ Вставка") : "")
+    + (!one && kept ? button("ask", "✦ Попросити AI…") : "")
+    + `<button class="quiet" data-pick="close" aria-label="Закрити">✕</button>`;
+  box.hidden = false;
+  // under the last word of the stretch, kept inside the text
+  const last = $("words").querySelector(`[data-w="${b}"]`), outer = box.parentElement.getBoundingClientRect();
+  if (!last) return;
+  const at = last.getBoundingClientRect(), left = Math.max(0, Math.min(at.left - outer.left, outer.width - box.offsetWidth));
+  box.style.left = left + "px"; box.style.top = (at.bottom - outer.top + 6) + "px";
+}
+async function wordAction(what) {
+  const [a, b] = pick;
+  if (what === "close") return closePick();
+  if (what === "play") return seek(placeOf(a));
+  if (what === "fix") { pick = null; editing = a; return draw(true); }
+  if (what === "hot") { pick = null; return edit({ emphasis: a }); }
+  if (what === "cut") { pick = null; return edit({ drop: [a, b] }); }
+  if (what === "restore") { pick = null; return edit({ drop: [a, b], restore: true }); }
+  if (what === "beat") { pick = null; range = [a, b]; draw(true); $("beatMenu").scrollIntoView({ block: "nearest" }); return; }
+  if (what === "ask") {
+    $("wordMenu").innerHTML = `<div class="what">Що змінити в цих словах? Наприклад: слова повторюються, лиши один раз</div><input type="text" id="pickAsk" maxlength="300" aria-label="Прохання до AI"><button class="primary" data-pick="askGo">Попросити AI</button><button class="quiet" data-pick="close" aria-label="Закрити">✕</button>`;
+    return $("pickAsk").focus();
+  }
+  if (what === "askGo") {
+    const text = $("pickAsk").value.trim(); if (!text) return $("pickAsk").focus();
+    const go = $("wordMenu").querySelector('[data-pick="askGo"]'); go.disabled = true; go.textContent = "AI думає…";
+    try { $("error").innerHTML = ""; const fresh = await api(`/api/projects/${name}/ask`, { method: "POST", body: JSON.stringify({ from: a, to: b, text }) });
+      state = fresh; said = fresh.said + (fresh.changed ? " Щоб побачити це у відео, натисніть «Зібрати відео»." : ""); if (fresh.changed) edited = true; pick = null; draw(true); drawAsk(); peek(); }
+    catch (error) { fail(error); go.disabled = false; go.textContent = "Попросити AI"; }
+  }
+}
+// A stretch of words: dragged over with a mouse, or with a finger after holding it still for a moment (so that a finger
+// moving at once still scrolls the page)
+const wordUnder = (e) => { const el = document.elementFromPoint(e.clientX, e.clientY); const w = el && el.closest && el.closest("#words [data-w]"); return w ? +w.dataset.w : null; };
+const stretchTo = (id) => { if (id === null) return; pick = [Math.min(press.id, id), Math.max(press.id, id)];
+  $("words").querySelectorAll("[data-w]").forEach((x) => x.classList.toggle("picked", +x.dataset.w >= pick[0] && +x.dataset.w <= pick[1])); };
+$("words").addEventListener("pointerdown", (e) => {
+  const w = e.target.closest("[data-w]"); if (!w || e.button > 0) return;
+  press = { id: +w.dataset.w, x: e.clientX, y: e.clientY, touch: e.pointerType !== "mouse", selecting: false, done: false };
+  if (press.touch) press.timer = setTimeout(() => { if (press && !press.moved) { press.selecting = true; $("wordMenu").hidden = true; stretchTo(press.id); navigator.vibrate?.(10); } }, 380);
+});
+document.addEventListener("pointermove", (e) => {
+  if (!press) return;
+  if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > 8) press.moved = true;
+  if (!press.selecting && !press.touch && press.moved && wordUnder(e) !== press.id) { press.selecting = true; $("wordMenu").hidden = true; }
+  if (press.selecting) stretchTo(wordUnder(e));
+});
+document.addEventListener("pointerup", () => {
+  if (!press) return; clearTimeout(press.timer);
+  if (press.selecting) { press.done = true; range = null; const picked = pick; setTimeout(() => { if (press && press.done) press = null; }, 400); openPick(picked); }
+  else press = null;
+});
+document.addEventListener("pointercancel", () => { if (press) { clearTimeout(press.timer); if (press.selecting) closePick(); press = null; } });
+$("words").addEventListener("touchmove", (e) => { if (press && press.selecting) e.preventDefault(); }, { passive: false });   // a stretch being marked, not the page being scrolled
+document.addEventListener("pointerdown", (e) => { if (pick && !e.target.closest("#wordMenu") && !e.target.closest("#words")) closePick(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pick) closePick(); if (e.key === "Enter" && e.target.id === "pickAsk") wordAction("askGo"); });
+$("words").addEventListener("contextmenu", (e) => e.preventDefault());   // a held finger marks words, it does not open the phone's menu
+window.addEventListener("resize", () => { if (pick) drawWordMenu(); });
 
 // ---------- choosing a picture: from the project's own, from the device, or from the internet ----------
 // ---------- rooms on a plan: the AI finds when a room is spoken of, a click on the plan says which room it is ----------
@@ -804,16 +876,12 @@ document.addEventListener("click", async (e) => {
   if (e.target.closest("[data-mark-more]")) { more = !more; draw(true); return; }
   if (markCard && !e.target.closest("button")) { more = false; marked = marked === markCard.dataset.mark ? null : markCard.dataset.mark; draw(true); return; }
   const t = e.target, d = t.dataset || {};
-  if (d.mode) { mode = d.mode; from = null; range = null; editing = null; document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b === t)); draw(true); }
-  else if (d.w !== undefined) {
-    const id = +d.w, word = state.words[id];
-    if (mode === "play") seek(word.at ?? (state.words.slice(id).find((w) => w.at != null) || {}).at);
-    else if (mode === "hot") edit({ emphasis: id });
-    else if (mode === "fix") { editing = id; draw(true); }
-    else if (mode === "cut" && !word.kept) edit({ drop: [id, id], restore: true });
-    else if (from === null) { from = id; range = null; draw(true); }
-    else { const picked = [Math.min(from, id), Math.max(from, id)]; from = null; if (mode === "cut") edit({ drop: picked }); else { range = picked; draw(true); } }
+  if (d.w !== undefined) {
+    // a tap on a word puts the video there, without playing, and opens what can be done with the word
+    if (press && press.done) { press = null; return; }
+    const id = +d.w; range = null; openPick([id, id]);
   }
+  else if (d.pick) wordAction(d.pick);
   else if (d.new) {
     const where = { from: range[0], to: range[1] }, kind = d.new, text = ($("titleText") || {}).value;
     if (kind === "cancel") { range = null; draw(true); }
