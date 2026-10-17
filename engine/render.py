@@ -45,6 +45,14 @@ def logo_graph(index, last, look, seconds, at=None):
     return out, last
 
 
+def ending(folder, doc, timeline):
+    """The end card of this video: the workspace's call to action, over the last seconds; None when there is nothing to show.
+    The large logo of the end, when the style shows one, is laid by ffmpeg; the card says where to put its words around it."""
+    text = spaces.ending(spaces.space_of(Path(folder).name)); shown = logo_of(folder, doc); big = bool(shown and shown[1] in ("end", "both"))
+    if not text and not big: return None
+    return {"start": round(max(0.0, timeline["seconds"] - END), 3), "text": text or None, "logo": big, "dark": not big}
+
+
 def logo_of(folder, doc):
     """The logo this project's video shows, and how; None when its workspace has none or the style leaves it out."""
     look = doc["style"].get("logo", "corner"); file = spaces.logo(spaces.space_of(Path(folder).name))
@@ -96,7 +104,7 @@ def still(folder, t, out, style=None, demo=None):
     if demo:
         t = sample(timeline, demo)
         if t is None: raise LookupError(f"this project has nothing to show a {demo} on")
-    timeline["style"] = {**timeline["style"], **fonts.face(timeline["style"].get("font"))}
+    timeline["style"] = {**timeline["style"], **fonts.face(timeline["style"].get("font"))}; timeline["ending"] = ending(folder, doc, timeline)
     width, height = timeline["width"], timeline["height"]; t = max(0.0, min(float(t), max(0.0, timeline["seconds"] - 0.05)))
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp); (tmp / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
@@ -120,7 +128,7 @@ def still(folder, t, out, style=None, demo=None):
 def build(folder):
     folder = Path(folder); doc = project.load(folder); timeline = project.resolve(doc); source = doc["sources"][0]
     width, height, fps = timeline["width"], timeline["height"], timeline["fps"]
-    timeline["style"] = {**timeline["style"], **fonts.face(timeline["style"].get("font"))}
+    timeline["style"] = {**timeline["style"], **fonts.face(timeline["style"].get("font"))}; timeline["ending"] = ending(folder, doc, timeline)
     (folder / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
     keep = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in timeline["spans"])
     # Even frames first: a phone's frames do not arrive evenly, and cutting by counting them would let the picture run ahead of the sound

@@ -345,6 +345,18 @@ function drawOverlay(o, t) {
   ctx.restore();
 }
 
+// ---------- the end card: the call to action under the workspace's logo, over the darkened last seconds ----------
+function drawEnding(e, t) {
+  const k = ease((t - e.start) / 0.45);
+  if (e.dark) { ctx.fillStyle = `rgba(0,0,0,${0.55 * k})`; ctx.fillRect(0, 0, W, H); }   // with the logo the darkening is laid by ffmpeg, under the logo
+  if (!e.text) return;
+  ctx.save(); ctx.globalAlpha = k; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+  const size = fitted(ctx, e.text, 60, W * 0.8), w = ctx.measureText(e.text).width + 90, h = size * 1.9, y = H * (e.logo ? 0.68 : 0.5) + (1 - k) * 40;
+  ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10; plate(ctx, W / 2 - w / 2, y - h / 2, w, h, h / 2, ACCENT); ctx.shadowColor = "transparent";
+  ctx.font = `${WEIGHT} ${size}px ${FONT}`; ctx.fillStyle = "#15171c"; ctx.fillText(e.text, W / 2, y + 2);
+  ctx.restore();
+}
+
 // ---------- break: a dark card with the name of the next part slides across the frame and away ----------
 function drawBreak(b, t) {
   const look = STYLE.breaks ?? "slide";
@@ -481,12 +493,14 @@ function drawFrame(t) {
   const line = timeline.lines.find((l) => t >= l.start - 0.06 && t < l.end);
   const overlays = (timeline.overlays ?? []).filter((o) => t >= o.start && t <= o.end);
   const breaks = (timeline.breaks ?? []).filter((b) => t >= b.start && t <= b.end);
-  if (!pictureNow.length && !fullNow.length && !titles.length && !line && !overlays.length && !breaks.length) return false;
+  const ending = timeline.ending && t >= timeline.ending.start ? timeline.ending : null;
+  if (!pictureNow.length && !fullNow.length && !titles.length && !line && !overlays.length && !breaks.length && !ending) return false;
   ctx.clearRect(0, 0, W, H);
   const clock = (what, work) => { if (!process.env.REEL_PROFILE) return work(); const a = performance.now(); work(); parts[what] = (parts[what] ?? 0) + performance.now() - a; };
   clock("pictures", () => { fullNow.forEach((beat) => (beat.plan ? drawPlan(beat, t) : drawFull(beat, t))); pictureNow.forEach((beat) => drawPicture(beat, t)); });
   clock("titles", () => titles.forEach((beat) => drawTitle(beat, t)));
   clock("overlays", () => { overlays.forEach((o) => drawOverlay(o, t)); breaks.forEach((b) => drawBreak(b, t)); });
+  if (ending) { drawEnding(ending, t); return true; }   // the end card takes the frame: the words said then are what it says
   clock("subtitles", () => { if (line) drawSubtitle(line, t, fullNow.some((b) => t >= b.start + 0.1 && t <= b.end - 0.1 && (b.plan || lightPictures.has(b.file)))); });
   return true;
 }

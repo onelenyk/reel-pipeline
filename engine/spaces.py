@@ -74,6 +74,19 @@ def set_style(space, key):
         kept["settings"].setdefault(space, {})["style"] = key or None; keep(kept)
 
 
+def ending(space):
+    """The words the workspace's videos end with ("Пишіть у дірект @agency"), or None."""
+    return spaces()["settings"].get(space, {}).get("ending") or None
+
+
+def set_ending(space, text):
+    text = " ".join(str(text or "").split())[:48]
+    with lock:
+        kept = spaces()
+        if space not in kept["spaces"]: raise KeyError("there is no such workspace")
+        kept["settings"].setdefault(space, {})["ending"] = text or None; keep(kept)
+
+
 def set_space(project_name=None, space=None):
     """Makes a workspace, and puts a project into it when one is named."""
     space = clean(space)

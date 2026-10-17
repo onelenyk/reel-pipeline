@@ -14,6 +14,8 @@ checks.push(["its vocabulary is saved as its own, without doubles", await until(
 const select = document.getElementById("spaceStyle");
 if (select.options.length > 1) { select.value = select.options[1].value; select.dispatchEvent(new Event("change", { bubbles: true }));
   checks.push(["the style of its new videos can be chosen", await until(async () => false, 5) || (await api("/api/spaces")).settings[made].style === select.options[1].value]); }
+document.getElementById("endingText").value = "Пишіть у дірект"; document.getElementById("endingSave").click();
+checks.push(["its call to action for the end of its videos is kept", await until(() => (spaceSettings[made] || {}).ending === "Пишіть у дірект" && document.getElementById("endingText").value === "Пишіть у дірект")]);
 checks.push(["with no logo yet it offers to add one", !!document.getElementById("logoFile") && !document.querySelector(".spaceBox img.logo")]);
 document.getElementById("spaceTitle").value = renamed; document.getElementById("spaceRename").click();
 checks.push(["it can be renamed, and keeps its vocabulary", await until(() => space === renamed) && (await api(`/api/vocabulary?space=${encodeURIComponent(renamed)}`)).terms[0] === "Тестовий Двір"]);

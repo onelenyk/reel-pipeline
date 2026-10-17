@@ -580,6 +580,7 @@ function draw(force) {
     <div class="row"><span>Шрифт</span><select id="fontPick" aria-label="Шрифт" style="font-family:'${esc(st.font)}',system-ui;font-weight:800">${[...new Set([...(state.fonts || ["Inter"]), st.font])].map((f) => `<option value="${esc(f)}" style="font-family:'${esc(f)}',system-ui" ${f === st.font ? "selected" : ""}>${esc(f)}</option>`).join("")}</select>${seg("caps", [[false, "Як сказано"], [true, "ВЕЛИКИМИ"]])}</div>
     <div class="row"><span>Логотип</span>${seg("logo", [["corner", "У куті"], ["end", "Наприкінці"], ["both", "І там, і там"], ["off", "Без логотипа"]])}</div>
     <div class="row"><span></span><div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">${state.logo ? `<img class="logo" alt="Логотип" src="/space-logo?space=${encodeURIComponent(state.space)}&v=${logoStamp}">` : ""}<label class="btn">${state.logo ? "Замінити логотип" : "Завантажити свій логотип"}<input type="file" id="logoProject" accept="image/png,image/jpeg,image/webp"></label><span class="hint" style="margin:0;width:auto">спільний для простору «${esc(state.space)}»; найкраще PNG із прозорим тлом</span></div></div>
+    <div class="row"><span>Наприкінці</span><span class="hint" style="margin:0;width:auto;flex:1">${state.ending ? `заклик «${esc(state.ending)}»` : "заклику немає"} · <a href="?#settings" id="endingLink">змінити в налаштуваннях простору</a></span></div>
     <details class="fold" id="moreFold"${moreOpen ? " open" : ""}><summary>Більше</summary>
     <div class="row"><span>Інший шрифт</span><input type="text" id="fontOther" maxlength="40" placeholder="назва з Google Fonts" style="flex:1 1 150px" aria-label="Інший шрифт"><button id="fontSet">Взяти</button></div>
     <div class="row"><span>Субтитри</span>${seg("subtitle_size", [["s", "Малі"], ["m", "Середні"], ["l", "Великі"]])}${seg("subtitle_place", [["low", "Внизу"], ["middle", "Посередині"]])}</div>
@@ -982,7 +983,7 @@ $("menuBtn").addEventListener("click", () => menu($("menu").hidden));
 document.addEventListener("pointerdown", (e) => { if (!$("menu").hidden && !e.target.closest("#here")) menu(false); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("menu").hidden) menu(false); });
 $("crumb").addEventListener("click", () => { if (state) remember(state.space); });
-document.addEventListener("click", (e) => { if (e.target.id === "vocabLink" && state) remember(state.space); });
+document.addEventListener("click", (e) => { if ((e.target.id === "vocabLink" || e.target.id === "endingLink") && state) remember(state.space); });
 // The project itself: the name it is shown under, and taking it off the shelf
 const saveTitle = async () => {
   try { await api(`/api/projects/${name}/title`, { method: "POST", body: JSON.stringify({ title: $("title").value }) }); $("title").blur(); tick.now(); } catch (error) { fail(error); }
@@ -1019,6 +1020,7 @@ document.addEventListener("toggle", (e) => { if (e.target.id === "spaceFold") sp
 document.addEventListener("click", async (e) => {
   const id = e.target.id;
   if (id === "spaceRename") { const done = await spaceAct({ rename: $("spaceTitle").value }); if (done) { remember(done.space); vocabOf = null; tick.now(); } }
+  else if (id === "endingSave") { if (await spaceAct({ ending: $("endingText").value })) tick.now(); }
   else if (id === "logoRemove") { if (await spaceAct({ logo: null })) { drawHome.stamp = Date.now(); tick.now(); } }
   else if (id === "spaceVocabSave") { try { const saved = await api("/api/vocabulary", { method: "POST", body: JSON.stringify({ terms: $("spaceVocab").value.split("\n"), space }) }); $("spaceVocab").value = saved.terms.join("\n"); $("spaceVocabSaid").textContent = `Збережено: ${saved.terms.length}. Діє для нових відео цього простору.`; } catch (error) { fail(error); } }
   else if (id === "spaceRemove") $("spaceDrop").innerHTML = `<p class="hint" style="margin:0 0 8px">Видалити простір «${esc(space)}»? Його проєкти не зникнуть: вони перейдуть у «${esc(spaceList[0])}». Логотип і словник простору переїдуть у «trash».</p><button id="spaceRemoveYes" style="color:var(--bad)">Так, видалити</button> <button id="spaceRemoveNo">Скасувати</button>`;
@@ -1044,6 +1046,8 @@ function drawHome(list) {
     <div class="row"><span>Логотип</span>${own.logo ? `<img class="logo" alt="Логотип" src="/space-logo?space=${encodeURIComponent(space)}&v=${drawHome.stamp || 0}">` : `<span class="hint" style="margin:0">ще немає</span>`}
       <label class="btn">${own.logo ? "Замінити" : "Додати"}<input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp"></label>${own.logo ? `<button class="quiet" id="logoRemove">Прибрати</button>` : ""}</div>
     <p class="hint" style="margin:-4px 0 12px">Найкраще PNG із прозорим тлом. Де його показати, обирається в стилі проєкту.</p>
+    <div class="row"><span>Заклик наприкінці</span><input type="text" id="endingText" maxlength="48" value="${esc(own.ending || "")}" placeholder="Пишіть у дірект @агенція" style="flex:1;min-width:10em"><button id="endingSave">Зберегти</button></div>
+    <p class="hint" style="margin:-4px 0 12px">Останні 2,5 секунди кожного відео простору: ці слова на плашці, разом із великим логотипом, якщо його обрано в стилі.</p>
     <div class="row"><span>Стиль нових відео</span><select id="spaceStyle"><option value="">загальний${styles.find((x) => x.default) ? ` («${esc(styles.find((x) => x.default).name)}»)` : ""}</option>${styles.map((x) => `<option value="${esc(x.id)}"${own.style === x.id ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>
     ${styles.length ? "" : `<p class="hint" style="margin:-4px 0 12px">Збережених стилів ще немає: їх зберігають у проєкті, у вкладці «Стиль».</p>`}
     <div><span class="hint" style="margin:0">Словник: назви об’єктів, сіл і терміни цього замовника, по одному в рядку; «G-Village = Джівілич», якщо розпізнавач чує інакше.</span><textarea id="spaceVocab" aria-label="Словник простору"></textarea>

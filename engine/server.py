@@ -72,7 +72,7 @@ def steps_of(status):
 def summary(name):
     folder = ROOT / name; status = folder / "status.json"
     kept = spaces(); space = kept["of"].get(name, HOME_SPACE)
-    out = {"name": name, "title": kept["titles"].get(name, name), "space": space, "logo": places.logo(space) is not None, "busy": busy.get(name), "steps": steps_of(status), "has_render": (folder / "render.mp4").exists(),
+    out = {"name": name, "title": kept["titles"].get(name, name), "space": space, "logo": places.logo(space) is not None, "ending": places.ending(space), "busy": busy.get(name), "steps": steps_of(status), "has_render": (folder / "render.mp4").exists(),
            "render_version": int((folder / "render.mp4").stat().st_mtime) if (folder / "render.mp4").exists() else 0}
     if (folder / "project.json").exists():
         doc = project.load(folder); kept = set()
@@ -151,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
         if parts == ["api", "projects"]:
             return self.send(shelf())
         if parts == ["api", "spaces"]:
-            kept = spaces(); return self.send({"spaces": kept["spaces"], "settings": {s: {"style": kept["settings"].get(s, {}).get("style"), "logo": places.logo(s) is not None} for s in kept["spaces"]}})
+            kept = spaces(); return self.send({"spaces": kept["spaces"], "settings": {s: {"style": kept["settings"].get(s, {}).get("style"), "ending": kept["settings"].get(s, {}).get("ending"), "logo": places.logo(s) is not None} for s in kept["spaces"]}})
         if parts == ["space-logo"]:
             found = places.logo(query.get("space") or HOME_SPACE)
             return self.file(found, {".png": "image/png", ".webp": "image/webp"}.get(found.suffix, "image/jpeg")) if found else self.send({"error": "this workspace has no logo"}, 404)
@@ -242,6 +242,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     if "rename" in asked: space = places.rename(space, asked["rename"])
                     elif "style" in asked: places.set_style(space, asked["style"] or None)
+                    elif "ending" in asked: places.set_ending(space, asked["ending"])
                     elif asked.get("remove"): places.remove(space); space = HOME_SPACE
                     elif "logo" in asked and asked["logo"] is None: places.set_logo(space, None, None)
                 except (KeyError, ValueError) as error: return self.send({"error": str(error)}, 400)

@@ -231,9 +231,10 @@ class Spaces(unittest.TestCase):
         key = self.styles.save("Свій", {"accent": "#ff0000"}); sp.set_style("Замовник", key)
         self.assertEqual(sp.style_for("p1")["accent"], "#ff0000"); self.assertIsNone(sp.style_for("p2"))   # a project elsewhere gets the common default
         logo = self.home / "in.png"; logo.write_bytes(b"png"); sp.set_logo("Замовник", logo, ".png"); self.assertTrue(sp.logo("Замовник").exists())
+        sp.set_ending("Замовник", "  Пишіть   у дірект "); self.assertEqual(sp.ending("Замовник"), "Пишіть у дірект"); self.assertIsNone(sp.ending(sp.HOME_SPACE))
         sp.rename("Замовник", "Новий замовник")
         self.assertEqual(sp.space_of("p1"), "Новий замовник"); self.assertEqual(sp.style_for("p1")["accent"], "#ff0000")
-        self.assertEqual(speech.vocabulary(sp.book("Новий замовник"))[0], "Тестовий Двір"); self.assertIsNotNone(sp.logo("Новий замовник"))
+        self.assertEqual(speech.vocabulary(sp.book("Новий замовник"))[0], "Тестовий Двір"); self.assertIsNotNone(sp.logo("Новий замовник")); self.assertEqual(sp.ending("Новий замовник"), "Пишіть у дірект")
 
     def test_a_workspace_taken_away_gives_its_projects_back_to_the_first(self):
         sp = self.spaces; sp.set_space("p1", "Замовник"); sp.remove("Замовник")
