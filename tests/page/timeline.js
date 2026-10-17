@@ -21,10 +21,7 @@ document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: tr
 ok("Esc clears the marked stretch", sel === null && document.getElementById("lineSel").style.display === "none");
 const t0 = v.currentTime; document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); await sleep(400);
 ok("arrow keys step through the video", Math.abs(v.currentTime - t0 - 1) < 0.3, v.currentTime - t0);
-const area = document.getElementById("vocab"); ok("the vocabulary is shown", area.value.includes("передпокій"), area.value.slice(0, 40));
-const keep = area.value; area.value = keep + "\nТестове Слово\nтестове слово"; document.getElementById("vocabSave").click(); await sleep(700);
-ok("the vocabulary saves without doubles", (area.value.match(/естове/g) || []).length === 1, area.value.slice(-40));
-area.value = keep; document.getElementById("vocabSave").click(); await sleep(500);
+const link = document.getElementById("vocabLink"); ok("the vocabulary is the workspace's, one touch away", link && link.textContent.includes(state.space) && link.getAttribute("href") === "?#settings");
 document.getElementById("zoomFit").click(); document.getElementById("zoomIn").click(); await sleep(200);
 ev("pointerdown", 30.3); ev("pointermove", 34); ev("pointerup", 34); await sleep(300); window.scrollTo(0, 0);
 return out.join("\n");

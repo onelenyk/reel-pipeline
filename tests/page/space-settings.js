@@ -8,8 +8,8 @@ await api("/api/spaces", { method: "POST", body: JSON.stringify({ name: made }) 
 const pick = document.getElementById("space"); await until(() => [...pick.options].some((o) => o.value === made)); pick.value = made; pick.dispatchEvent(new Event("change", { bubbles: true }));
 checks.push(["a workspace chosen on the shelf shows its settings", await until(() => space === made && document.getElementById("spaceTitle")?.value === made)]);
 checks.push(["a new workspace starts with the common vocabulary", await until(() => /передпокій/.test(document.getElementById("spaceVocab").value))]);
-document.getElementById("spaceVocab").value = "Тестовий Двір\nпередпокій"; document.getElementById("spaceVocabSave").click();
-checks.push(["its vocabulary is saved as its own", await until(() => /Збережено: 2/.test(document.getElementById("spaceVocabSaid").textContent))
+document.getElementById("spaceVocab").value = "Тестовий Двір\nпередпокій\nтестовий двір"; document.getElementById("spaceVocabSave").click();
+checks.push(["its vocabulary is saved as its own, without doubles", await until(() => /Збережено: 2/.test(document.getElementById("spaceVocabSaid").textContent))
   && (await api(`/api/vocabulary?space=${encodeURIComponent(made)}`)).terms[0] === "Тестовий Двір" && !(await api("/api/vocabulary")).terms.includes("Тестовий Двір")]);
 const select = document.getElementById("spaceStyle");
 if (select.options.length > 1) { select.value = select.options[1].value; select.dispatchEvent(new Event("change", { bubbles: true }));
