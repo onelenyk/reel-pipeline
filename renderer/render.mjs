@@ -295,6 +295,35 @@ function drawOverlay(o, t) {
       ctx.globalAlpha = a * shownC; plate(ctx, left ? -w / 2 : w / 2 - cw, size * 0.62, cw, cs * 1.8, cs * 0.9, "rgba(17,17,17,0.86)");
       ctx.font = `${WEIGHT} ${cs}px ${FONT}`; ctx.fillStyle = "#fff"; ctx.fillText(o.caption, (left ? -w / 2 : w / 2 - cw) + 22, size * 0.62 + cs * 0.93);
     }
+  } else if (o.kind === "price") {
+    // a price tag in the accent colour that swings in on its string: the price large, the currency small, what it is above
+    const size = 118, value = String(o.value ?? ""), unit = o.unit ?? "";
+    ctx.font = `${WEIGHT} ${size}px ${FONT}`; const vw = ctx.measureText(value).width; ctx.font = `${WEIGHT} ${size * 0.45}px ${FONT}`; const uw = unit ? ctx.measureText(unit).width + 16 : 0;
+    const w = vw + uw + 120, h = size * 1.45, swing = (1 - ease((t - o.start) / 0.6)) * 14;
+    ctx.translate(left ? W * 0.07 + w / 2 : W * 0.93 - w / 2, H * 0.185); ctx.rotate(((left ? -4 : 4) - swing) * Math.PI / 180); ctx.scale(pop, pop);
+    ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10;
+    ctx.beginPath(); ctx.moveTo(-w / 2 + 50, -h / 2); ctx.lineTo(w / 2 - 22, -h / 2); ctx.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + 22); ctx.lineTo(w / 2, h / 2 - 22); ctx.quadraticCurveTo(w / 2, h / 2, w / 2 - 22, h / 2);
+    ctx.lineTo(-w / 2 + 50, h / 2); ctx.lineTo(-w / 2, 0); ctx.closePath(); ctx.fillStyle = ACCENT; ctx.fill(); ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.beginPath(); ctx.arc(-w / 2 + 44, 0, 11, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fill();
+    ctx.font = `${WEIGHT} ${size}px ${FONT}`; ctx.fillStyle = "#15171c"; ctx.fillText(value, -w / 2 + 78, 4);
+    if (unit) { ctx.font = `${WEIGHT} ${size * 0.45}px ${FONT}`; ctx.fillText(unit, -w / 2 + 78 + vw + 16, size * 0.16); }
+    if (o.caption) {
+      const cs = fitted(ctx, o.caption, 38, W * 0.42), cw = ctx.measureText(o.caption).width + 40;
+      ctx.globalAlpha = a * presence(t, o.start + 0.25, o.end, 0.3, 0.2); plate(ctx, -w / 2 + 50, -h / 2 - cs * 2.1, cw, cs * 1.75, cs * 0.88, "rgba(17,17,17,0.88)");
+      ctx.font = `${WEIGHT} ${cs}px ${FONT}`; ctx.fillStyle = "#fff"; ctx.fillText(o.caption, -w / 2 + 70, -h / 2 - cs * 1.2);
+    }
+  } else if (o.kind === "lower") {
+    // a name plate in the lower part of the frame, above the subtitles: who is speaking, or what the place is called
+    const title = o.title ?? "", ts = fitted(ctx, title, 58, W * 0.74), tw = ctx.measureText(title).width; let cw = 0, cs = 0;
+    if (o.caption) { cs = fitted(ctx, o.caption, 38, W * 0.74); cw = ctx.measureText(o.caption).width; }
+    const x = W * 0.06, y = H * (STYLE.subtitle_place === "middle" ? 0.72 : 0.5), slide = (1 - ease((t - o.start) / 0.45)) * -W * 0.6;
+    ctx.translate(slide, 0); ctx.shadowColor = "rgba(0,0,0,0.4)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
+    plate(ctx, x, y, 16, ts * 1.7 + (cs ? cs * 1.75 : 0), 8, ACCENT); plate(ctx, x + 24, y, tw + 56, ts * 1.7, 14, "#fff"); ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.font = `${WEIGHT} ${ts}px ${FONT}`; ctx.fillStyle = "#15171c"; ctx.fillText(title, x + 52, y + ts * 0.88);
+    if (o.caption) {
+      ctx.globalAlpha = a * presence(t, o.start + 0.2, o.end, 0.3, 0.2); plate(ctx, x + 24, y + ts * 1.7, cw + 48, cs * 1.75, 10, "rgba(17,17,17,0.88)");
+      ctx.font = `${WEIGHT} ${cs}px ${FONT}`; ctx.fillStyle = "#fff"; ctx.fillText(o.caption, x + 48, y + ts * 1.7 + cs * 0.9);
+    }
   } else if (o.kind === "list") {
     // items come in one by one, each when it is named
     const x = left ? W * 0.06 : W * 0.5, row = 92; let y = H * 0.13;

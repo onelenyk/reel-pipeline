@@ -486,6 +486,12 @@ class Overlays(unittest.TestCase):
         suggest.ask = lambda *a, **k: {"overlays": proposed}
         return suggest.decorate(self.words, busy=busy)
 
+    def test_a_price_must_be_said_and_a_name_plate_made_of_what_was_said(self):
+        self.words = [{"text": t} for t in "Мене звати Олена Коваль. Будинок у Бірках коштує 85 000 доларів, а ділянка ще 20 тисяч".split()]
+        made = self.kept([{"kind": "lower", "from": 0, "to": 3, "title": "Олена Коваль", "caption": "ріелторка"}, {"kind": "lower", "from": 4, "to": 6, "title": "Марія Петренко"},
+                          {"kind": "price", "from": 7, "to": 10, "value": "85 000", "unit": "$", "caption": "ціна будинку"}, {"kind": "price", "from": 12, "to": 15, "value": "30 000", "unit": "$"}])
+        self.assertEqual([(o["kind"], o.get("title") or o.get("value")) for o in made], [("lower", "Олена Коваль"), ("price", "85 000")])   # an invented name and an unsaid price are dropped
+
     def test_a_number_must_be_one_that_was_said(self):
         made = self.kept([{"kind": "number", "from": 2, "to": 4, "value": "154", "unit": "м²"}, {"kind": "number", "from": 8, "to": 9, "value": "7-8", "unit": "м"}, {"kind": "number", "from": 12, "to": 14, "value": "200", "unit": "м"}])
         self.assertEqual([(o["value"], o["unit"]) for o in made], [("154", "м²"), ("7-8", "м")])

@@ -62,7 +62,8 @@ def strip(folder):
 
 
 SAMPLES = {"number": {"kind": "number", "value": "150", "unit": "м²", "caption": "площа будинку"}, "sticker": {"kind": "sticker", "text": "Біля лісу", "icon": "🌲"},
-           "list": {"kind": "list", "title": "У будинку", "items": ["Гардеробна", "Пральня", "Тераса"]}}
+           "list": {"kind": "list", "title": "У будинку", "items": ["Гардеробна", "Пральня", "Тераса"]},
+           "price": {"kind": "price", "value": "85 000", "unit": "$", "caption": "ціна будинку"}, "lower": {"kind": "lower", "title": "Олена Коваль", "caption": "ріелторка"}}
 
 
 def sample(timeline, what):

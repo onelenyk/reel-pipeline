@@ -315,6 +315,11 @@ DECORATE = """Ти режисер коротких вертикальних ві
 - {"kind": "sticker", "from": N, "to": N, "text": "Бомбосховище", "icon": "🛡️"}
   Наліпка з коротким підписом (1-3 слова, до 22 знаків) і одним емодзі. Для переваг і особливостей: «Біля лісу» 🌲, «Закрита територія» 🔒, «Панорамні вікна» 🪟.
   Підпис складай лише з того, що мовець сказав у цьому місці; не вигадуй фактів.
+- {"kind": "price", "from": N, "to": N, "value": "85 000", "unit": "$", "caption": "ціна будинку"}
+  Цінник: лише для ціни, яку мовець називає (за будинок, за метр, оренда). value - цифри зі слів, unit - валюта ($, €, грн).
+- {"kind": "lower", "from": N, "to": N, "title": "Олена Коваль", "caption": "ріелторка"}
+  Плашка з іменем: коли мовець називає себе, агенцію чи назву комплексу/містечка. title - ім'я чи назва дослівно зі слів, caption - хто це або що це (2-3 слова).
+  Не більше двох на все відео, переважно на початку.
 - {"kind": "list", "from": N, "to": N, "title": "У будинку", "items": [{"at": N, "text": "Гардеробна"}, {"at": N, "text": "Пральня"}]}
   Список, пункти якого з'являються по черзі, коли мовець їх називає (2-4 пункти, кожен 1-2 слова). Лише там, де мовець справді перелічує.
 - {"kind": "break", "from": N, "text": "Планування"}
@@ -372,6 +377,16 @@ def decorate(words, skip=(), busy=(), fresh=False):
             text = str(o.get("text", "")).strip()[:22]
             if not text or not said(text, first, last): continue
             item = {"kind": "sticker", "text": text, "icon": icon(o.get("icon"))}
+        elif o.get("kind") == "price":
+            # the price must be one that was said: its first group of figures is one of the words there
+            value = " ".join(str(o.get("value", "")).split())[:12]; groups = re.findall(r"\d+", value)
+            spoken = {re.sub(r"\D", "", words[i]["text"]) for i in range(first, min(len(words), last + 1))}
+            if not groups or not ({groups[0], "".join(groups)} & spoken): continue
+            item = {"kind": "price", "value": value, "unit": str(o.get("unit") or "").strip()[:5], "caption": str(o.get("caption") or "").strip()[:28] or None}
+        elif o.get("kind") == "lower":
+            title = " ".join(str(o.get("title", "")).split())[:28]
+            if not title or not said(title, first, last) or sum(k["kind"] == "lower" for k in out) >= 2: continue
+            item = {"kind": "lower", "title": title, "caption": str(o.get("caption") or "").strip()[:28] or None}
         elif o.get("kind") == "list":
             items = [{"at": i["at"], "text": str(i["text"]).strip()[:20]} for i in o.get("items", []) if isinstance(i, dict) and isinstance(i.get("at"), int) and first <= i["at"] <= last + 4 and isinstance(i.get("text"), str) and said(i["text"], i["at"], i["at"])][:4]
             if len(items) < 2: continue

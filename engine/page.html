@@ -319,6 +319,7 @@ function drawGallery() {
     + row("Число", "number", "number", [["big", "Велике"], ["badge", "Значок"], ["card", "Картка"]])
     + row("Вигляд субтитрів", "subtitle", "sticker", [["outline", "З обведенням"], ["plate", "На плашці"], ["shadow", "З тінню"]])
     + row("Перебивка", "breaks", "break", [["slide", "Шторка"], ["flash", "Спалах"], ["bar", "Смуга"]])
+    + `<h3>Інші накладки</h3><div class="shots">${[["list", "Список"], ["price", "Цінник"], ["lower", "Плашка з іменем"]].map(([demo, label]) => `<figure class="shot" style="margin:0"><img loading="lazy" alt="${label}" src="/frame/${name}/frame.jpg?demo=${demo}&v=${encodeURIComponent(key.length + "-" + st.accent)}"><span>${label}</span></figure>`).join("")}</div><p class="hint">AI ставить їх сам; свою можна додати з меню слів у тексті: «◆ Накладка».</p>`
     + row("Маршрут на плані", "navigator", "plan", [["arrow", "Стрілка"], ["steps", "Сліди"], ["off", "Без маршруту"]], "Показується, якщо в проєкті є план і мовець переходить між кімнатами.")
     + row("Картинка зверху", "picture", "picture", [["card", "Картка"], ["edge", "На всю ширину"], ["polaroid", "Полароїд"], ["circle", "Коло"], ["mix", "По черзі"]], "Показується, якщо в проєкті є картинка над мовцем.");
 }
@@ -559,12 +560,13 @@ function draw(force) {
     return `<div class="card"><div class="what">${esc(text.length > 110 ? text.slice(0, 110) + "…" : text)}<small>${WHY[c.why] || ""}${c.note ? ": " + esc(c.note) : ""} · ${out ? "вирізано" : "повернуто"}</small></div>${(() => { const before = words.slice(0, c.from).reverse().find((w) => w.at != null), at = out ? (before ? Math.max(0, before.at - 1.2) : 0) : when(c.from, c.to); return at != null ? `<button class="jump" data-seek="${at}" aria-label="Послухати це місце">▶ ${out ? "стик" : "послухати"}</button>` : ""; })()}<button data-cut="${c.from}-${c.to}" data-back="${out ? 1 : ""}">${out ? "Повернути" : "Вирізати"}</button></div>`;
   }).join("");
   drawPlans(); drawTabs(); loadFonts();
-  const KINDS = { number: "Число", sticker: "Наліпка", list: "Список", break: "Перебивка" }, field = (o, key, label, width) => `<input type="text" class="ov" data-overlay-field="${o.id}:${key}" value="${esc(o[key] || "")}" placeholder="${label}" aria-label="${label}" style="width:${width}">`, live = new Set(state.shown_overlays || []);
+  const KINDS = { number: "Число", sticker: "Наліпка", list: "Список", break: "Перебивка", price: "Цінник", lower: "Плашка" }, field = (o, key, label, width) => `<input type="text" class="ov" data-overlay-field="${o.id}:${key}" value="${esc(o[key] || "")}" placeholder="${label}" aria-label="${label}" style="width:${width}">`, live = new Set(state.shown_overlays || []);
   $("decorate").disabled = !!state.busy; $("decorate").textContent = state.busy === "decorate" ? "AI думає…" : "Придумати накладки заново (AI)";
   $("overlays").innerHTML = (state.overlays || []).slice().sort((a, b) => a.from - b.from).map((o) => {
     const said = words.slice(o.from, o.to + 1).filter((w) => w.at != null), at = said.length ? said[0].at : null;
     const what = o.kind === "number" ? field(o, "value", "число", "4.5em") + field(o, "unit", "одиниця", "4em") + field(o, "caption", "підпис", "11em") : o.kind === "list" ? field(o, "title", "заголовок", "9em") + ` ${o.items.map((i) => esc(i.text)).join(", ")}`
-      : o.kind === "break" ? field(o, "text", "назва частини", "12em") : field(o, "icon", "емодзі", "3em") + field(o, "text", "підпис", "13em");
+      : o.kind === "break" ? field(o, "text", "назва частини", "12em") : o.kind === "price" ? field(o, "value", "ціна", "6em") + field(o, "unit", "валюта", "3.5em") + field(o, "caption", "підпис", "10em")
+      : o.kind === "lower" ? field(o, "title", "ім'я чи назва", "11em") + field(o, "caption", "хто це", "10em") : field(o, "icon", "емодзі", "3em") + field(o, "text", "підпис", "13em");
     return `<div class="card${o.accepted ? "" : " off"}"><span class="tag">${KINDS[o.kind]}</span><div class="what">${what}<small>${o.accepted ? (live.has(o.id) ? "на словах: " + esc(said.map((w) => w.text).join(" ").slice(0, 50)) : "не показується: у цей час кадр зайнятий іншим") : "вимкнено"}</small></div>
       ${at != null ? `<button class="jump" data-seek="${at + 0.9}">▶ ${mmss(at)}</button>` : ""}<button data-overlay="${o.id}" data-on="${o.accepted ? 0 : 1}">${o.accepted ? "Вимкнути" : "Увімкнути"}</button><button class="quiet" data-overlay-remove="${o.id}">Видалити</button></div>`;
   }).join("") || `<p class="hint">Накладок немає.</p>`;
@@ -593,6 +595,7 @@ function draw(force) {
 }
 
 // ---------- the text's menu: what can be done with a word, or with a stretch of words ----------
+const KINDS_ADD = { sticker: "Наліпка", number: "Число", price: "Цінник", lower: "Плашка з іменем" };
 const placeOf = (id) => state.words[id].at ?? (state.words.slice(id).find((w) => w.at != null) || {}).at;   // a cut word: where the video goes on
 function openPick(next) {
   pick = next; editing = null; seek(placeOf(next[0]), false); draw(true);
@@ -609,6 +612,7 @@ function drawWordMenu() {
     + (kept ? button("cut", "✂ Вирізати") : "") + (kept < some.length ? button("restore", "↩ Повернути") : "")
     + (one ? button("hot", w.hot ? "☆ Зняти виділення" : "★ Виділити") : "")
     + (kept ? button("beat", "＋ Вставка") : "")
+    + (kept ? button("overlay", "◆ Накладка") : "")
     + (!one && kept ? button("ask", "✦ Попросити AI…") : "")
     + `<button class="quiet" data-pick="close" aria-label="Закрити">✕</button>`;
   box.hidden = false;
@@ -627,6 +631,21 @@ async function wordAction(what) {
   if (what === "cut") { pick = null; return edit({ drop: [a, b] }); }
   if (what === "restore") { pick = null; return edit({ drop: [a, b], restore: true }); }
   if (what === "beat") { pick = null; range = [a, b]; draw(true); $("beatMenu").scrollIntoView({ block: "nearest" }); return; }
+  if (what === "overlay" || what.startsWith("ov:")) {
+    // an overlay on these words: the kind first, then its words, filled in from what was said where they can be
+    const kind = what.startsWith("ov:") ? what.slice(3) : null, phrase = state.words.slice(a, b + 1).filter((w) => w.kept).map((w) => w.text).join(" ").replace(/[.,!?…;:]+$/, "");
+    const figure = (phrase.match(/\d[\d\s]*(?:[.,]\d+)?/) || [""])[0].trim(), input = (key, label, value, width) => `<input type="text" data-ov-key="${key}" placeholder="${label}" aria-label="${label}" value="${esc(value)}" style="flex:0 1 ${width}">`;
+    const fields = { sticker: input("icon", "емодзі", "", "4em") + input("text", "підпис", phrase.slice(0, 22), "14em"), number: input("value", "число", figure, "6em") + input("unit", "одиниця", "", "5em") + input("caption", "підпис", "", "11em"),
+      price: input("value", "ціна", figure, "7em") + input("unit", "валюта", "$", "4em") + input("caption", "підпис", "ціна", "10em"), lower: input("title", "ім'я чи назва", phrase.slice(0, 28), "12em") + input("caption", "хто це", "", "10em") };
+    $("wordMenu").innerHTML = `<div class="what">Накладка на «${esc(phrase.slice(0, 60))}»</div>` + ["sticker", "number", "price", "lower"].map((k) => `<button data-pick="ov:${k}"${k === kind ? ' class="on" style="background:var(--brand);color:#000"' : ""}>${KINDS_ADD[k]}</button>`).join("")
+      + (kind ? `<div style="display:flex;flex-wrap:wrap;gap:6px;width:100%;margin-top:4px">${fields[kind]}<button class="primary" data-pick="ovGo" data-kind="${kind}">Додати</button></div>` : "") + `<button class="quiet" data-pick="close" aria-label="Закрити">✕</button>`;
+    const first = $("wordMenu").querySelector("[data-ov-key]"); if (first) first.focus(); return;
+  }
+  if (what === "ovGo") {
+    const box = $("wordMenu"), kind = box.querySelector('[data-pick="ovGo"]').dataset.kind, made = { kind, from: a, to: b };
+    box.querySelectorAll("[data-ov-key]").forEach((i) => { if (i.value.trim()) made[i.dataset.ovKey] = i.value.trim(); });
+    pick = null; if (await edit({ overlay_add: made })) peek(placeOf(a) + 0.8); return;
+  }
   if (what === "ask") {
     $("wordMenu").innerHTML = `<div class="what">Що змінити в цих словах? Наприклад: слова повторюються, лиши один раз</div><input type="text" id="pickAsk" maxlength="300" aria-label="Прохання до AI"><button class="primary" data-pick="askGo">Попросити AI</button><button class="quiet" data-pick="close" aria-label="Закрити">✕</button>`;
     return $("pickAsk").focus();
@@ -663,7 +682,7 @@ document.addEventListener("pointerup", () => {
 document.addEventListener("pointercancel", () => { if (press) { clearTimeout(press.timer); if (press.selecting) closePick(); press = null; } });
 $("words").addEventListener("touchmove", (e) => { if (press && press.selecting) e.preventDefault(); }, { passive: false });   // a stretch being marked, not the page being scrolled
 document.addEventListener("pointerdown", (e) => { if (pick && !e.target.closest("#wordMenu") && !e.target.closest("#words")) closePick(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pick) closePick(); if (e.key === "Enter" && e.target.id === "pickAsk") wordAction("askGo"); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pick) closePick(); if (e.key === "Enter" && e.target.id === "pickAsk") wordAction("askGo"); if (e.key === "Enter" && e.target.dataset && e.target.dataset.ovKey) wordAction("ovGo"); });
 $("words").addEventListener("contextmenu", (e) => e.preventDefault());   // a held finger marks words, it does not open the phone's menu
 window.addEventListener("resize", () => { if (pick) drawWordMenu(); });
 

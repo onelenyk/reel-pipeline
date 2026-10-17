@@ -345,6 +345,14 @@ class Handler(BaseHTTPRequestHandler):
                         for key, most in (("text", 22), ("caption", 28), ("unit", 8), ("value", 10), ("title", 20), ("icon", 8)):
                             if isinstance(o.get(key), str): found[key] = o[key].strip()[:most] or None; found["by"] = "user"
                     project.save(folder, doc)
+                elif "overlay_add" in change:
+                    # an overlay the author puts on words themself
+                    o = change["overlay_add"]; first, last = int(o.get("from", -1)), int(o.get("to", -1)); kind = o.get("kind")
+                    if kind not in ("number", "sticker", "price", "lower") or not 0 <= first <= last < len(doc["words"]): return self.send({"error": "say what overlay and on which words"}, 400)
+                    item = {k: str(o[k]).strip()[:most] for k, most in (("text", 22), ("caption", 28), ("unit", 8), ("value", 12), ("title", 28), ("icon", 8)) if isinstance(o.get(k), str) and str(o[k]).strip()}
+                    if not item.get({"number": "value", "price": "value", "sticker": "text", "lower": "title"}[kind]): return self.send({"error": "the overlay needs its words"}, 400)
+                    count = max([int(x["id"][1:]) for x in doc["overlays"] if x["id"][1:].isdigit()] or [0]) + 1
+                    doc["overlays"].append({"id": f"o{count}", "from": first, "to": last, "kind": kind, **item, "by": "user", "accepted": True}); project.save(folder, doc)
                 elif "remove_mark" in change: project.remove_mark(folder, change["remove_mark"])
                 elif "remove_beat" in change: project.change_beat(folder, change["remove_beat"], remove=True)
                 elif "drop" in change: project.drop(folder, int(change["drop"][0]), int(change["drop"][1]), restore=bool(change.get("restore")))
