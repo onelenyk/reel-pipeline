@@ -74,14 +74,17 @@ Not in the repository: `media/`, `projects/`, `archive/`, `out/` (scratch output
 - One take, or several files that are one video (`./reel new A.mov B.mov`, or several files chosen at once on the page): each is recognised on its own, they are brought to one form and joined in the order they were shot; a take that says again what the one before said replaces it.
 - The takes of a finished project can be put in another order, taken out, or one more added (the «Монтаж» tab, «Записи»): the takes are joined again and every cut, insert, caption and plan moment follows its take (`project.retake`). A take added later is reviewed on its own, so it is not compared with the earlier ones.
 - The page: the shelf of a workspace's projects; a project's header with its menu; the text, where a touched word or a stretch dragged over gets a menu (play, correct, cut or bring back, emphasise, an insert, an overlay, ask the AI); the look, chosen from frames of the video itself.
+- A corrected word offers to correct the same mishearing everywhere else in the text, keeping each word's punctuation, and to be remembered in the workspace's vocabulary (a name is remembered by itself).
+- A photo of an insert can be cropped («Кадр»): a frame of the insert's own shape is dragged over it, and the part kept goes with the photo wherever it is used (`project.set_focus`).
+- Saved styles appear among the gallery's frames; one is updated by saving under its name again, renamed, made the default for new videos, put on every video of a workspace at once, or deleted on a second touch. A whole style put on can be taken back («↩ Як було»).
 - Projects are gathered in workspaces, one for each client (`engine/spaces.py`). A workspace shares a logo (in the corner, over the last seconds, or both: the project's style says which), a call to action for the end card, the style its new videos start with, and its own vocabulary; it can be renamed and taken away (its projects go back to the first one). All this is set on the shelf the page opens on, kept in `workspaces.json` and `spaces/<name>/`. A deleted project's folder is moved to `trash/`, not erased.
 - A pipeline that stopped (no connection, no money on the AI account) goes on from the step that failed: the button on the page, or `POST /api/projects/NAME/retry`.
 - `./reel usage` says what was asked of the AI by day and what is left on the account.
 
 ## Four kinds of check
 
-- `./reel test` after any change to `engine/`: 48 tests, under a second.
-- `./reel page player|timeline|words|overlay-add|menu|home|ask|rooms|zones|draw-zone|reshape-zone|peek|font|overlays|spaces|space-settings|takes|gallery [PROJECT]` (a PROJECT of `-` opens the shelf) after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks.
+- `./reel test` after any change to `engine/`: 58 tests, under a second.
+- `./reel page player|timeline|words|overlay-add|menu|home|ask|rooms|zones|draw-zone|reshape-zone|peek|font|overlays|spaces|space-settings|takes|gallery|fix-words|crop|saved-styles [PROJECT]` (a PROJECT of `-` opens the shelf) after a change to the page: headless Chrome on this machine runs the scenario against the running service and leaves a screenshot in `out/page/`. `ask` sends a real request to the AI, and `rooms` changes the project's marks; `ask`, `fix-words`, `crop` and `saved-styles` are meant for a copy such as `takes-check`.
 - `./reel e2e` before trusting the whole: about eight minutes.
 - `lab/blind/`: forty takes whose right answer is known, spoken by local voices. `./reel run lab/blind/score.py` says what the review cut, what stays in the sound, which rooms and figures were found; `lab/blind/show.py` sends them through the running service with a floor plan each. About $0.40 of AI for a full run.
 
