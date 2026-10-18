@@ -74,6 +74,15 @@ def set_style(space, key):
         kept["settings"].setdefault(space, {})["style"] = key or None; keep(kept)
 
 
+def restyle(old, new):
+    """A saved style has a new key (it was renamed, or with None deleted): the workspaces that start with it follow."""
+    with lock:
+        kept = spaces()
+        for v in kept["settings"].values():
+            if v.get("style") == old: v["style"] = new
+        keep(kept)
+
+
 def ending(space):
     """The words the workspace's videos end with ("Пишіть у дірект @agency"), or None."""
     return spaces()["settings"].get(space, {}).get("ending") or None

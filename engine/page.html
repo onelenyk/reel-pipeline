@@ -177,6 +177,12 @@
   .off { opacity: .45; }
   .tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle); min-width: 78px; }
   .hint { color: var(--subtle); font-size: 12px; margin: 6px 0 0; }
+  .ok { background: rgba(48, 209, 88, .15); border-radius: 9px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+  button.danger { background: var(--bad); color: #fff; }
+  h3.mine { font-size: 13px; margin: 18px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  details.more > summary { list-style: none; cursor: pointer; height: 34px; min-width: 34px; display: grid; place-items: center; border-radius: 9px; background: var(--chip2); padding: 0 8px; } details.more > summary::-webkit-details-marker { display: none; }
+  details.more[open] { flex-basis: 100%; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .moreMenu { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
   .error { background: rgba(255, 69, 58, .15); border-radius: 9px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
   input[type=file] { display: none; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -320,12 +326,13 @@ function drawTabs() {
 let galleryKey = "";
 function drawGallery() {
   if (tab !== "style" || !state || !state.style) return;
-  const key = JSON.stringify([name, state.style, state.render_version, (state.marks || []).length, (state.beats || []).length]);
+  const key = JSON.stringify([name, state.style, styles, state.render_version, (state.marks || []).length, (state.beats || []).length]);
   if (key === galleryKey) return; galleryKey = key;
   const st = state.style, base = { ...st }; delete base.name;
   const tile = (label, change, demo, on) => `<button class="shot${on ? " on" : ""}" data-style='${JSON.stringify(change).replace(/'/g, "&#39;")}'><img loading="lazy" alt="${esc(label)}" src="/frame/${name}/frame.jpg?demo=${demo}&style=${encodeURIComponent(JSON.stringify(change))}&v=${encodeURIComponent(key.length + "-" + st.accent + st.font + st.caps)}" onerror="this.parentNode.classList.add('none')"><span>${esc(label)}</span></button>`;
   const row = (title, key2, demo, options, note) => `<h3>${title}</h3><div class="shots">${options.map(([value, label]) => tile(label, { [key2]: value }, demo, st[key2] === value)).join("")}</div>${note ? `<p class="hint">${note}</p>` : ""}`;
-  $("gallery").innerHTML = `<h3>Готові стилі</h3><div class="shots">${(state.presets || []).map((p) => tile(p.name, p, "number", p.name === st.name)).join("")}</div>`
+  const mine = styles.map((x) => { const c = { ...x }; delete c.id; delete c.default; return tile(x.name, c, "number", looks(x, st)); }).join("");
+  $("gallery").innerHTML = (mine ? `<h3>Мої стилі</h3><div class="shots">${mine}</div>` : "") + `<h3>Готові стилі</h3><div class="shots">${(state.presets || []).map((p) => tile(p.name, p, "number", p.name === st.name)).join("")}</div>`
     + row("Наліпка", "sticker", "sticker", [["paper", "Папірець"], ["pill", "Пігулка"], ["tag", "Бирка"], ["outline", "Скло"]])
     + row("Число", "number", "number", [["big", "Велике"], ["badge", "Значок"], ["card", "Картка"]])
     + row("Вигляд субтитрів", "subtitle", "sticker", [["outline", "З обведенням"], ["plate", "На плашці"], ["shadow", "З тінню"]])
@@ -601,9 +608,34 @@ function draw(force) {
     <div class="row"><span>Звуки появи</span>${seg("sounds", [["off", "Без звуків"], ["quiet", "Тихо"], ["normal", "Чутно"]])}</div>
     <div class="row"><span>Гучність</span><input type="range" id="level" min="-24" max="-10" step="1" value="${st.level}"><span id="levelText" style="width:auto">${st.level} LUFS</span></div>
     </details>
-    <div class="row"><span>Зберегти</span><input type="text" id="styleName" placeholder="Назва стилю" maxlength="40" value="${esc(st.name)}" style="flex:1 1 160px"><button id="styleSave">Зберегти стиль</button></div>
-    ${styles.length ? styles.map((s) => `<div class="card"><span class="sw" style="background:${s.accent};flex:none"></span><div class="what">${esc(s.name)}<small>${s.default ? "типовий для нових відео" : ""}</small></div>
-      <button data-apply="${esc(s.id)}">Застосувати</button><button data-default="${s.default ? "built-in" : esc(s.id)}">${s.default ? "Не типовий" : "Зробити типовим"}</button><button class="quiet" data-style-delete="${esc(s.id)}">Видалити</button></div>`).join("") : `<p class="hint">Збережених стилів ще немає. Збережений стиль можна застосувати до іншого відео або зробити типовим для нових.</p>`}`;
+    ${drawMine()}`;
+}
+
+// ---------- saved styles: a look kept under a name, used again on other videos and for a workspace's new ones ----------
+let styleBefore = null, styleSaid = "", deleting = null, renaming = null;
+const styleSlug = (text) => String(text || "").trim().toLowerCase().replace(/[^\p{L}\p{N}_-]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "style";
+const looks = (a, b) => { const strip = (x) => { const y = { ...x }; delete y.name; delete y.id; delete y.default; return JSON.stringify(Object.keys(y).sort().map((k) => [k, y[k]])); }; return strip(a) === strip(b); };
+function drawMine() {
+  const st = state.style, typed = st.name || "", same = styles.find((x) => x.id === styleSlug(typed)), here = styles.find((x) => looks(x, st));
+  return `<h3 class="mine">Мої стилі</h3>`
+    + (styleBefore ? `<div class="card note"><div class="what">${esc(styleSaid)}</div><button data-style-undo="1">↩ Як було</button><button class="quiet" data-style-undo="0" aria-label="Закрити">✕</button></div>` : "")
+    + (same && !here ? `<p class="hint" style="margin:0 0 6px">Є зміни, яких немає у збереженому стилі «${esc(same.name)}».</p>` : "")
+    + `<div class="row"><input type="text" id="styleName" placeholder="Назва стилю" maxlength="40" value="${esc(typed)}" style="flex:1 1 160px" aria-label="Назва стилю"><button id="styleSave"${same && here && same.id === here.id ? " disabled" : ""}>${same ? (here && same.id === here.id ? "Збережено" : `Оновити «${esc(same.name)}»`) : "Зберегти як новий"}</button></div>`
+    + (styles.length ? styles.map((x) => `<div class="card"><span class="sw" style="background:${x.accent};flex:none"></span>`
+      + (renaming === x.id ? `<input type="text" id="styleRename" value="${esc(x.name)}" maxlength="40" style="flex:1 1 140px" aria-label="Нова назва"><button class="primary" data-style-rename-go="${esc(x.id)}">Зберегти</button><button class="quiet" data-style-rename="">Скасувати</button></div>`
+        : `<div class="what" style="font-family:'${esc(x.font)}',system-ui;font-weight:800">${esc(x.caps ? x.name.toUpperCase() : x.name)}<small style="font-family:system-ui;font-weight:400">${[here && here.id === x.id ? "у цьому відео" : "", x.default ? "типовий для нових відео" : ""].filter(Boolean).join(" · ")}</small></div>`
+        + (here && here.id === x.id ? "" : `<button data-apply="${esc(x.id)}">Застосувати</button>`)
+        + `<details class="more"><summary aria-label="Ще дії">⋯</summary><div class="moreMenu">`
+        + `<button data-default="${x.default ? "built-in" : esc(x.id)}">${x.default ? "Не типовий для нових" : "Типовий для нових відео"}</button>`
+        + `<button data-style-space="${esc(x.id)}">Усім відео простору «${esc(state.space)}»</button>`
+        + `<button data-style-rename="${esc(x.id)}">Перейменувати</button>`
+        + `<button class="${deleting === x.id ? "danger" : "quiet"}" data-style-delete="${esc(x.id)}">${deleting === x.id ? "Точно видалити?" : "Видалити"}</button></div></details></div>`)).join("")
+      : `<p class="hint">Збережених стилів ще немає. Налаштуйте вигляд, дайте йому назву і збережіть: його можна буде застосувати до інших відео одним дотиком.</p>`);
+}
+async function applyLook(change, said) {
+  // a whole style put on at once can be taken back
+  const before = { ...state.style };
+  if (await edit({ style: change })) { styleBefore = before; styleSaid = said; draw(true); }
 }
 
 // ---------- the text's menu: what can be done with a word, or with a stretch of words ----------
@@ -713,7 +745,7 @@ document.addEventListener("pointerup", () => {
 document.addEventListener("pointercancel", () => { if (press) { clearTimeout(press.timer); if (press.selecting) closePick(); press = null; } });
 $("words").addEventListener("touchmove", (e) => { if (press && press.selecting) e.preventDefault(); }, { passive: false });   // a stretch being marked, not the page being scrolled
 document.addEventListener("pointerdown", (e) => { if (pick && !e.target.closest("#wordMenu") && !e.target.closest("#words")) closePick(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pick) closePick(); if (e.key === "Enter" && e.target.id === "pickAsk") wordAction("askGo"); if (e.key === "Enter" && e.target.dataset && e.target.dataset.ovKey) wordAction("ovGo"); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pick) closePick(); if (e.key === "Enter" && e.target.id === "pickAsk") wordAction("askGo"); if (e.key === "Enter" && e.target.id === "styleName") $("styleSave").click(); if (e.key === "Enter" && e.target.id === "styleRename") document.querySelector("[data-style-rename-go]").click(); if (e.key === "Enter" && e.target.dataset && e.target.dataset.ovKey) wordAction("ovGo"); });
 $("words").addEventListener("contextmenu", (e) => e.preventDefault());   // a held finger marks words, it does not open the phone's menu
 window.addEventListener("resize", () => { if (pick) drawWordMenu(); });
 
@@ -1031,13 +1063,21 @@ document.addEventListener("click", async (e) => {
     const fresh = await act(`/api/projects/${name}/find/${id}`, { method: "POST" });
     if (fresh && picker) choose(fresh.added); else if (picker) { picker.loading = false; drawPicker(); }
   }
-  else if (d.style) edit({ style: JSON.parse(d.style) });
-  else if (d.apply) edit({ apply_style: d.apply });
+  else if (d.style) { const change = JSON.parse(d.style); if (change.name) applyLook(change, `Застосовано стиль «${change.name}».`); else edit({ style: change }); }
+  else if (d.apply) { const x = styles.find((y) => y.id === d.apply); const before = { ...state.style }; if (await edit({ apply_style: d.apply })) { styleBefore = before; styleSaid = `Застосовано стиль «${x ? x.name : d.apply}».`; draw(true); } }
+  else if (d.styleUndo) { const before = styleBefore; styleBefore = null; if (d.styleUndo === "1" && before) await edit({ style: before }); else draw(true); }
+  else if (d.styleRename !== undefined) { renaming = d.styleRename || null; draw(true); if (renaming) { $("styleRename").focus(); $("styleRename").select(); } }
+  else if (d.styleRenameGo) { try { styles = await api(`/api/styles/${encodeURIComponent(d.styleRenameGo)}/rename`, { method: "POST", body: JSON.stringify({ name: $("styleRename").value }) }); renaming = null; draw(true); } catch (error) { fail(error); } }
+  else if (d.styleSpace) {
+    try { const done = await api("/api/space", { method: "POST", body: JSON.stringify({ space: state.space, apply_style: d.styleSpace }) }); styleBefore = null; deleting = null;
+      const x = styles.find((y) => y.id === d.styleSpace); state = await api(`/api/projects/${name}`); edited = true; draw(true); peek();
+      $("error").innerHTML = `<div class="ok"></div>`; $("error").firstChild.textContent = `Стиль «${x ? x.name : ""}» застосовано до ${done.applied} відео простору «${state.space}» і до нових. Щоб побачити його в готових відео, зберіть їх заново.`; } catch (error) { fail(error); } }
   else if (d.default) { try { styles = await api(`/api/styles/${encodeURIComponent(d.default)}/default`, { method: "POST" }); draw(true); } catch (error) { fail(error); } }
-  else if (d.styleDelete) { try { styles = await api(`/api/styles/${encodeURIComponent(d.styleDelete)}/delete`, { method: "POST" }); draw(true); } catch (error) { fail(error); } }
+  else if (d.styleDelete && deleting !== d.styleDelete) { deleting = d.styleDelete; draw(true); const box = document.querySelector(`[data-style-delete="${d.styleDelete}"]`); if (box) box.closest("details").open = true; setTimeout(() => { if (deleting === d.styleDelete) { deleting = null; draw(true); } }, 5000); }
+  else if (d.styleDelete) { deleting = null; try { styles = await api(`/api/styles/${encodeURIComponent(d.styleDelete)}/delete`, { method: "POST" }); draw(true); } catch (error) { fail(error); } }
   else if (t.id === "styleSave") {
     const wanted = $("styleName").value.trim(); if (!wanted) { $("styleName").focus(); return; }
-    if (await act(`/api/projects/${name}/style-save`, { method: "POST", body: JSON.stringify({ name: wanted }) })) { styles = await api("/api/styles"); draw(true); }
+    if (await act(`/api/projects/${name}/style-save`, { method: "POST", body: JSON.stringify({ name: wanted }) })) { styles = await api("/api/styles"); styleBefore = null; draw(true); }
   }
   else if (t.id === "render") act(`/api/projects/${name}/render`, { method: "POST" });
   else if (t.id === "retry") act(`/api/projects/${name}/retry`, { method: "POST" });
@@ -1052,7 +1092,14 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("focusout", (e) => { if (e.target.id === "fixInput") saveWord(e.target); });
 // A tap anywhere else also finishes the correction (some browsers do not move focus on a tap)
 document.addEventListener("pointerdown", (e) => { const input = $("fixInput"); if (input && e.target !== input) saveWord(input); }, true);
-document.addEventListener("input", (e) => { if (e.target.id === "level") $("levelText").textContent = e.target.value + " LUFS"; });
+document.addEventListener("input", (e) => {
+  if (e.target.id === "level") $("levelText").textContent = e.target.value + " LUFS";
+  if (e.target.id === "styleName") {
+    // the button says whether the name typed saves a new style or replaces one kept before
+    const same = styles.find((x) => x.id === styleSlug(e.target.value)), button = $("styleSave");
+    button.disabled = !e.target.value.trim() || (!!same && looks(same, state.style)); button.textContent = same ? (looks(same, state.style) ? "Збережено" : `Оновити «${same.name}»`) : "Зберегти як новий";
+  }
+});
 document.addEventListener("change", async (e) => {
   const input = e.target, file = input.files && input.files[0];
   if (input.id === "level") return edit({ style: { level: +input.value } });
@@ -1155,7 +1202,7 @@ function drawHome(list) {
     <div class="row"><span>Заклик наприкінці</span><input type="text" id="endingText" maxlength="48" value="${esc(own.ending || "")}" placeholder="Пишіть у дірект @агенція" style="flex:1;min-width:10em"><button id="endingSave">Зберегти</button></div>
     <p class="hint" style="margin:-4px 0 12px">Останні 2,5 секунди кожного відео простору: ці слова на плашці, разом із великим логотипом, якщо його обрано в стилі.</p>
     <div class="row"><span>Стиль нових відео</span><select id="spaceStyle"><option value="">загальний${styles.find((x) => x.default) ? ` («${esc(styles.find((x) => x.default).name)}»)` : ""}</option>${styles.map((x) => `<option value="${esc(x.id)}"${own.style === x.id ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>
-    ${styles.length ? "" : `<p class="hint" style="margin:-4px 0 12px">Збережених стилів ще немає: їх зберігають у проєкті, у вкладці «Стиль».</p>`}
+    ${styles.length ? "" : `<p class="hint" style="margin:-4px 0 12px">Збережених стилів ще немає: їх зберігають у проєкті, у вкладці «Вигляд».</p>`}
     <div><span class="hint" style="margin:0">Словник: назви об’єктів, сіл і терміни цього замовника, по одному в рядку; «G-Village = Джівілич», якщо розпізнавач чує інакше.</span><textarea id="spaceVocab" aria-label="Словник простору"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button id="spaceVocabSave">Зберегти словник</button><span class="hint" id="spaceVocabSaid" style="margin:0"></span></div></div>
     ${first ? "" : `<div id="spaceDrop" style="margin-top:16px"><button id="spaceRemove">Видалити простір</button></div>`}

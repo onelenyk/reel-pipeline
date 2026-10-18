@@ -162,6 +162,19 @@ class Styles(Case):
             styles.remove(key); self.assertEqual((styles.listing(), styles.default()), ([], None))
         finally: styles.ROOT, styles.DEFAULT = old
 
+    def test_a_renamed_style_stays_the_default(self):
+        old = styles.ROOT, styles.DEFAULT; styles.ROOT = Path(self.tmp.name) / "styles"; styles.DEFAULT = styles.ROOT / "default.txt"
+        try:
+            key = styles.save("Перший", self.doc()["style"]); other = styles.save("Другий", self.doc()["style"]); styles.set_default(key)
+            new = styles.rename(key, "  Новий   перший "); self.assertEqual(new, "новий-перший")
+            self.assertEqual([(s["name"], s["default"]) for s in styles.listing()], [("Другий", False), ("Новий перший", True)])
+            with self.assertRaises(ValueError): styles.rename(new, "Другий")   # it would replace another one
+            with self.assertRaises(ValueError): styles.rename(new, "   ")
+            with self.assertRaises(KeyError): styles.rename("нема", "Щось")
+            self.assertEqual(styles.rename(other, "ДРУГИЙ"), other)   # the same name written otherwise keeps its file
+            self.assertEqual(styles.get(other)["name"], "ДРУГИЙ")
+        finally: styles.ROOT, styles.DEFAULT = old
+
     def test_old_project_gets_a_full_style(self):
         doc = self.doc(); doc["style"] = {"preset": "bold-yellow", "accent": "#0a84ff"}; doc.pop("assets"); project.save(self.folder, doc)
         self.assertEqual((self.doc()["style"]["accent"], self.doc()["style"]["subtitle_place"], self.doc()["assets"]), ("#0a84ff", "low", []))

@@ -38,6 +38,19 @@ def remove(key):
     if DEFAULT.exists() and DEFAULT.read_text(encoding="utf-8").strip() == slug(key): DEFAULT.unlink()
 
 
+def rename(key, name):
+    """A saved style under another name. Being the default for new videos goes with it; returns its new key."""
+    style = get(key); name = " ".join(str(name or "").split())[:40]
+    if not name: raise ValueError("a style needs a name")
+    new = slug(name)
+    if new != slug(key) and (ROOT / f"{new}.json").exists(): raise ValueError("another saved style has that name")
+    was_default = DEFAULT.exists() and DEFAULT.read_text(encoding="utf-8").strip() == slug(key)
+    save(name, style)
+    if new != slug(key): (ROOT / f"{slug(key)}.json").unlink(missing_ok=True)
+    if was_default: project.write_whole(DEFAULT, new)
+    return new
+
+
 def set_default(key):
     """New videos start with this style ("" = the built-in one)."""
     if key: get(key); project.write_whole(DEFAULT, slug(key))

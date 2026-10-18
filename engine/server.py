@@ -242,6 +242,12 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     if "rename" in asked: space = places.rename(space, asked["rename"])
                     elif "style" in asked: places.set_style(space, asked["style"] or None)
+                    elif "apply_style" in asked:
+                        # a saved style on every video of the workspace at once, and on its new ones; a video being processed is left alone
+                        look = styles.get(asked["apply_style"]); places.set_style(space, asked["apply_style"])
+                        mine = [d for d in sorted(ROOT.iterdir()) if (d / "project.json").exists() and places.space_of(d.name) == space and not busy.get(d.name)]
+                        for d in mine: project.set_style(d, look)
+                        return self.send({"space": space, "applied": len(mine)})
                     elif "ending" in asked: places.set_ending(space, asked["ending"])
                     elif asked.get("remove"): places.remove(space); space = HOME_SPACE
                     elif "logo" in asked and asked["logo"] is None: places.set_logo(space, None, None)
@@ -253,9 +259,12 @@ class Handler(BaseHTTPRequestHandler):
                 if suffix not in places.LOGOS: return self.send({"error": "a logo is a PNG, JPEG or WebP picture"}, 415)
                 if int(self.headers.get("Content-Length") or 0) > 8 << 20: return self.send({"error": "the picture is too large"}, 413)
                 places.set_logo(space, self.upload(suffix), suffix); return self.send({"space": space})
-            if parts[:2] == ["api", "styles"] and len(parts) == 4 and parts[3] in ("default", "delete"):
-                if parts[3] == "delete": styles.remove(parts[2])
-                else: styles.set_default("" if parts[2] == "built-in" else parts[2])
+            if parts[:2] == ["api", "styles"] and len(parts) == 4 and parts[3] in ("default", "delete", "rename"):
+                try:
+                    if parts[3] == "rename": places.restyle(styles.slug(parts[2]), styles.rename(parts[2], json.loads(self.body() or b"{}").get("name")))
+                except (KeyError, ValueError) as error: return self.send({"error": str(error)}, 400)
+                if parts[3] == "delete": styles.remove(parts[2]); places.restyle(styles.slug(parts[2]), None)
+                elif parts[3] == "default": styles.set_default("" if parts[2] == "built-in" else parts[2])
                 return self.send(styles.listing())
             if len(parts) < 4 or parts[:2] != ["api", "projects"]: return self.send({"error": "not found"}, 404)
             name, action = parts[2], parts[3]; folder = ROOT / name
