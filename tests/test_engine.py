@@ -131,6 +131,14 @@ class Pictures(Case):
         project.change_beat(self.folder, beat["id"], asset=None); self.assertIsNone(next(b for b in self.doc()["beats"] if b["id"] == beat["id"])["asset"])
         project.change_beat(self.folder, beat["id"], remove=True); self.assertNotIn(beat["id"], [b["id"] for b in self.doc()["beats"]])
 
+    def test_the_part_of_a_photo_kept_in_view_goes_with_the_photo(self):
+        asset = project.add_asset(self.folder, self.picture); project.assign(self.folder, "n1", asset)
+        self.assertIsNone(self.timeline()["beats"][-1]["focus"])
+        self.assertEqual(project.set_focus(self.folder, asset, [1.4, 0.25]), [1.0, 0.25])   # kept inside the photo
+        self.assertEqual(self.timeline()["beats"][-1]["focus"], [1.0, 0.25])
+        project.set_focus(self.folder, asset, None); self.assertIsNone(self.timeline()["beats"][-1]["focus"])
+        with self.assertRaises(KeyError): project.set_focus(self.folder, "a99", [0, 0])
+
 
 class Styles(Case):
     def test_style_is_cleaned(self):

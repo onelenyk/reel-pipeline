@@ -47,8 +47,10 @@ function drawPicture(beat, t) {
   const a = presence(t, beat.start, beat.end, 0.4, 0.3);
   if (a <= 0) return;
   const kind = containerOf(beat), grow = 1 + 0.05 * clamp((t - beat.start) / Math.max(0.1, beat.end - beat.start));
-  // the picture fills its container, cropped rather than squeezed; a slow push-in keeps it alive
-  const fill = (x, y, w, h) => { const k = Math.max(w / image.width, h / image.height) * grow; ctx.drawImage(image, x + w / 2 - (image.width * k) / 2, y + h / 2 - (image.height * k) / 2, image.width * k, image.height * k); };
+  // a slow push-in keeps it alive
+  // the picture fills its container, cropped rather than squeezed, around the part the author chose (the middle by default)
+  const [fx, fy] = beat.focus ?? [0.5, 0.5];
+  const fill = (x, y, w, h) => { const k = Math.max(w / image.width, h / image.height) * grow; ctx.drawImage(image, x + (w - image.width * k) * fx, y + (h - image.height * k) * fy, image.width * k, image.height * k); };
   ctx.save(); ctx.globalAlpha = a;
   if (kind === "polaroid") {
     // a printed photo: a white border, wider at the foot, a little askew, settling as it lands
@@ -100,7 +102,8 @@ function drawFull(beat, t) {
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = a * 0.38; ctx.drawImage(image, W / 2 - (image.width * cover) / 2, H / 2 - (image.height * cover) / 2, image.width * cover, image.height * cover); ctx.globalAlpha = a;
   }
-  const left = W / 2 - (image.width * k) / 2, top = (fits ? H / 2 : H * 0.36) - (image.height * k) / 2;
+  const [fx, fy] = beat.focus ?? [0.5, 0.5];   // a picture that fills the frame is cropped around the part the author chose
+  const left = fits ? (W - image.width * k) * fx : W / 2 - (image.width * k) / 2, top = fits ? (H - image.height * k) * fy : H * 0.36 - (image.height * k) / 2;
   ctx.drawImage(image, left, top, image.width * k, image.height * k);
   // The room being spoken of lights up on the plan: the accent colour laid over it, with a firm outline
   for (const mark of beat.marks ?? []) {

@@ -192,7 +192,7 @@ def resolve(doc):
         if b["kind"] in PICTURED and not asset: continue  # waiting for material: the speaker stays
         start = at(inside[0]["start"])
         end = min(total, max(at(inside[-1]["end"]), start + MIN_BEAT[b["kind"]]))
-        beats.append({"id": b["id"], "kind": b["kind"], "start": start, "end": end, "source_start": inside[0]["start"], "text": b.get("text"), "file": asset["file"] if asset else None})
+        beats.append({"id": b["id"], "kind": b["kind"], "start": start, "end": end, "source_start": inside[0]["start"], "text": b.get("text"), "file": asset["file"] if asset else None, "focus": asset.get("focus") if asset else None})
         if b["kind"] == "full":
             beats[-1]["marks"] = lit(doc, asset, kept_ids, at, start, end); beats[-1]["plan"] = len(rooms_of(asset["file"])) >= 3
             points = [p for r in rooms_of(asset["file"]) for p in r["shape"]]
@@ -437,6 +437,15 @@ def keep_asset(folder, doc, file, kind="photo", name=None, credit=None):
 def add_asset(folder, file, name=None, credit=None):
     """Puts a picture into the project's library and returns its id."""
     doc = load(folder); asset_id = keep_asset(folder, doc, file, "photo", name, credit); save(folder, doc); return asset_id
+
+
+def set_focus(folder, asset_id, focus):
+    """Which part of a picture stays in view where it is cropped: [x, y] from 0 to 1, the middle when None."""
+    doc = load(folder); asset = next((a for a in doc["assets"] if a["id"] == asset_id), None)
+    if not asset: raise KeyError(f"no picture {asset_id}")
+    if focus is None: asset.pop("focus", None)
+    else: asset["focus"] = [round(min(1.0, max(0.0, float(v))), 3) for v in focus[:2]]
+    save(folder, doc); return asset.get("focus")
 
 
 def assign(folder, need_id, asset_id):

@@ -145,7 +145,7 @@ def build(folder):
         else:
             project.progress(folder, "render", "running", note=f"cutting the speaker out for an insert ({index + 1})")
             part = folder / f"matte-{mark}.part.mkv"; mattes[b["id"]] = matte.matte(source["file"], source["hdr"], b["source_start"], seconds, fps, (width, height), part); part.replace(file)
-        n = inputs.count("-i")
+        n = inputs.count("-i"); fx, fy = b.get("focus") or (0.5, 0.5)   # the part of the picture the author chose to keep in view
         inputs += ["-loop", "1", "-t", f"{seconds:.3f}", "-i", b["file"], "-i", str(file)]
         fade = f"fade=in:st=0:d=0.3:alpha=1,fade=out:st={seconds - 0.3:.3f}:d=0.3:alpha=1"
         graph += [f"[{last}]split[keep{index}][cut{index}]",
@@ -153,7 +153,7 @@ def build(folder):
                   f"[{n + 1}:v]scale={width}:{height},gblur=sigma=3,format=gray[alpha{index}]",
                   f"[person{index}][alpha{index}]alphamerge[front{index}]",
                   # The picture fills the frame, slightly darkened so the speaker stands out
-                  f"[{n}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},eq=brightness=-0.06,fps={fps}[back{index}]",
+                  f"[{n}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)*{fx}:(ih-oh)*{fy},eq=brightness=-0.06,fps={fps}[back{index}]",
                   f"[back{index}][front{index}]overlay=shortest=1,format=yuva420p,{fade},setpts=PTS+{b['start']:.3f}/TB[scene{index}]",
                   f"[keep{index}][scene{index}]overlay=enable='between(t,{b['start']:.3f},{b['end']:.3f})':eof_action=pass[v{index + 1}]"]
         last = f"v{index + 1}"

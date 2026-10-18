@@ -86,7 +86,7 @@ def summary(name):
                            "hot": w["id"] in hot, "unsure": w["confidence"] < 0.5} for w in doc["words"]],
                    corrections=doc["corrections"], cuts=doc["cuts"], kinds={b["id"]: b["kind"] for b in plan["beats"]}, seconds=plan["seconds"], style=doc["style"],
                    beats=[{**b, "file": Path(assets[b["asset"]]["file"]).name if b.get("asset") in assets else None} for b in doc["beats"]],
-                   assets=[{"id": a["id"], "file": Path(a["file"]).name, "credit": a.get("credit")} for a in doc["assets"]],
+                   assets=[{"id": a["id"], "file": Path(a["file"]).name, "credit": a.get("credit"), "focus": a.get("focus")} for a in doc["assets"]],
                    needs=[{**n, "file": Path(assets[n["asset"]]["file"]).name if n.get("asset") in assets else None, "credit": assets.get(n.get("asset"), {}).get("credit")} for n in doc["needs"]],
                    credits=[a["credit"] for a in doc["assets"] if a.get("credit") and a["id"] in used],
                    fonts=fonts.OFFERED, presets=project.PRESETS, overlays=doc["overlays"], shown_overlays=[o["id"] for o in plan["overlays"] + plan["breaks"]], marks=doc["marks"], plans=[{"asset": a, "file": Path(assets[a]["file"]).name, "read": plans.stored(assets[a]["file"], lenient=True) is not None,
@@ -334,6 +334,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif "apply_style" in change: project.set_style(folder, styles.get(change["apply_style"]))
                 elif "add_beat" in change:
                     b = change["add_beat"]; project.add_beat(folder, b.get("kind"), b.get("from"), b.get("to"), text=b.get("text"), asset=b.get("asset"))
+                elif "focus" in change: project.set_focus(folder, change["focus"].get("asset"), change["focus"].get("at"))
                 elif "beat_picture" in change: project.change_beat(folder, change["beat_picture"]["beat"], asset=change["beat_picture"].get("asset"))
                 elif "mark_how" in change:
                     # whether the speaker walks into the room or only speaks of it from where they stand

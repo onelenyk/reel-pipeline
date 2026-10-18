@@ -193,7 +193,13 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin-top: 12px; }
   .tile { padding: 0; height: 92px; overflow: hidden; border-radius: 10px; position: relative; }
   .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .tile:hover { outline: 2px solid var(--brand); }
+  .tile:hover, .tile.on { outline: 2px solid var(--brand); } .tile.on::after { content: "✓"; position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; background: var(--brand); color: #000; font-size: 12px; line-height: 20px; }
+  .cropBox { position: relative; display: block; width: fit-content; max-width: 100%; margin: 10px auto; overflow: hidden; border-radius: 10px; touch-action: none; cursor: grab; user-select: none; }
+  .cropBox img { display: block; max-width: 100%; max-height: 46dvh; pointer-events: none; }
+  .cropFrame { position: absolute; outline: 2px solid var(--brand); box-shadow: 0 0 0 9999px rgba(0,0,0,.55); border-radius: 4px; }
+  .cropFrame.round { border-radius: 50%; }
+  .cropPreview { width: 168px; background-size: cover; background-repeat: no-repeat; border-radius: 10px; flex: none; }
+  .cropPreview.tall { width: 96px; } .cropPreview.round { border-radius: 50%; }
   .tile.add { display: grid; place-items: center; color: var(--muted); font-size: 12px; text-align: center; padding: 6px; }
 </style>
 <header>
@@ -269,6 +275,7 @@
   </div>
 </main>
 <div id="picker"></div>
+<div id="crop"></div>
 <script>
 const $ = (id) => document.getElementById(id);
 const STEP = { probe: "Читаю файл", transcribe: "Розпізнаю мову", join: "Зводжу записи в одне відео", review: "AI шукає невдалі дублі", suggest: "AI планує монтаж", decorate: "AI додає накладки", render: "Збираю відео", takes: "Складаю записи" };
@@ -542,7 +549,7 @@ function draw(force) {
   $("needsBox").style.display = state.needs.length ? "" : "none";
   $("needs").innerHTML = state.needs.map((n) => `<div class="card${n.status === "skipped" ? " off" : ""}">${n.file ? `<img class="pic" src="${pic(n.file)}" alt="">` : ""}
     <div class="what">${esc(n.what)}<small>${n.status === "filled" ? (n.credit ? `фото з інтернету, не ваш об'єкт · ${esc(n.credit.creator)} · ${esc(n.credit.license)}` : "додано") : n.status === "skipped" ? "пропущено" : n.optional ? "необов'язково" : "чекає на матеріал"}</small></div>
-    <button data-pick-need="${n.id}">${n.status === "filled" ? "Змінити фото" : "Обрати фото"}</button>
+    <button data-pick-need="${n.id}">${n.status === "filled" ? "Змінити фото" : "Обрати фото"}</button>${n.status === "filled" && state.beats.some((b) => b.need === n.id && b.accepted) ? `<button data-crop="${state.beats.find((b) => b.need === n.id && b.accepted).id}">Кадр</button>` : ""}
     ${n.status === "filled" ? `<button class="quiet" data-clear="${n.id}">Прибрати</button>` : `<button data-skip="${n.id}">${n.status === "skipped" ? "Повернути" : "Пропустити"}</button>`}</div>`).join("")
     + (state.credits && state.credits.length ? `<p class="hint">Автори фото з інтернету (вкажіть в описі відео): ${state.credits.map((c) => `${esc(c.title || "фото")}, ${esc(c.creator)}, ${esc(c.license)}`).join("; ")}</p>` : "");
 
@@ -553,7 +560,7 @@ function draw(force) {
     return `<div class="card${b.accepted ? "" : " off"}">${file ? `<img class="pic" src="${pic(file)}" alt="">` : ""}<span class="tag">${KIND[b.kind]}</span>
       <div class="what">${b.text ? `«${esc(b.text)}» · ` : ""}${esc(phrase(b))}<small>${pictured && !file ? "чекає на фото" + (need ? ": " + esc(need.what) : "") : esc(b.why || "")}${b.by === "user" ? " додано вручну" : ""}</small></div>
       ${at != null ? `<button class="jump" data-seek="${at}" aria-label="Показати це місце у відео">▶ ${Math.floor(at / 60)}:${String(Math.floor(at % 60)).padStart(2, "0")}</button>` : ""}
-      ${pictured && !need ? `<button data-pick-beat="${b.id}">${file ? "Змінити фото" : "Обрати фото"}</button>` : ""}
+      ${pictured && !need ? `<button data-pick-beat="${b.id}">${file ? "Змінити фото" : "Обрати фото"}</button>` : ""}${pictured && file && b.accepted ? `<button data-crop="${b.id}">Кадр</button>` : ""}
       <button data-beat="${b.id}">${b.accepted ? "Вимкнути" : "Увімкнути"}</button><button class="quiet" data-remove="${b.id}" aria-label="Видалити вставку">Видалити</button></div>`; }).join("") || `<p class="hint">Вставок немає. У розділі «Текст» оберіть «Вставка» і позначте слова.</p>`;
 
   // What the review took out: each piece can be put back, and taken out again
@@ -843,8 +850,8 @@ function drawPicker() {
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>Обрати фото</h3><button data-close="1">Закрити</button></div>
     <p class="hint">${esc(picker.title)}</p>
     <h2 style="margin-top:14px">Фото цього відео</h2>
-    <div class="grid">${state.assets.map((a) => `<button class="tile" data-choose="${a.id}" title="${a.credit ? esc(a.credit.creator + " · " + a.credit.license) : "ваше фото"}"><img src="${pic(a.file)}" alt="" loading="lazy"></button>`).join("")}
-      <label class="tile btn add">Додати з пристрою<input type="file" id="ownPhoto" accept="image/jpeg,image/png,image/webp"></label></div>
+    <div class="grid">${state.assets.map((a) => `<button class="tile${a.id === picker.current ? " on" : ""}" data-choose="${a.id}" title="${a.credit ? esc(a.credit.creator + " · " + a.credit.license) : "ваше фото"}"><img src="${pic(a.file)}" alt="" loading="lazy"></button>`).join("")}
+      <label class="tile btn add">${picker.loading === "upload" ? "Вивантажую…" : "Додати з пристрою"}<input type="file" id="ownPhoto" accept="image/jpeg,image/png,image/webp"></label></div>
     <h2 style="margin-top:18px">З інтернету</h2>
     <div style="display:flex;gap:8px"><input type="text" id="query" placeholder="Що шукати, наприклад: котеджне містечко згори" value="${esc(picker.query || "")}" style="flex:1"><button id="search">${picker.loading ? "Шукаю…" : "Знайти"}</button></div>
     ${found ? `<p class="hint">Фото з відкритими ліцензіями${found.query ? ` за запитом «${esc(found.query)}»` : ""}. Це ілюстрації, а не ваш об'єкт: подумайте, чи доречно показувати їх покупцям.</p>
@@ -862,6 +869,71 @@ async function choose(asset) {
   else if (target.beat) await edit({ beat_picture: { beat: target.beat, asset } });
   else if (target.add) { await edit({ add_beat: { ...target.add, asset } }); }
 }
+
+// ---------- the crop: which part of a photo stays in view where the insert cuts it to its own shape ----------
+let crop = null;
+function frameOf(beat) {
+  // the shape the picture is shown in, as width / height (the renderer's containers on a 1080×1920 frame)
+  if (beat.kind !== "cutaway") return { ratio: 9 / 16 };
+  const cutaways = state.beats.filter((b) => b.kind === "cutaway" && b.accepted).sort((a, b) => a.from - b.from);
+  let kind = state.style.picture || "card"; if (kind === "mix") kind = ["card", "polaroid", "circle"][Math.max(0, cutaways.indexOf(beat)) % 3];
+  return { ratio: { card: 972 / 576, edge: 1080 / 691, polaroid: 743 / 462, circle: 1 }[kind] || 972 / 576, round: kind === "circle" };
+}
+function openCrop(id) {
+  const beat = state.beats.find((b) => b.id === id), need = beat && beat.need && state.needs.find((n) => n.id === beat.need);
+  const asset = beat && (beat.asset || (need && need.asset)), found = state.assets.find((a) => a.id === asset);
+  if (!found) return;
+  crop = { beat: beat.id, asset, file: found.file, focus: found.focus || [0.5, 0.5], ...frameOf(beat), full: beat.kind === "full" }; drawCrop();
+}
+function drawCrop() {
+  if (!crop) { $("crop").innerHTML = ""; return; }
+  const [fx, fy] = crop.focus, place = `${(fx * 100).toFixed(1)}% ${(fy * 100).toFixed(1)}%`;
+  $("crop").innerHTML = `<div class="veil" data-crop-do="close"><div class="sheet" role="dialog" aria-modal="true" aria-label="Кадр">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>Кадр</h3><button class="primary" data-crop-do="close">Готово</button></div>
+    <p class="hint" id="cropHint">Перетягніть рамку на те, що має лишитися в кадрі. Решта фото буде обрізана.</p>
+    <div class="cropBox" id="cropBox"><img id="cropImg" src="${pic(crop.file)}" alt=""><div class="cropFrame${crop.round ? " round" : ""}" id="cropFrame" hidden></div></div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div class="cropPreview${crop.ratio < 1 ? " tall" : ""}${crop.round ? " round" : ""}" id="cropPreview" style="aspect-ratio:${crop.ratio};background-image:url('${pic(crop.file)}');background-position:${place}"></div>
+      <span class="hint" style="margin:0;flex:1 1 140px">Так фото буде видно у відео.</span><button data-crop-do="middle">По центру</button></div>
+  </div></div>`;
+  const image = $("cropImg"); if (image.complete) placeFrame(); else image.onload = placeFrame;
+}
+function cropSize() {
+  // the part of the shown photo the frame covers
+  const image = $("cropImg"), w = image.clientWidth, h = image.clientHeight;
+  return w / h > crop.ratio ? { w, h, fw: h * crop.ratio, fh: h } : { w, h, fw: w, fh: w / crop.ratio };
+}
+function placeFrame() {
+  if (!crop || !$("cropImg")) return;
+  const image = $("cropImg"), frame = $("cropFrame"), { w, h, fw, fh } = cropSize(), [fx, fy] = crop.focus;
+  if (crop.full && Math.abs(image.naturalWidth / image.naturalHeight - 9 / 16) >= 0.12) {
+    // the renderer shows such a picture whole on the frame: there is nothing to crop
+    $("cropHint").textContent = "Це фото показується у відео цілим, тому обрізати нічого не треба."; frame.hidden = true; $("cropBox").style.cursor = "default"; crop.whole = true; return;
+  }
+  Object.assign(frame.style, { width: fw + "px", height: fh + "px", left: (w - fw) * fx + "px", top: (h - fh) * fy + "px" }); frame.hidden = false;
+  $("cropPreview").style.backgroundPosition = `${(fx * 100).toFixed(1)}% ${(fy * 100).toFixed(1)}%`;
+}
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+function cropAt(e) {
+  const box = $("cropImg").getBoundingClientRect(), { w, h, fw, fh } = cropSize();
+  crop.focus = [w > fw + 1 ? clamp01((e.clientX - box.left - fw / 2) / (w - fw)) : 0.5, h > fh + 1 ? clamp01((e.clientY - box.top - fh / 2) / (h - fh)) : 0.5].map((v) => Math.round(v * 1000) / 1000);
+  placeFrame();
+}
+async function keepCrop() { if (crop && !crop.whole) await edit({ focus: { asset: crop.asset, at: crop.focus } }); }
+async function cropAction(what) {
+  if (!crop) return;
+  if (what === "middle") { crop.focus = [0.5, 0.5]; placeFrame(); return keepCrop(); }
+  if (what === "close") {
+    const beat = state.beats.find((b) => b.id === crop.beat), at = beat && (state.words.slice(beat.from, beat.to + 1).find((w) => w.at != null) || {}).at;
+    crop = null; drawCrop(); if (at != null) peek(at + 0.6);
+  }
+}
+document.addEventListener("pointerdown", (e) => {
+  if (!crop || crop.whole || !e.target.closest("#cropBox")) return;
+  crop.drag = true; try { e.target.closest("#cropBox").setPointerCapture(e.pointerId); } catch {} cropAt(e); e.preventDefault();
+});
+document.addEventListener("pointermove", (e) => { if (crop && crop.drag) cropAt(e); });
+document.addEventListener("pointerup", (e) => { if (crop && crop.drag) { crop.drag = false; keepCrop(); } });
+window.addEventListener("resize", () => { if (crop) placeFrame(); });
 
 async function saveWord(input) {
   if (editing === null) return;
@@ -946,8 +1018,10 @@ document.addEventListener("click", async (e) => {
   else if (d.cut) edit({ drop: d.cut.split("-").map(Number), restore: !!d.back });
   else if (d.skip) edit({ skip: d.skip });
   else if (d.clear) edit({ assign: { need: d.clear, asset: null } });
-  else if (d.pickNeed) { const need = state.needs.find((n) => n.id === d.pickNeed); picker = { target: { need: need.id }, title: need.what }; drawPicker(); }
-  else if (d.pickBeat) { picker = { target: { beat: d.pickBeat }, title: "Фото для вставки." }; drawPicker(); }
+  else if (d.pickNeed) { const need = state.needs.find((n) => n.id === d.pickNeed); picker = { target: { need: need.id }, title: need.what, current: need.asset }; drawPicker(); }
+  else if (d.pickBeat) { picker = { target: { beat: d.pickBeat }, title: "Фото для вставки.", current: (state.beats.find((b) => b.id === d.pickBeat) || {}).asset }; drawPicker(); }
+  else if (t.closest("[data-crop]")) openCrop(t.closest("[data-crop]").dataset.crop);
+  else if (d.cropDo) cropAction(d.cropDo);
   else if (d.close && (t === e.target)) { if (t.classList.contains("veil") && e.target !== t) return; picker = null; drawPicker(); }
   else if (t.id === "search") searchPictures($("query").value.trim(), picker.target.need);
   else if (t.closest("[data-choose]")) choose(t.closest("[data-choose]").dataset.choose);
@@ -973,6 +1047,7 @@ document.addEventListener("keydown", (e) => {
   else if (e.target.id === "query" && e.key === "Enter") searchPictures(e.target.value.trim(), picker.target.need);
   else if (e.target.id === "titleText" && e.key === "Enter") document.querySelector('[data-new="title"]').click();
   else if (e.key === "Escape" && picker) { picker = null; drawPicker(); }
+  else if (e.key === "Escape" && crop) cropAction("close");
 });
 document.addEventListener("focusout", (e) => { if (e.target.id === "fixInput") saveWord(e.target); });
 // A tap anywhere else also finishes the correction (some browsers do not move focus on a tap)
@@ -997,7 +1072,12 @@ document.addEventListener("change", async (e) => {
     input.value = ""; return;
   }
   if (input.id === "takeMore") { await act(`/api/projects/${name}/take-add/${safeName(file)}`, { method: "POST", body: file }); input.value = ""; return; }
-  if (input.id === "ownPhoto") { const fresh = await act(`/api/projects/${name}/assets/${safeName(file)}`, { method: "POST", body: file }); if (fresh && picker) choose(fresh.added); }
+  if (input.id === "ownPhoto") {
+    if (file.size > 25 * 1024 * 1024) { fail(new Error("Фото завелике: найбільше 25 МБ.")); input.value = ""; return; }
+    if (picker) { picker.loading = "upload"; drawPicker(); }
+    const fresh = await act(`/api/projects/${name}/assets/${safeName(file)}`, { method: "POST", body: file });
+    if (fresh && picker) choose(fresh.added); else if (picker) { picker.loading = false; drawPicker(); }
+  }
   else if (input.id === "take") {
     try { $("top").textContent = "Вивантажую…"; const made = await api(`/api/new/${safeName(file)}?space=${encodeURIComponent(space || "")}`, { method: "POST", body: file }); location.search = "?p=" + made.project; } catch (error) { fail(error); }
   }
