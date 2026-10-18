@@ -169,6 +169,7 @@
   .card.mark { cursor: pointer; }
   .card.mark.on { outline: 2px solid var(--brand); }
   .card.mark.wait .what small { color: var(--bad); }
+  .card.note { margin: 8px 0 0; box-shadow: inset 0 0 0 1px var(--chip2); } .card.note .what { font-size: 14px; }
   .card { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .card .what { flex: 1 1 220px; min-width: 0; }
   .card small { display: block; color: var(--subtle); font-size: 12px; }
@@ -244,6 +245,7 @@
       <h2>Текст</h2>
       <p class="hint" style="margin:0 0 6px">Дотик до слова відкриває, що з ним зробити. Щоб позначити кілька слів, протягніть по них (на телефоні спершу затримайте палець).</p>
       <div class="wordsBox"><div class="words" id="words"></div><div class="wordMenu" id="wordMenu" hidden></div></div>
+      <div id="fixNote"></div>
       <div id="beatMenu"></div>
     </section>
     <section id="cutBox"><h2>AI прибрав із відео</h2><div id="cuts"></div></section>
@@ -276,6 +278,8 @@ const ACCENTS = ["#ffd60a", "#ffffff", "#30d158", "#0a84ff", "#ff453a", "#ff9f0a
 let name = new URLSearchParams(location.search).get("p"), state = null, styles = [], shown = 0, edited = false;
 let pick = null;    // the words the text's menu is open for: [first, last]; one word is [id, id]
 let press = null;   // a press on a word that may become a stretch: { id, x, y, touch, selecting, timer }
+let fixNote = null;  // what follows a corrected word: the same mishearing elsewhere, and whether it is remembered
+const letters = (text) => String(text || "").toLowerCase().replace(/[ʼ'’]/g, "").replace(/[^\p{L}\p{N}_]/gu, "");
 let drawn = "", editing = null, range = null, picker = null, marked = null;
 let more = false;    // the next tap on a room adds it to the chosen moment instead of replacing its room
 let reshape = null; // a room whose corners are being moved: { asset, room, points, drag }
@@ -530,7 +534,7 @@ function draw(force) {
     ? `<input type="text" id="fixInput" value="${esc(w.text)}" maxlength="40" aria-label="Виправлення слова">`
     : `<span class="w${w.hot ? " hot" : ""}${w.kept ? "" : " cut"}${w.unsure && !w.fixed ? " unsure" : ""}${w.fixed ? " fixed" : ""}${(pick && w.id >= pick[0] && w.id <= pick[1]) || (range && w.id >= range[0] && w.id <= range[1]) ? " picked" : ""}" data-w="${w.id}"${w.fixed ? ` title="почуто: ${esc(w.heard)}"` : ""}>${esc(w.text)}</span>`).join(" ");
   if (editing !== null) { const input = $("fixInput"); input.focus(); input.select(); }
-  drawWordMenu();
+  drawWordMenu(); drawFixNote();
   $("beatMenu").innerHTML = range ? `<div class="card" style="margin-top:10px"><div class="what">Що показати на словах «${esc(phrase({ from: range[0], to: range[1] }))}»?</div>
     <button data-new="full">На весь кадр</button><button data-new="cutaway">Картинка зверху</button><button data-new="backdrop">Картинка за мовцем</button><button data-new="zoom">Наближення</button>
     <input type="text" id="titleText" placeholder="Текст титру" maxlength="40" style="flex:1 1 140px"><button data-new="title">Титр</button><button class="quiet" data-new="cancel">Скасувати</button></div>` : "";
@@ -599,7 +603,25 @@ function draw(force) {
 const KINDS_ADD = { sticker: "Наліпка", number: "Число", price: "Цінник", lower: "Плашка з іменем" };
 const placeOf = (id) => state.words[id].at ?? (state.words.slice(id).find((w) => w.at != null) || {}).at;   // a cut word: where the video goes on
 function openPick(next) {
-  pick = next; editing = null; seek(placeOf(next[0]), false); draw(true);
+  pick = next; editing = null; fixNote = null; seek(placeOf(next[0]), false); draw(true);
+}
+// After a correction: the other places the recogniser heard the same, and the vocabulary of the workspace
+function drawFixNote() {
+  const box = $("fixNote"), n = fixNote;
+  if (!n || !state.words || !state.words[n.word]) { box.innerHTML = ""; return; }
+  const same = state.words.filter((w) => w.id !== n.word && !w.fixed && letters(w.heard) === letters(n.heard)).length;
+  box.innerHTML = `<div class="card note"><div class="what">«${esc(n.heard)}» → <b>${esc(n.to)}</b><small>${n.learned ? `запам'ятано для нових відео простору «${esc(state.space)}» · <a href="?#settings" data-note-vocab>словник</a>` : "лише в цьому відео"}</small></div>`
+    + (same ? `<button class="primary" data-note="all">Виправити ще ${same}</button>` : "")
+    + (n.learned ? "" : `<button data-note="remember">Запам'ятати для нових відео</button>`)
+    + `<button class="quiet" data-note="close" aria-label="Закрити">✕</button></div>`;
+}
+async function noteAction(what) {
+  const n = fixNote; if (!n) return;
+  if (what === "close") { fixNote = null; return drawFixNote(); }
+  const fresh = what === "all" ? await edit({ text: { word: n.word, to: n.to, all: true } }) : await edit({ remember: { term: n.to, heard: n.heard } });
+  if (!fresh) return;
+  if (what === "remember" && !fresh.learned) { fail(new Error("Не вдалося запам'ятати: словник простору заповнений (80 слів) або слово закоротке.")); return; }
+  fixNote = { ...n, learned: n.learned || fresh.learned }; drawFixNote();
 }
 function closePick() { if (!pick) return; pick = null; draw(true); }
 function drawWordMenu() {
@@ -609,7 +631,7 @@ function drawWordMenu() {
   const button = (what, label) => `<button data-pick="${what}">${label}</button>`;
   box.innerHTML = (one ? `<div class="what">«${esc(w.text)}»${w.fixed ? ` · почуто «${esc(w.heard)}»` : ""}</div>` : `<div class="what">${some.length} сл.: «${esc(some.slice(0, 8).map((x) => x.text).join(" "))}${some.length > 8 ? "…" : ""}»</div>`)
     + button("play", "▶ Слухати")
-    + (one ? button("fix", "✎ Виправити") : "")
+    + (one ? button("fix", "✎ Виправити") : "") + (one && w.fixed ? button("unfix", "↺ Як почуто") : "")
     + (kept ? button("cut", "✂ Вирізати") : "") + (kept < some.length ? button("restore", "↩ Повернути") : "")
     + (one ? button("hot", w.hot ? "☆ Зняти виділення" : "★ Виділити") : "")
     + (kept ? button("beat", "＋ Вставка") : "")
@@ -627,7 +649,8 @@ async function wordAction(what) {
   const [a, b] = pick;
   if (what === "close") return closePick();
   if (what === "play") return seek(placeOf(a));
-  if (what === "fix") { pick = null; editing = a; return draw(true); }
+  if (what === "fix") { pick = null; fixNote = null; editing = a; return draw(true); }
+  if (what === "unfix") { pick = null; fixNote = null; return edit({ text: { word: a, to: "" } }); }
   if (what === "hot") { pick = null; return edit({ emphasis: a }); }
   if (what === "cut") { pick = null; return edit({ drop: [a, b] }); }
   if (what === "restore") { pick = null; return edit({ drop: [a, b], restore: true }); }
@@ -842,8 +865,10 @@ async function choose(asset) {
 
 async function saveWord(input) {
   if (editing === null) return;
-  const id = editing, to = input.value; editing = null;
-  await edit({ text: { word: id, to } });
+  const id = editing, to = input.value.trim(), was = state.words[id]; editing = null;
+  if (to === was.text) return draw(true);   // nothing changed: no request, no note
+  const fresh = await edit({ text: { word: id, to } });
+  fixNote = fresh && to && fresh.words[id].fixed ? { word: id, to: fresh.words[id].text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""), heard: was.heard, learned: !!fresh.learned } : null; drawFixNote();
 }
 
 document.addEventListener("change", async (e) => {
@@ -902,6 +927,7 @@ document.addEventListener("click", async (e) => {
     const id = +d.w; range = null; openPick([id, id]);
   }
   else if (d.pick) wordAction(d.pick);
+  else if (d.note) noteAction(d.note);
   else if (d.new) {
     const where = { from: range[0], to: range[1] }, kind = d.new, text = ($("titleText") || {}).value;
     if (kind === "cancel") { range = null; draw(true); }

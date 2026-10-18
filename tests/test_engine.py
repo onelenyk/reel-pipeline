@@ -372,6 +372,16 @@ class Spelling(unittest.TestCase):
         words = spelled(heard, ["G-Village", "передпокій"], known={letters("Джівілич"): "G-Village"})
         self.assertEqual(" ".join(w["text"] for w in words), "будинку в G-Village, ми попадаємо в передпокій.")
 
+    def test_a_correction_is_remembered_when_it_is_a_name_or_when_asked(self):
+        from engine.speech import learn, lines, misheard, letters
+        with tempfile.TemporaryDirectory() as tmp:
+            book = Path(tmp) / "vocabulary.txt"; book.write_text("тераса\n", encoding="utf-8")
+            self.assertTrue(learn("Гореничі,", "Горанич,", book)); self.assertEqual(misheard(book)[letters("Горанич")], "Гореничі")
+            self.assertFalse(learn("балькон", "балкон.", book)); self.assertNotIn("балькон", " ".join(lines(book)))
+            self.assertTrue(learn("балькон", "балкон.", book, always=True)); self.assertIn("балькон = балкон", lines(book))
+            book.write_text("\n".join(f"слово{i}" for i in range(80)) + "\n", encoding="utf-8")
+            self.assertFalse(learn("Новий", None, book, always=True)); self.assertEqual(len(lines(book)), 80)
+
 
 class Names(unittest.TestCase):
     def test_words_of_one_meaning_are_one_name(self):

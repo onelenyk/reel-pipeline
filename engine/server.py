@@ -314,7 +314,21 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "edit":
                 change = json.loads(self.body() or b"{}"); doc = project.load(folder)
                 if "text" in change:
-                    heard = doc["words"][int(change["text"]["word"])]; project.set_text(folder, int(change["text"]["word"]), str(change["text"].get("to", ""))); speech.learn(str(change["text"].get("to", "")), heard.get("heard", heard["text"]), places.book(places.space_of(name)))
+                    # one word, or with "all" every word heard the same way the author has not corrected otherwise
+                    t = change["text"]; word = int(t["word"]); to = str(t.get("to", "")); heard = doc["words"][word]["text"]
+                    mine = {c["word"] for c in doc["corrections"] if c["by"] == "user" and c["accepted"]}
+                    edge = lambda text: re.match(r"^([^\w]*)(.*?)([^\w]*)$", text, re.S).groups()   # the punctuation around a word, and the word
+                    core = edge(to.strip())[1] if to.strip() else ""
+                    for w in doc["words"]:
+                        if w["id"] == word or (t.get("all") and w["id"] not in mine and speech.letters(w["text"]) == speech.letters(heard)):
+                            # typed without punctuation, a correction keeps the word's own: "балкон." stays "балькон.", "балкон," "балькон,"
+                            own = edge(w["text"]); typed = edge(to.strip())
+                            project.set_text(folder, w["id"], (to.strip() if w["id"] == word and (typed[0] or typed[2]) else own[0] + core + own[2]) if core else "")
+                    learned = bool(core) and speech.learn(core, heard, places.book(places.space_of(name)))
+                    return self.send({**summary(name), "learned": learned})
+                elif "remember" in change:
+                    # the author asks a corrected word to be remembered for the next videos, whatever it looks like
+                    r = change["remember"]; return self.send({**summary(name), "learned": speech.learn(str(r.get("term", "")), str(r.get("heard", "")), places.book(places.space_of(name)), always=True)})
                 elif "assign" in change: project.assign(folder, change["assign"]["need"], change["assign"].get("asset"))
                 elif "style" in change: project.set_style(folder, change["style"])
                 elif "apply_style" in change: project.set_style(folder, styles.get(change["apply_style"]))

@@ -45,18 +45,21 @@ def set_vocabulary(terms, book=None):
     book = Path(book or VOCABULARY); book.parent.mkdir(parents=True, exist_ok=True); book.write_text("\n".join(clean[:80]) + "\n", encoding="utf-8"); return clean[:80]
 
 
-def learn(term, heard=None, book=None):
+def learn(term, heard=None, book=None, always=False):
     """A corrected word that looks like a name (a capital letter or Latin letters) is remembered for the next videos,
-    together with what the recogniser wrote instead of it: next time that is respelled without anyone's help."""
+    together with what the recogniser wrote instead of it: next time that is respelled without anyone's help.
+    `always` remembers any word the author asks to. Returns whether the word is now in the vocabulary."""
     term = term.strip(" ,.;!?«»\"")
-    if not (len(term) >= 3 and (term[0].isupper() or re.search("[A-Za-z]", term))): return
+    if len(letters(term)) < 2 or not (always or (len(term) >= 3 and (term[0].isupper() or re.search("[A-Za-z]", term)))): return False
     kept = lines(book); heard = (heard or "").strip(" ,.;!?«»\"")
     for i, line in enumerate(kept):
         if line.split("=")[0].strip().lower() == term.lower():
             if heard and letters(heard) != letters(term) and letters(heard) not in misheard(book): kept[i] = line + (", " if "=" in line else " = ") + heard
             break
-    else: kept.append(term + (f" = {heard}" if heard and letters(heard) != letters(term) else ""))
-    set_vocabulary(kept, book)
+    else:
+        if len(kept) >= 80: return False   # the vocabulary is full: the author makes room in it by hand
+        kept.append(term + (f" = {heard}" if heard and letters(heard) != letters(term) else ""))
+    set_vocabulary(kept, book); return True
 
 
 _models, _loading = {}, threading.Lock()
